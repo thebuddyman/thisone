@@ -52,6 +52,10 @@
    */
   var FAMILY = {
     fontSize: /^text-(?:xs|sm|base|lg|xl|[2-9]xl)$/,
+    // Arbitrary sizes are the real vocabulary here: uiux_experiment uses the
+    // named scale twice and text-[13px] and friends 497 times. Both forms are
+    // one family — writing either must clear the other.
+    fontSizeArb: /^text-\[[\d.]+(?:px|rem|em)\]$/,
   };
 
   // Shared spacing scale for every padding/margin field.
@@ -306,6 +310,63 @@
   }
 
   /**
+   * What size is this element wearing, and in which idiom?
+   *
+   *   scale — a named class (text-lg)
+   *   px    — an arbitrary value (text-[13px]), stepped by the pixel
+   *   none  — nothing set; report what it actually renders at, so the field
+   *           shows something true rather than a dash
+   */
+  function readFontSize(el) {
+    if (!el) return { kind: 'none', px: 0 };
+    var classes = classesOf(el);
+
+    var named = FONT_SIZES.find(function (v) { return classes.indexOf(v) !== -1; });
+    if (named) return { kind: 'scale', name: named };
+
+    for (var i = classes.length - 1; i >= 0; i--) {
+      if (FAMILY.fontSizeArb.test(classes[i])) {
+        var m = /\[([\d.]+)(px|rem|em)\]/.exec(classes[i]);
+        return { kind: 'px', px: Number(m[1]), unit: m[2], cls: classes[i] };
+      }
+    }
+    return { kind: 'none', px: Math.round(parseFloat(getComputedStyle(el).fontSize) || 0) };
+  }
+
+  /** Clear both idioms, then write one. */
+  function setFontSize(el, cls) {
+    stripFamily(el, FAMILY.fontSize);
+    stripFamily(el, FAMILY.fontSizeArb);
+    if (cls) {
+      ensureFontRule(cls);
+      el.classList.add(cls);
+    }
+    markDirty(el, 'classes');
+    refresh();
+  }
+
+  /**
+   * An arbitrary size exists in no source file, so Tailwind generates nothing
+   * for it — the same gap arbitrary colours have. Emit the rule at runtime.
+   */
+  function ensureFontRule(cls) {
+    var m = /^text-\[([\d.]+)(px|rem|em)\]$/.exec(cls);
+    if (!m || dynSeen[cls]) return;
+    dynSeen[cls] = true;
+    if (!dynStyle) {
+      dynStyle = document.createElement('style');
+      dynStyle.setAttribute('data-tw-editor', 'dynamic');
+      document.head.appendChild(dynStyle);
+    }
+    var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
+    try {
+      dynStyle.sheet.insertRule(sel + '{font-size:' + m[1] + m[2] + '}', dynStyle.sheet.cssRules.length);
+    } catch (e) {
+      dynSeen[cls] = false;
+    }
+  }
+
+  /**
    * Nearest slot on the scale, so a hand-written p-5 still steps sensibly and a
    * typed 7 lands somewhere real. Ties round up (7 → 8), which is what people
    * expect from a number field; `<=` is what makes the later slot win.
@@ -450,6 +511,7 @@
       'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.2 4.4 3.5 2.1l2.3 2.3"/></svg>',
     down: '<svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" ' +
       'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.2 2.6 3.5 4.9l2.3-2.3"/></svg>',
+    font: glyph('<path d="M2 3.2V2.1h8v1.1M6 2.4v7.5M4.3 9.9h3.4"/>'),
     plus: '<svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round"><path d="M4.5 1.4v6.2M1.4 4.5h6.2"/></svg>',
     gapAll: glyph('<rect x="1.6" y="1.6" width="3.6" height="3.6" rx="1"/>' +
@@ -572,6 +634,7 @@
       P + ' .bw-alpha-in{width:24px;border:0;background:transparent;text-align:right;',
       '  font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
       P + ' .bw-alpha-in:focus{outline:none}',
+      P + ' .bw-unit{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint);padding-right:5px}',
       P + ' .bw-pct{font:10px/1 ' + UI_FONT + ';color:var(--bw-faint);padding-right:3px}',
       P + ' .bw-detach{flex:0 0 auto;width:22px;height:22px;border-radius:5px;opacity:0;',
       '  display:flex;align-items:center;justify-content:center;color:var(--bw-faint)}',
@@ -909,9 +972,19 @@
     row.appendChild(el('span', 'bw-lbl', 'Font size'));
 
     var field = el('div', 'bw-field');
-    // Font sizes are names (text-lg), not numbers, so this value is read-only —
-    // but it wears the same chrome as the spacing inputs so the rows line up.
-    var readout = el('code', 'bw-val is-text', '—');
+    var mark = el('span', 'bw-ico');
+    mark.innerHTML = ICONS.font;
+    mark.title = 'font size';
+
+    var input = document.createElement('input');
+    input.className = 'bw-val';
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('data-tw-font', '');
+
+    var unit = el('span', 'bw-unit', '');
     var spin = el('div', 'bw-spin');
     var up = el('button', 'bw-step');
     var down = el('button', 'bw-step');
@@ -919,31 +992,78 @@
     down.innerHTML = ICONS.down;
     up.setAttribute('data-tw-step', 'up');
     down.setAttribute('data-tw-step', 'down');
-
-    function step(dir) {
-      if (!selected) return;
-      var classes = classesOf(selected);
-      var current = FONT_SIZES.findIndex(function (v) { return classes.indexOf(v) !== -1; });
-      if (current === -1) current = FONT_FALLBACK;
-      var next = Math.max(0, Math.min(FONT_SIZES.length - 1, current + dir));
-      applyClass(selected, FONT_SIZES[next], FAMILY.fontSize);
-    }
     up.title = 'larger';
     down.title = 'smaller';
-    up.addEventListener('click', function () { step(1); });
-    down.addEventListener('click', function () { step(-1); });
     spin.appendChild(up);
     spin.appendChild(down);
 
-    field.appendChild(readout);
+    /**
+     * Stepping stays in whatever idiom the element already uses: a named class
+     * walks the scale, an arbitrary size moves a pixel at a time. An element
+     * with nothing set starts from what it actually renders at, so the first
+     * click nudges from the real size rather than jumping to text-sm.
+     */
+    function step(dir) {
+      if (!selected) return;
+      var state = readFontSize(selected);
+      if (state.kind === 'scale') {
+        var i = FONT_SIZES.indexOf(state.name);
+        var next = Math.max(0, Math.min(FONT_SIZES.length - 1, i + dir));
+        return setFontSize(selected, FONT_SIZES[next]);
+      }
+      var px = (state.kind === 'px' ? state.px : state.px) + dir;
+      if (px < 1) px = 1;
+      var u = state.kind === 'px' ? state.unit : 'px';
+      setFontSize(selected, 'text-[' + px + u + ']');
+    }
+    up.addEventListener('click', function () { step(1); });
+    down.addEventListener('click', function () { step(-1); });
+
+    function commit() {
+      if (!selected) return;
+      var raw = input.value.trim();
+      if (!raw) return setFontSize(selected, null);
+      // A named class typed in full is honoured; anything else reads as pixels.
+      if (FONT_SIZES.indexOf(raw) !== -1) return setFontSize(selected, raw);
+      var n = parseFloat(raw);
+      if (isNaN(n) || n <= 0) return refresh();
+      setFontSize(selected, 'text-[' + n + 'px]');
+    }
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); refresh(); input.blur(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); step(1); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); step(-1); }
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('focus', function () { input.select(); });
+
+    field.appendChild(mark);
+    field.appendChild(input);
+    field.appendChild(unit);
     field.appendChild(spin);
     row.appendChild(field);
 
     readouts.push(function () {
-      var classes = classesOf(selected);
-      var hit = FONT_SIZES.find(function (v) { return classes.indexOf(v) !== -1; });
-      readout.textContent = hit || '—';
-      readout.className = 'bw-val is-text' + (hit ? '' : ' is-unset');
+      if (document.activeElement === input) return;
+      var state = readFontSize(selected);
+      if (state.kind === 'scale') {
+        input.value = state.name;
+        unit.textContent = '';
+        input.className = 'bw-val';
+        input.title = 'font size: ' + state.name;
+      } else if (state.kind === 'px') {
+        input.value = String(state.px);
+        unit.textContent = state.unit;
+        input.className = 'bw-val';
+        input.title = 'font size: ' + state.cls;
+      } else {
+        // Rendered rather than declared — dimmed, like an inherited spacing value.
+        input.value = String(state.px || '');
+        unit.textContent = state.px ? 'px' : '';
+        input.className = 'bw-val is-inherited';
+        input.title = 'not set — rendering at ' + state.px + 'px';
+      }
     });
 
     return row;
