@@ -113,6 +113,11 @@
   // Elements changed but not yet written. Previously an edit that was never
   // saved stayed on screen with nothing marking it, and one refresh lost it.
   var dirty = new Map(); // element -> { text: boolean, classes: boolean }
+  // Classes as first seen this session, per element. A composed className —
+  // cn("p-4", cond && "bg-blue-500") — cannot be rewritten from the rendered
+  // string, because that string also contains whatever the other arguments
+  // contributed. Sending the delta lets the writer edit only its own literal.
+  var baseline = new Map();
   // Fingerprint of the bytes our eids were derived from; quoted back on write.
   var fileHash = null;
 
@@ -1557,6 +1562,7 @@
     deselect();
     if (hovered === el) { releaseOutline(hovered); hovered = null; }
     selected = el;
+    if (!baseline.has(el)) baseline.set(el, classesOf(el));
     revealed = {}; // reveals are per-selection, not sticky across elements
     buildColorModel(); // re-read: a client-routed page can swap its @theme
     setOutline(selected, SELECT_OUTLINE);
@@ -1597,7 +1603,13 @@
       // elements that legitimately had none (styled by a stylesheet, not by
       // utilities) — an edit the user never asked for.
       var edit = { id: el.getAttribute(ID_ATTR) };
-      if (entry.classes) edit.classes = liveClasses(el);
+      if (entry.classes) {
+        edit.classes = liveClasses(el);
+        var was = baseline.get(el) || [];
+        var now = classesOf(el);
+        edit.removed = was.filter(function (c) { return now.indexOf(c) === -1; });
+        edit.added = now.filter(function (c) { return was.indexOf(c) === -1; });
+      }
       if (entry.text && TEXT_ENABLED) {
         // A browser quirk may still have slipped a node in (a <br> from an odd
         // paste path). Flatten back to pure text so the write stays a leaf.
@@ -1631,6 +1643,7 @@
         if (data.ok) {
           fileHash = data.hash || fileHash;
           dirty.clear();
+          baseline.clear();
           saving.forEach(function (el) {
             if (el === selected) setOutline(el, SELECT_OUTLINE);
             else releaseOutline(el);

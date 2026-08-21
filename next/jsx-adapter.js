@@ -78,8 +78,13 @@ function hostElements(ts, sourceFile) {
   return found;
 }
 
+// Composition helpers whose first string argument holds the base classes.
+const CN_CALLEES = new Set(['cn', 'clsx', 'classnames', 'classNames', 'cx', 'twMerge', 'twJoin']);
+
 const REFUSALS = {
   'cn-call': 'classes are built by a function call',
+  'cn-no-literal': 'the composition call has no plain string to edit',
+  'cva-call': 'classes come from a cva() variant definition',
   'template-literal': 'classes are built by a template literal',
   'dynamic-classname': 'classes come from a variable',
   'unsupported-shape': 'unsupported className expression',
@@ -178,6 +183,28 @@ function classNameSpan(ts, sourceFile, node) {
       return { reason: 'template-literal', detail: expr.getText(sourceFile).slice(0, 60) };
     }
     if (ts.isCallExpression(expr)) {
+      const callee = ts.isIdentifier(expr.expression) ? expr.expression.text : null;
+      if (callee === 'cva') {
+        return { reason: 'cva-call', detail: expr.getText(sourceFile).slice(0, 60) };
+      }
+      if (callee && CN_CALLEES.has(callee)) {
+        // Edit the first plain string argument — by convention the base
+        // classes. The others are conditional or forwarded, and rewriting the
+        // whole call from the rendered string would duplicate what they add,
+        // which is why this span is applied as a delta rather than replaced.
+        const literal = expr.arguments.find(
+          (a) => ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)
+        );
+        if (!literal) {
+          return { reason: 'cn-no-literal', detail: expr.getText(sourceFile).slice(0, 60) };
+        }
+        return {
+          start: literal.getStart(sourceFile) + 1,
+          end: literal.getEnd() - 1,
+          delta: true,
+          via: callee,
+        };
+      }
       return { reason: 'cn-call', detail: expr.getText(sourceFile).slice(0, 60) };
     }
     if (ts.isIdentifier(expr) || ts.isPropertyAccessExpression(expr)) {
@@ -260,7 +287,26 @@ function editFile(ts, filePath, source, edits) {
         refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
         continue;
       }
-      spans.push({ span, tag, insertion: (v) => ` className="${v}"`, value: String(edit.classes).trim().replace(/\s+/g, ' ') });
+      let value = String(edit.classes).trim().replace(/\s+/g, ' ');
+      if (span.delta) {
+        // Only this literal is ours to change; everything else in the rendered
+        // class string came from the call's other arguments.
+        const current = source.slice(span.start, span.end).trim().split(/\s+/).filter(Boolean);
+        const removed = new Set(edit.removed || []);
+        const incoming = (edit.added || []).filter((c) => current.indexOf(c) === -1);
+
+        // Substitute in place rather than strike-then-append: swapping p-4 for
+        // p-8 should leave the literal's order alone, so the diff is one token
+        // rather than a reshuffled line.
+        const out = [];
+        for (const c of current) {
+          if (!removed.has(c)) { out.push(c); continue; }
+          if (incoming.length) out.push(incoming.shift());
+        }
+        for (const c of incoming) out.push(c);
+        value = out.join(' ');
+      }
+      spans.push({ span, tag, insertion: (v) => ` className="${v}"`, value });
     }
 
     if (edit.text !== undefined) {

@@ -120,7 +120,12 @@ function handleEdit(req, res, payload) {
     const abs = safeResolve(loc.file);
     if (!abs) return json(res, 403, { ok: false, reason: 'outside-root', error: `refusing path: ${loc.file}` });
     if (!byFile.has(abs)) byFile.set(abs, []);
-    byFile.get(abs).push({ id: edit.id, loc, classes: edit.classes, text: edit.text });
+    byFile.get(abs).push({
+      id: edit.id, loc, classes: edit.classes, text: edit.text,
+      // What actually changed, for spans that own only part of the class list.
+      added: Array.isArray(edit.added) ? edit.added : undefined,
+      removed: Array.isArray(edit.removed) ? edit.removed : undefined,
+    });
   }
 
   const ts = loadTypeScript(ROOT);

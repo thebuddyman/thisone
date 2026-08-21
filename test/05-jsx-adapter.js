@@ -47,8 +47,9 @@ check('className replaced in place', r.ok && r.contents === 'const a = <div clas
 r = run('const a = <div>hi</div>;', [{ tag: 'div', classes: 'p-4' }]);
 check('className inserted when absent', r.ok && r.contents === 'const a = <div className="p-4">hi</div>;', r.contents);
 
-r = run('const a = <div className={cn("p-4", x)}>hi</div>;', [{ tag: 'div', classes: 'p-8' }]);
-check('cn() refused', !r.ok && r.refusals[0].reason === 'cn-call', r.ok ? 'accepted!' : r.refusals[0].reason);
+r = run('const a = <div className={cn("p-4", x)}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8', removed: ['p-4'], added: ['p-8'] }]);
+check('cn() is edited, not refused', r.ok && /cn\("p-8", x\)/.test(r.contents), r.contents);
 
 r = run('const a = <div className={`p-4 ${x}`}>hi</div>;', [{ tag: 'div', classes: 'p-8' }]);
 check('interpolated template refused', !r.ok && r.refusals[0].reason === 'template-literal');
@@ -86,6 +87,49 @@ check('JSX-breaking characters escaped',
 r = run('const a = <p></p>;', [{ tag: 'p', text: 'filled' }]);
 check('text inserted into an empty element', r.ok && r.contents === 'const a = <p>filled</p>;', r.contents);
 
+// -------------------------------------------------------------- cn() / cva
+
+// The rendered class string is the union of every argument, so the whole string
+// must NOT be written back into argument one — only this literal's own share.
+r = run('const a = <div className={cn("p-4 bg-white", big && "text-xl")}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8 bg-white text-xl', removed: ['p-4'], added: ['p-8'] }]);
+check('cn(): first literal edited by delta',
+  r.ok && r.contents === 'const a = <div className={cn("p-8 bg-white", big && "text-xl")}>hi</div>;', r.contents);
+
+r = run('const a = <div className={cn("p-4", big && "text-xl")}>hi</div>;',
+  [{ tag: 'div', classes: 'p-4 text-xl bg-rose-500', removed: [], added: ['bg-rose-500'] }]);
+check('cn(): an added class lands in the literal, conditionals untouched',
+  r.ok && r.contents === 'const a = <div className={cn("p-4 bg-rose-500", big && "text-xl")}>hi</div>;', r.contents);
+
+r = run('const a = <div className={cn("p-4", big && "text-xl")}>hi</div>;',
+  [{ tag: 'div', classes: 'p-4', removed: ['text-xl'], added: [] }]);
+check('cn(): removing a class the literal does not own leaves it alone',
+  r.ok && r.contents === 'const a = <div className={cn("p-4", big && "text-xl")}>hi</div>;', r.contents);
+
+r = run('const a = <div className={clsx("p-4", x)}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8', removed: ['p-4'], added: ['p-8'] }]);
+check('clsx() is handled too', r.ok && /clsx\("p-8", x\)/.test(r.contents), r.contents);
+
+r = run('const a = <div className={cn(base, x)}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8', removed: [], added: ['p-8'] }]);
+check('cn() with no string argument is refused',
+  !r.ok && r.refusals[0].reason === 'cn-no-literal', r.ok ? 'accepted!' : r.refusals[0].reason);
+
+r = run('const a = <div className={cva("p-4", { variants: {} })}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8', removed: ['p-4'], added: ['p-8'] }]);
+check('cva() is refused by name', !r.ok && r.refusals[0].reason === 'cva-call',
+  r.ok ? 'accepted!' : r.refusals[0].reason);
+
+r = run('const a = <div className={other("p-4")}>hi</div>;',
+  [{ tag: 'div', classes: 'p-8', removed: ['p-4'], added: ['p-8'] }]);
+check('an unknown helper is still refused', !r.ok && r.refusals[0].reason === 'cn-call');
+
+// a plain literal is a full replacement, not a delta
+r = run('const a = <div className="p-4 bg-white">hi</div>;',
+  [{ tag: 'div', classes: 'p-8 bg-rose-500', removed: ['p-4','bg-white'], added: ['p-8','bg-rose-500'] }]);
+check('a plain string literal is still replaced wholesale',
+  r.ok && r.contents === 'const a = <div className="p-8 bg-rose-500">hi</div>;', r.contents);
+
 // ------------------------------------------------------- combined + batching
 
 r = run('const a = <p className="a">one</p>;', [{ tag: 'p', classes: 'b', text: 'two' }]);
@@ -101,12 +145,13 @@ check('two elements in one file, offsets stay valid',
   JSON.stringify(r.contents));
 
 // one bad edit must abort the whole file, not half-apply it
-const mixedBatch = 'export const A = (\n  <div className="a">\n    <p className={cn("b")}>x</p>\n  </div>\n);\n';
+const mixedBatch = 'export const A = (\n  <div className="a">\n    <p className={styles.x}>x</p>\n  </div>\n);\n';
 r = run(mixedBatch, [
   { tag: 'div', classes: 'CHANGED' },
   { tag: 'p', classes: 'ALSO' },
 ]);
-check('a refusal aborts the entire batch', !r.ok && r.refusals[0].reason === 'cn-call');
+check('a refusal aborts the entire batch', !r.ok && r.refusals[0].reason === 'dynamic-classname',
+  r.ok ? 'accepted!' : r.refusals[0].reason);
 
 // ------------------------------------------------------------- staleness
 
