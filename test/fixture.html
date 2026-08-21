@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloomworks — Visual Tailwind Editor POC</title>
+<script src="/tailwind-browser.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-900">
+
+<header class="p-6">
+<nav class="flex items-center justify-between">
+<span class="text-xl font-bold text-indigo-600">Bloomworks</span>
+<span class="text-sm text-slate-500">visual editor poc</span>
+</nav>
+</header>
+
+<main class="p-6">
+
+<section class="p-12">
+<h1 class="text-4xl font-bold">Edit this page in the browser.</h1>
+<p class="text-lg text-slate-500 p-0 m-0">Click any element, nudge its Tailwind classes, then write the result straight back to index.html on disk.</p>
+</section>
+
+<div class="bg-white rounded-xl shadow m-12 p-4">
+<h2 class="text-2xl font-bold">The card</h2>
+<p class="text-base text-slate-500 p-0">This is the element to poke at first. Bump its padding, swap its background, then hit Save and hard refresh.</p>
+<button class="m-2 rounded-lg font-semibold p-4 bg-rose-500 text-slate-500">Primary action</button>
+</div>
+
+</main>
+
+<footer class="p-6">
+<p class="text-sm text-slate-500">Nothing here is compiled. Tailwind is running from the Play CDN.</p>
+</footer>
+
+</body>
+</html>

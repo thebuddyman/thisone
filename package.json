@@ -1,0 +1,24 @@
+{
+  "name": "bw-pl-browsereditor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Proof of concept: visual Tailwind editor with write-back to source",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run.mjs",
+    "edit": "node cli.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-html-parser": "^6.1.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/browser": "^4.3.3",
+    "playwright": "^1.58.2",
+    "typescript": "^5.9.3"
+  },
+  "bin": {
+    "bw-edit": "./cli.js"
+  }
+}

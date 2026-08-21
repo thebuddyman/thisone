@@ -1,0 +1,7 @@
+node_modules/
+test/*.png
+*.png
+*.tmp-*
+.bw-tmp-*
+.DS_Store
+.backups/

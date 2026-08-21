@@ -1,0 +1,294 @@
+'use strict';
+
+/**
+ * Rewrite a className string literal in a .tsx/.jsx file.
+ *
+ * This is a SPAN REPLACEMENT, not a tree edit: we already know the node from
+ * the source location, so we replace the bytes strictly between the quotes and
+ * leave every other byte alone. No printer runs, so nothing can reformat the
+ * file, change quote style, or move a trailing comma into your diff.
+ *
+ * It also means the loader and the writer share one parse function, so their
+ * idea of "the element at line:col" cannot drift apart.
+ */
+
+const crypto = require('crypto');
+const path = require('path');
+const { createRequire } = require('module');
+
+/** Short fingerprint of a file's bytes; must match the loader's. */
+function hashOf(source) {
+  return crypto.createHash('sha256').update(source).digest('hex').slice(0, 8);
+}
+
+/**
+ * Resolve the project's OWN typescript where possible, so a TS 5 project is
+ * never parsed by a TS 6 parser or vice versa. Falls back to ours for projects
+ * that ship no TypeScript (plain .jsx) and for unit tests.
+ */
+function loadTypeScript(root) {
+  // TypeScript 7 (the native port) does not expose the classic compiler API
+  // from its CommonJS entry — `createSourceFile` and friends are simply absent.
+  // Probe for it rather than crashing three frames deeper on `ts.ScriptTarget`.
+  const usable = (mod) => mod && typeof mod.createSourceFile === 'function' && mod.ScriptTarget;
+
+  try {
+    const projectTs = createRequire(path.join(root, 'package.json'))('typescript');
+    if (usable(projectTs)) return projectTs;
+  } catch {
+    /* fall through to ours */
+  }
+
+  const ours = require('typescript');
+  if (usable(ours)) return ours;
+
+  throw new Error(
+    `no usable TypeScript compiler API found (project: ${root}). ` +
+      'TypeScript 7 does not expose createSourceFile from its CommonJS entry; ' +
+      'install typescript@5 or typescript@6 in the project.'
+  );
+}
+
+/** "src/app/page.tsx:24:7:a1b2c3d4" → { file, line, col, hash } */
+function parseLoc(id) {
+  const bits = String(id || '').split(':');
+  if (bits.length < 3) return null;
+  const hash = bits.length >= 4 ? bits.pop() : null;
+  const col = Number(bits.pop());
+  const line = Number(bits.pop());
+  const file = bits.join(':');
+  if (!file || !Number.isInteger(line) || !Number.isInteger(col)) return null;
+  return { file, line, col, hash };
+}
+
+/** Every JSX host element in a source file, keyed by 1-based line:col. */
+function hostElements(ts, sourceFile) {
+  const found = new Map();
+  (function walk(node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = node.tagName.getText(sourceFile);
+      if (/^[a-z]/.test(tag)) {
+        const start = node.getStart(sourceFile);
+        const { line, character } = sourceFile.getLineAndCharacterOfPosition(start);
+        found.set(`${line + 1}:${character + 1}`, node);
+      }
+    }
+    ts.forEachChild(node, walk);
+  })(sourceFile);
+  return found;
+}
+
+const REFUSALS = {
+  'cn-call': 'classes are built by a function call',
+  'template-literal': 'classes are built by a template literal',
+  'dynamic-classname': 'classes come from a variable',
+  'unsupported-shape': 'unsupported className expression',
+  'mixed-content': 'text is mixed with markup or an expression',
+  'no-text': 'element has no text body',
+};
+
+/**
+ * `{`, `}`, `<` and `>` are JSX *syntax*, so typing one would break the file.
+ * JSX text honours HTML entities, so escape rather than refuse.
+ */
+function escapeJsxText(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;');
+}
+
+/**
+ * The editable span of an element's text body.
+ *
+ * Only a lone JsxText child qualifies. `<p>Hello {name}</p>` renders as one
+ * string but is two nodes, and nothing tells us which typed characters belong
+ * to the literal and which to the expression — so that case is refused rather
+ * than guessed at.
+ *
+ * The span deliberately excludes surrounding whitespace: JSX strips leading and
+ * trailing whitespace on lines containing newlines, so the source indentation
+ * must survive the rewrite untouched.
+ */
+function textSpan(ts, sourceFile, opening, source) {
+  if (ts.isJsxSelfClosingElement(opening)) {
+    return { reason: 'no-text', detail: 'self-closing element' };
+  }
+  const element = opening.parent;
+  if (!element || !ts.isJsxElement(element)) {
+    return { reason: 'no-text', detail: 'no element body' };
+  }
+
+  const kids = element.children.filter(
+    (c) => !(ts.isJsxText(c) && c.getText(sourceFile).trim() === '')
+  );
+
+  if (kids.length === 0) {
+    return { insertAt: element.openingElement.getEnd() };
+  }
+  if (kids.length !== 1 || !ts.isJsxText(kids[0])) {
+    const kinds = kids.map((c) => (ts.isJsxExpression(c) ? '{expression}' : ts.isJsxText(c) ? 'text' : 'element'));
+    return { reason: 'mixed-content', detail: kinds.join(' + ') };
+  }
+
+  const node = kids[0];
+  const full = source.slice(node.pos, node.end);
+  const leading = full.match(/^\s*/)[0].length;
+  const trailing = full.match(/\s*$/)[0].length;
+  return { start: node.pos + leading, end: node.end - trailing };
+}
+
+/**
+ * Locate the editable span of an element's className.
+ *
+ * Returns { start, end } of the characters BETWEEN the quotes, or
+ * { insertAt } when the element has no className attribute at all, or
+ * { reason, detail } when the shape is not safe to rewrite.
+ */
+function classNameSpan(ts, sourceFile, node) {
+  const attr = node.attributes.properties.find(
+    (p) => ts.isJsxAttribute(p) && p.name.getText(sourceFile) === 'className'
+  );
+
+  if (!attr) return { insertAt: node.tagName.getEnd() };
+
+  const init = attr.initializer;
+  if (!init) return { insertAt: node.tagName.getEnd() };
+
+  // className="a b c"
+  if (ts.isStringLiteral(init)) {
+    return { start: init.getStart(sourceFile) + 1, end: init.getEnd() - 1 };
+  }
+
+  if (ts.isJsxExpression(init)) {
+    const expr = init.expression;
+    if (!expr) return { reason: 'unsupported-shape', detail: 'empty expression' };
+
+    // className={"a b c"}
+    if (ts.isStringLiteral(expr)) {
+      return { start: expr.getStart(sourceFile) + 1, end: expr.getEnd() - 1 };
+    }
+    // className={`a b c`} with no ${}
+    if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+      return { start: expr.getStart(sourceFile) + 1, end: expr.getEnd() - 1 };
+    }
+    if (ts.isTemplateExpression(expr)) {
+      return { reason: 'template-literal', detail: expr.getText(sourceFile).slice(0, 60) };
+    }
+    if (ts.isCallExpression(expr)) {
+      return { reason: 'cn-call', detail: expr.getText(sourceFile).slice(0, 60) };
+    }
+    if (ts.isIdentifier(expr) || ts.isPropertyAccessExpression(expr)) {
+      return { reason: 'dynamic-classname', detail: expr.getText(sourceFile).slice(0, 60) };
+    }
+    return { reason: 'unsupported-shape', detail: expr.getText(sourceFile).slice(0, 60) };
+  }
+
+  return { reason: 'unsupported-shape', detail: String(init.kind) };
+}
+
+/**
+ * Pure: source bytes in, source bytes out. Never touches the filesystem, so
+ * every refusal path is unit-testable without a project on disk.
+ */
+function editSource(ts, filePath, source, loc, classes) {
+  if (loc.hash && loc.hash !== hashOf(source)) {
+    return { ok: false, reason: 'stale-hash', detail: `${loc.file} changed on disk` };
+  }
+
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const node = hostElements(ts, sourceFile).get(`${loc.line}:${loc.col}`);
+  if (!node) {
+    return { ok: false, reason: 'not-found', detail: `no host element at ${loc.file}:${loc.line}:${loc.col}` };
+  }
+
+  const tag = node.tagName.getText(sourceFile);
+  const span = classNameSpan(ts, sourceFile, node);
+
+  if (span.reason) {
+    return { ok: false, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` };
+  }
+
+  const next = String(classes).trim().replace(/\s+/g, ' ');
+
+  if (span.insertAt !== undefined) {
+    const attr = ` className="${next}"`;
+    return { ok: true, tag, contents: source.slice(0, span.insertAt) + attr + source.slice(span.insertAt) };
+  }
+
+  return {
+    ok: true,
+    tag,
+    contents: source.slice(0, span.start) + next + source.slice(span.end),
+  };
+}
+
+/**
+ * Apply several edits to one file against a single parse.
+ *
+ * Sequential single edits would be wrong twice over: the first splice shifts
+ * the byte offsets every later edit was resolved against, and it changes the
+ * file so the next hash check fails. So resolve every span first, then splice
+ * back to front. Any refusal aborts the whole file — a partial write is worse
+ * than none.
+ */
+function editFile(ts, filePath, source, edits) {
+  const stale = edits.find((e) => e.loc.hash && e.loc.hash !== hashOf(source));
+  if (stale) {
+    return { ok: false, refusals: [{ id: stale.id, reason: 'stale-hash', detail: `${stale.loc.file} changed on disk` }] };
+  }
+
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const nodes = hostElements(ts, sourceFile);
+
+  const spans = [];
+  const refusals = [];
+
+  for (const edit of edits) {
+    const node = nodes.get(`${edit.loc.line}:${edit.loc.col}`);
+    if (!node) {
+      refusals.push({ id: edit.id, reason: 'not-found', detail: `no host element at ${edit.loc.line}:${edit.loc.col}` });
+      continue;
+    }
+    const tag = node.tagName.getText(sourceFile);
+
+    if (edit.classes !== undefined) {
+      const span = classNameSpan(ts, sourceFile, node);
+      if (span.reason) {
+        refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
+        continue;
+      }
+      spans.push({ span, tag, insertion: (v) => ` className="${v}"`, value: String(edit.classes).trim().replace(/\s+/g, ' ') });
+    }
+
+    if (edit.text !== undefined) {
+      const span = textSpan(ts, sourceFile, node, source);
+      if (span.reason) {
+        refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
+        continue;
+      }
+      spans.push({ span, tag, insertion: (v) => v, value: escapeJsxText(String(edit.text).trim()) });
+    }
+  }
+
+  if (refusals.length) return { ok: false, refusals };
+
+  // Back to front, so every offset resolved above stays valid.
+  const posOf = (s) => (s.span.insertAt !== undefined ? s.span.insertAt : s.span.start);
+  spans.sort((a, b) => posOf(b) - posOf(a));
+
+  let out = source;
+  for (const item of spans) {
+    if (item.span.insertAt !== undefined) {
+      out = out.slice(0, item.span.insertAt) + item.insertion(item.value) + out.slice(item.span.insertAt);
+    } else {
+      out = out.slice(0, item.span.start) + item.value + out.slice(item.span.end);
+    }
+  }
+
+  return { ok: true, contents: out, applied: [...new Set(spans.map((s) => s.tag))] };
+}
+
+module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, classNameSpan, textSpan, escapeJsxText, editSource, editFile, REFUSALS };
