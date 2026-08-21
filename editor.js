@@ -104,8 +104,17 @@
   // The axes themselves have no intermediate step — they fall straight to p-*.
   var AXIS = { t: 'y', b: 'y', l: 'x', r: 'x' };
 
-  var FONT_SIZES = ['text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl'];
-  var FONT_FALLBACK = 1; // unset text is effectively text-base
+  // The scale comes from the project's own theme, shipped by whichever server
+  // served this file. It cannot be read from the page: Tailwind v4 emits both
+  // utilities and theme variables on demand, so a route using two sizes exposes
+  // exactly two.
+  var SIZE_ORDER = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl', '7xl', '8xl', '9xl'];
+  var TEXT_SIZES = CFG.textSizes || {};
+  var FONT_TOKENS = Object.keys(TEXT_SIZES).sort(function (a, b) {
+    var ia = SIZE_ORDER.indexOf(a), ib = SIZE_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  var FONT_SIZES = FONT_TOKENS.map(function (t) { return 'text-' + t; });
 
   var selected = null;
   var hovered = null;
@@ -663,6 +672,12 @@
       PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
       '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
+      PP + ' .bw-sizesample{flex:0 0 44px;line-height:1.05;color:var(--bw-fg);overflow:hidden}',
+      PP + ' .bw-sizename{flex:1;font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
+      PP + ' .bw-sizepx{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint)}',
+      PP + ' [data-tw-size]{align-items:baseline;min-height:30px}',
+      PP + ' [aria-current="true"]{background:var(--bw-press)}',
+      P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
       /* swatches */
@@ -995,105 +1010,72 @@
     row.setAttribute('data-tw-optional', 'font');
     row.appendChild(el('span', 'bw-lbl', 'Font size'));
 
-    var field = el('div', 'bw-field');
+    var field = el('div', 'bw-field bw-color');
+    var token = el('button', 'bw-ctoken');
+    token.setAttribute('data-tw-font-open', '');
     var mark = el('span', 'bw-ico');
     mark.innerHTML = ICONS.font;
-    mark.title = 'font size';
-
-    var input = document.createElement('input');
-    input.className = 'bw-val';
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.setAttribute('data-tw-font', '');
-
-    var unit = el('span', 'bw-unit', '');
-    var spin = el('div', 'bw-spin');
-    var up = el('button', 'bw-step');
-    var down = el('button', 'bw-step');
-    up.innerHTML = ICONS.up;
-    down.innerHTML = ICONS.down;
-    up.setAttribute('data-tw-step', 'up');
-    down.setAttribute('data-tw-step', 'down');
-    up.title = 'larger';
-    down.title = 'smaller';
-    spin.appendChild(up);
-    spin.appendChild(down);
-
-    /**
-     * Stepping stays in whatever idiom the element already uses: a named class
-     * walks the scale, an arbitrary size moves a pixel at a time. An element
-     * with nothing set starts from what it actually renders at, so the first
-     * click nudges from the real size rather than jumping to text-sm.
-     */
-    function step(dir) {
-      if (!selected) return;
-      var state = readFontSize(selected);
-      if (state.kind === 'scale') {
-        var i = FONT_SIZES.indexOf(state.name);
-        var next = Math.max(0, Math.min(FONT_SIZES.length - 1, i + dir));
-        return setFontSize(selected, FONT_SIZES[next]);
-      }
-      var px = (state.kind === 'px' ? state.px : state.px) + dir;
-      if (px < 1) px = 1;
-      var u = state.kind === 'px' ? state.unit : 'px';
-      setFontSize(selected, 'text-[' + px + u + ']');
-    }
-    up.addEventListener('click', function () { step(1); });
-    down.addEventListener('click', function () { step(-1); });
-
-    function commit() {
-      if (!selected) return;
-      var raw = input.value.trim();
-      if (!raw) return setFontSize(selected, null);
-      // A named class typed in full is honoured; anything else reads as pixels.
-      if (FONT_SIZES.indexOf(raw) !== -1) return setFontSize(selected, raw);
-      var n = parseFloat(raw);
-      if (isNaN(n) || n <= 0) return refresh();
-      setFontSize(selected, 'text-[' + n + 'px]');
-    }
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
-      else if (e.key === 'Escape') { e.stopPropagation(); refresh(); input.blur(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); step(1); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); step(-1); }
-    });
-    input.addEventListener('blur', commit);
-    input.addEventListener('focus', function () { input.select(); });
-
-    field.appendChild(mark);
-    field.appendChild(input);
-    field.appendChild(unit);
-    field.appendChild(spin);
+    var name = el('span', 'bw-cname', '\u2014');
+    var note = el('span', 'bw-unit', '');
+    token.appendChild(mark);
+    token.appendChild(name);
+    field.appendChild(token);
+    field.appendChild(note);
     row.appendChild(field);
+
+    token.addEventListener('click', function () { openSizePopover(row); });
 
     readouts.push(function () {
       var show = hasOwnText(selected) || revealed.font ||
-        readFontSize(selected).kind !== 'none'; // already set: never hide it
+        readFontSize(selected).kind !== 'none';
       row.style.display = show ? '' : 'none';
-      if (!show || document.activeElement === input) return;
+      if (!show) return;
+
       var state = readFontSize(selected);
       if (state.kind === 'scale') {
-        input.value = state.name;
-        unit.textContent = '';
-        input.className = 'bw-val';
-        input.title = 'font size: ' + state.name;
+        name.textContent = state.name.replace('text-', '');
+        name.className = 'bw-cname';
+        note.textContent = pxOfToken(state.name) || '';
+        token.title = state.name;
       } else if (state.kind === 'px') {
-        input.value = String(state.px);
-        unit.textContent = state.unit;
-        input.className = 'bw-val';
-        input.title = 'font size: ' + state.cls;
+        // Not a token. Say so rather than dressing it up as one — picking from
+        // the list is how you get back onto the scale.
+        name.textContent = state.px + state.unit;
+        name.className = 'bw-cname is-custom';
+        note.textContent = 'custom';
+        token.title = state.cls + ' \u2014 not a scale token';
       } else {
-        // Rendered rather than declared — dimmed, like an inherited spacing value.
-        input.value = String(state.px || '');
-        unit.textContent = state.px ? 'px' : '';
-        input.className = 'bw-val is-inherited';
-        input.title = 'not set — rendering at ' + state.px + 'px';
+        name.textContent = state.px ? state.px + 'px' : '\u2014';
+        name.className = 'bw-cname is-unset';
+        note.textContent = state.px ? 'inherited' : '';
+        token.title = 'not set \u2014 rendering at ' + state.px + 'px';
       }
     });
 
     return row;
+  }
+
+  /** The rendered size of a scale token, measured against the page. */
+  function pxOfToken(cls) {
+    var t = cls.replace('text-', '');
+    if (!TEXT_SIZES[t]) return '';
+    var probe = document.createElement('span');
+    probe.style.cssText =
+      'position:fixed;left:-9999px;font-size:var(--text-' + t + ',' + TEXT_SIZES[t] + ')';
+    document.body.appendChild(probe);
+    var px = Math.round(parseFloat(getComputedStyle(probe).fontSize));
+    probe.remove();
+    return px ? px + 'px' : '';
+  }
+
+  function openSizePopover(anchor) {
+    if (!FONT_SIZES.length) return;
+    popState.prefix = 'font';
+    popState.hue = null;
+    popState.anchor = anchor;
+    renderPopover();
+    popover.style.display = 'flex';
+    placePopover(anchor);
   }
 
   function textRow() {
@@ -1452,13 +1434,40 @@
       back.addEventListener('click', function () { popState.hue = null; renderPopover(); });
       head.appendChild(back);
     }
-    head.appendChild(el('strong', null, popState.hue || 'Colour'));
+    head.appendChild(el('strong', null,
+      popState.prefix === 'font' ? 'Font size' : (popState.hue || 'Colour')));
     var shut = el('button', 'bw-x', '×');
     shut.addEventListener('click', closePopover);
     head.appendChild(shut);
     popover.appendChild(head);
 
     var body = el('div', 'bw-pop-body');
+
+    if (popState.prefix === 'font') {
+      var current = readFontSize(selected);
+      FONT_SIZES.forEach(function (cls) {
+        var t = cls.replace('text-', '');
+        var item = el('button', 'bw-hue');
+        item.setAttribute('data-tw-size', t);
+        // Each sample is set at its own size, so the list reads as a type ramp.
+        var sample = el('span', 'bw-sizesample', 'Ag');
+        sample.style.fontSize = 'var(--text-' + t + ',' + TEXT_SIZES[t] + ')';
+        item.appendChild(sample);
+        item.appendChild(el('span', 'bw-sizename', t));
+        item.appendChild(el('span', 'bw-sizepx', pxOfToken(cls)));
+        if (current.kind === 'scale' && current.name === cls) {
+          item.setAttribute('aria-current', 'true');
+        }
+        item.addEventListener('click', function () {
+          setFontSize(selected, cls);
+          closePopover();
+        });
+        body.appendChild(item);
+      });
+      popover.appendChild(body);
+      if (popState.anchor) placePopover(popState.anchor);
+      return;
+    }
 
     if (!popState.hue) {
       // Project tokens first, then the stock palette. These codebases use the

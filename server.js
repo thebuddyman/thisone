@@ -80,6 +80,7 @@ app.get('/', (req, res) => {
 // server does it, so both modes run the same client with the same colour data.
 const COLOR_RAMPS = require('./next/colors.json');
 const { HUES } = require('./next/palette');
+const TEXT_SIZES = require('./next/text-sizes.json');
 
 // Served locally rather than from a CDN: the test suite must not depend on a
 // network fetch, which made runs intermittently fail with unstyled pages.
@@ -90,7 +91,7 @@ app.get('/tailwind-browser.js', (req, res) => {
 app.get('/editor.js', (req, res) => {
   const prelude =
     'window.__TW_EDITOR__ = ' +
-    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS } }) +
+    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS }, textSizes: TEXT_SIZES }) +
     ';\n';
   res.type('application/javascript').send(prelude + fs.readFileSync(EDITOR_FILE, 'utf8'));
 });

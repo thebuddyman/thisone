@@ -46,6 +46,23 @@ function extractColors(root) {
   return ramps;
 }
 
+/**
+ * The font-size scale, read from the project's own theme.
+ *
+ * It cannot be discovered from the page: Tailwind v4 emits both utilities and
+ * theme variables on demand, so a route using two sizes exposes exactly two.
+ * The full ladder only exists on disk.
+ */
+function extractTextSizes(root) {
+  const req = createRequire(path.join(root, 'package.json'));
+  const css = fs.readFileSync(req.resolve('tailwindcss/theme.css'), 'utf8');
+  const sizes = {};
+  const re = /--text-([a-z0-9]+):\s*([^;]+);/g;
+  let m;
+  while ((m = re.exec(css))) sizes[m[1]] = m[2].trim();
+  return sizes;
+}
+
 // Must stay in step with the overlay's controls — same source of truth.
 const HUES = [
   'slate', 'gray', 'zinc', 'neutral', 'stone', 'taupe', 'mauve', 'mist', 'olive',
@@ -59,7 +76,8 @@ const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '9
 const CANDIDATES = [
   '{p,m}{,x,y,t,r,b,l}-{0,2,4,6,8,12}',
   'gap{,-x,-y}-{0,2,4,6,8,12}',
-  'text-{sm,base,lg,xl,2xl,3xl,4xl}',
+  // Every offered token must be pre-generated, or picking one previews nothing.
+  'text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}',
   '{bg,text}-{white,black}',
   `{bg,text}-{${HUES.join(',')}}-{${SHADES.join(',')}}`,
 ].join(' ');
@@ -95,4 +113,4 @@ async function compilePalette(root) {
   };
 }
 
-module.exports = { compilePalette, extractColors, CANDIDATES, SCOPE, HUES, SHADES };
+module.exports = { compilePalette, extractColors, extractTextSizes, CANDIDATES, SCOPE, HUES, SHADES };

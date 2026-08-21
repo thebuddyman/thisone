@@ -17,7 +17,7 @@ const http = require('http');
 const path = require('path');
 
 const { loadTypeScript, parseLoc, editFile } = require('./jsx-adapter');
-const { compilePalette, extractColors, HUES } = require('./palette');
+const { compilePalette, extractColors, extractTextSizes, HUES } = require('./palette');
 
 function arg(name, fallback) {
   const i = process.argv.indexOf('--' + name);
@@ -51,6 +51,13 @@ try {
 } catch {
   const raw = require('./colors.json');
   colors = { order: HUES.filter((h) => raw[h]), ramps: raw };
+}
+
+let textSizes = {};
+try {
+  textSizes = extractTextSizes(ROOT);
+} catch {
+  textSizes = require('./text-sizes.json');
 }
 
 /** Resolve a project-relative path, refusing anything that escapes the root. */
@@ -176,6 +183,7 @@ const server = http.createServer((req, res) => {
         token: TOKEN,
         text: true, // only a lone static JsxText child is editable; the rest is refused
         colors: colors,
+        textSizes: textSizes,
       }) +
       ';\n';
     res.writeHead(200, { 'Content-Type': 'application/javascript' });
