@@ -836,6 +836,22 @@
     });
   }
 
+  /**
+   * Does this element render text itself, rather than only through children?
+   *
+   * font-size on a wrapper cascades, so it is not wrong there — but it is
+   * indirect, and the row was appearing on every div. Direct text nodes are the
+   * honest test: <h1>Hello</h1> yes, <div><span>x</span></div> no.
+   */
+  function hasOwnText(el) {
+    if (!el) return false;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim()) return true;
+    }
+    return false;
+  }
+
   /** Can this box do anything for this element, whether or not it is set? */
   function boxApplies(el, box) {
     return box.applies ? box.applies(el) : true;
@@ -944,17 +960,24 @@
     readouts.push(function () {
       var missing = BOXES.filter(function (box) {
         return !boxVisible(selected, box) && boxApplies(selected, box);
-      });
+      }).map(function (box) { return { key: box.prefix, label: box.label }; });
+
+      // Font size hides on elements with no text of their own, but a wrapper
+      // may legitimately set it to cascade — so keep it one click away.
+      if (selected && !hasOwnText(selected) && !revealed.font &&
+          readFontSize(selected).kind === 'none') {
+        missing.push({ key: 'font', label: 'Font size' });
+      }
       row.style.display = missing.length ? '' : 'none';
       strip.innerHTML = '';
       missing.forEach(function (box) {
         var chip = el('button', 'bw-addchip');
-        chip.setAttribute('data-tw-add', box.prefix);
+        chip.setAttribute('data-tw-add', box.key);
         chip.innerHTML = ICONS.plus;
         chip.appendChild(el('span', null, box.label));
         chip.title = 'Show ' + box.label.toLowerCase() + ' controls';
         chip.addEventListener('click', function () {
-          revealed[box.prefix] = true;
+          revealed[box.key] = true;
           refresh();
         });
         strip.appendChild(chip);
@@ -969,6 +992,7 @@
   function fontRow() {
     var row = el('div', 'bw-row');
     row.setAttribute('data-tw-field', 'font');
+    row.setAttribute('data-tw-optional', 'font');
     row.appendChild(el('span', 'bw-lbl', 'Font size'));
 
     var field = el('div', 'bw-field');
@@ -1045,7 +1069,10 @@
     row.appendChild(field);
 
     readouts.push(function () {
-      if (document.activeElement === input) return;
+      var show = hasOwnText(selected) || revealed.font ||
+        readFontSize(selected).kind !== 'none'; // already set: never hide it
+      row.style.display = show ? '' : 'none';
+      if (!show || document.activeElement === input) return;
       var state = readFontSize(selected);
       if (state.kind === 'scale') {
         input.value = state.name;

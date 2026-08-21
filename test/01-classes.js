@@ -122,8 +122,14 @@ function check(name, pass, detail) {
   // Escape deselects
   await page.keyboard.press('Escape');
   check('escape hides panel', !(await panel.isVisible()));
+  // Park the cursor away from the card first. Deselecting does not stop hover
+  // highlighting, so leaving the mouse on the element lets the next mouse event
+  // re-apply the hover outline — which raced this assertion about 1 run in 10.
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(50);
   check('escape restores clean style attr',
-    (await card.evaluate(el => el.getAttribute('style'))) === null);
+    (await card.evaluate(el => el.getAttribute('style'))) === null,
+    JSON.stringify(await card.evaluate(el => el.getAttribute('style'))));
 
   // hard refresh preserves the look
   await page.reload({ waitUntil: 'networkidle' });
