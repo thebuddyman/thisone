@@ -10,7 +10,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-8 commits, working tree clean, `npm test` green.
+9 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -23,7 +23,7 @@ node cli.js --root ../uiux_experiment           # start the editor server (port 
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                   # the standalone HTML demo
-node next/verify.js --root ../uiux_experiment   # 23 live checks against the real app
+node next/verify.js --root ../uiux_experiment   # 36 live checks against the real app
 ```
 
 `uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
@@ -35,11 +35,11 @@ node next/verify.js --root ../uiux_experiment   # 23 live checks against the rea
 
 | file | what it is |
 |---|---|
-| `editor.js` | the whole client overlay — panel, selection, all controls (~2200 lines) |
+| `editor.js` | the whole client overlay — panel, selection, all controls (~2400 lines) |
 | `server.js` | HTML mode: tags, serves, writes back |
 | `next/loader.cjs` | Turbopack loader — stamps `data-bw-loc="file:line:col:hash"` |
 | `next/jsx-adapter.js` | the writer: resolves a location, replaces a byte span |
-| `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights |
+| `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights/radii |
 | `next/server.js` | the editor server for a Next project |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
@@ -73,6 +73,16 @@ projects uses — substitutes token values into utilities and emits **no**
 `.text-clay` is right there. Rule-scanning also answers the question that
 matters: what can this page actually render.
 
+**The radius ladder comes from the page, like colours — not from the theme.**
+Opposite of font size, and for the colour reason: `@theme inline` bakes the
+token straight into the utility and emits no `--radius-*`. On the Cora route
+`.rounded-lg` is `var(--radius)`, 12px, while `--radius-lg` still resolves to
+the stock 8px. Radius is therefore the one control kept **out** of the
+pre-generated palette — a scoped `[data-bw-edited].rounded-lg` would outrank
+the route's own rule and visibly shrink an element the moment it was touched,
+the same failure as the `px-6 md:px-12` bug. Rungs a route has never generated
+get a runtime rule from the server's ladder instead.
+
 **Font sizes and weights come from the server, not the page.** Opposite of
 colours, because Tailwind v4 emits utilities *and* theme variables on demand — a
 route using two sizes exposes exactly two. The full ladder only exists in
@@ -87,6 +97,8 @@ captured at selection.
 `font-sans` is a family — `/^font-/` would delete `font-sans` on every weight
 change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
 `text-clay` a colour. `gap-` needs a lookahead because `gap-x-4` starts with it.
+`rounded-` is the same trap twice over: `rounded-sm` is a rung, `rounded-s` is
+the two start corners, and `rounded-t-lg` is neither.
 
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
@@ -110,6 +122,10 @@ These drove the design; re-check them if the target changes.
 | arbitrary `text-[13px]` | **497** | **832** |
 | named font weights | 295 | 717 |
 | arbitrary weights | 0 | 0 |
+| named radius tokens | 171 | 90 |
+| arbitrary `rounded-[3px]` | 66 | **180** |
+| bare `rounded` (v3 alias) | 1 | 10 |
+| per-corner `rounded-l-*` | 3 | 2 |
 
 Editable coverage on gw-web: **91.4%** of 2881 host elements.
 
@@ -135,6 +151,16 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    only worth it if other people will use it.
 5. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
    is 608 arbitrary colours, so "detached" is the norm there.
+6. **Per-corner radius is read but never written.** `rounded-l-[2px]` and
+   friends are left exactly as authored — membership matching means they are
+   never mistaken for a rung — and the Radius row appends `+n` and names them
+   in its tooltip so it never shows one radius while the element means two.
+   Only 5 sites across both codebases, so a per-corner mode is not yet earned.
+7. **A rung a route has never used previews at the stock value.** Cora derives
+   its ladder from `--radius: 0.75rem`, so `rounded-3xl` should be 26.4px, but
+   Tailwind generated no rule for it and the fallback says 24px. The multiplier
+   is not inferable from the rungs that do exist — cora's live/stock ratios run
+   1.8, 1.6, 1.5, 1.4, 1.35. Corrects itself on save.
 
 **Astro is blocked.** Astro 7 never routes project files through Vite plugins:
 instrumented, **1,271 plugin calls, zero for anything under `src/`**. The locator
@@ -193,9 +219,11 @@ against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
 
-`next/verify.js` is the live suite: 23 checks against the real Next app,
+`next/verify.js` is the live suite: 36 checks against the real Next app,
 including refusals, security (401/403/415), and byte-exact restore of every file
-it touches.
+it touches. The radius block runs against `experiments/cora/login` specifically
+because Cora redefines the radius ladder — every number it asserts would be
+wrong if the overlay read `--radius-*` instead of the generated rule.
 
 Every change here has ended with a real edit to a real file and a byte-level diff
 assertion. Keep that bar.

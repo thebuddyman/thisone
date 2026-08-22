@@ -33,6 +33,9 @@ const EDITOR = arg('editor', 'http://127.0.0.1:3500');
 
 const PAGE = path.join(ROOT, 'src/app/page.tsx');
 const LAYOUT = path.join(ROOT, 'src/app/layout.tsx');
+// The radius checks need a route that redefines the ladder; Cora does, and its
+// login page has a static className carrying rounded-full.
+const CORA = path.join(ROOT, 'src/app/experiments/cora/login/page.tsx');
 
 const results = [];
 const check = (name, pass, detail) => {
@@ -57,14 +60,15 @@ function guard(file) {
 function restore(g) {
   fs.writeFileSync(g.file, g.before);
   const ok = snapshot(g.file) === g.before;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  restored ${path.basename(g.file)} byte-exactly` +
+  // Relative, not basename: three of the guarded files are called page.tsx.
+  console.log(`${ok ? 'PASS' : 'FAIL'}  restored ${path.relative(ROOT, g.file)} byte-exactly` +
     (ok ? '' : `  — BACKUP KEPT AT ${g.dest}`));
   if (ok) fs.unlinkSync(g.dest);
   return ok;
 }
 
 (async () => {
-  const guards = [guard(PAGE), guard(LAYOUT)];
+  const guards = [guard(PAGE), guard(LAYOUT), guard(CORA)];
   const pageBefore = guards[0].before;
   const layoutBefore = guards[1].before;
 
@@ -162,6 +166,97 @@ function restore(g) {
   });
   check('HMR rendered the saved class from source',
     !hmr.missing && hmr.actual === hmr.emerald, `${hmr.actual} vs emerald ${hmr.emerald}`);
+
+  // ---- border radius, on a route that redefines the ladder ----
+  //
+  // Cora sets --radius: 0.75rem and derives its rungs from it, and `@theme
+  // inline` bakes the result into the utility: `.rounded-lg` is var(--radius),
+  // 12px, while --radius-lg still resolves to the stock 8px. Every number
+  // below would be wrong if the overlay read the variable instead of the rule.
+  await page.goto(APP + '/experiments/cora/login', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  const coraBefore = snapshot(CORA);
+
+  const btn = page.locator('button.rounded-full').first();
+  await btn.scrollIntoViewIfNeeded();
+  await btn.click();
+  await page.waitForTimeout(300);
+  const handle = await btn.elementHandle(); // the class is about to change under it
+
+  const radiusRow = panel.locator('[data-tw-field="radius"]');
+  check('Radius row shows on a painted element', await radiusRow.isVisible());
+  check('Radius row reads the token the element wears',
+    (await radiusRow.locator('.bw-cname').textContent()).trim() === 'full',
+    await radiusRow.locator('.bw-cname').textContent());
+
+  await panel.locator('[data-tw-radius-open]').click();
+  const rpop = page.locator('[data-tw-pop]');
+  const rungs = await rpop.locator('[data-tw-radius]').evaluateAll(
+    (ns) => ns.map((x) => x.getAttribute('data-tw-radius')));
+  check('ladder is theme order with the utility ends attached',
+    rungs.join(',') === 'none,xs,sm,md,lg,xl,2xl,3xl,4xl,full', rungs.join(','));
+  check('current rung is marked',
+    (await rpop.locator('[data-tw-radius="full"]').getAttribute('aria-current')) === 'true');
+  const lgLabel = await rpop.locator('[data-tw-radius="lg"] .bw-sizepx').textContent();
+  check("rung reports THIS route's value, not --radius-lg", lgLabel === '12px', lgLabel);
+
+  await rpop.locator('[data-tw-radius="lg"]').click();
+  await page.waitForTimeout(600); // the button is transition-all duration-200
+  const rendered = await handle.evaluate((x) => getComputedStyle(x).borderTopLeftRadius);
+  check('preview used the route\'s own rule, not the stock one', rendered === '12px', rendered);
+  const rcls = await handle.evaluate((x) => x.getAttribute('class'));
+  check('rounded-full was replaced, not duplicated',
+    rcls.includes('rounded-lg') && !rcls.includes('rounded-full'),
+    rcls.split(' ').filter((c) => c.startsWith('rounded')).join(' ') || '(none)');
+
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1200);
+  const coraAfter = snapshot(CORA);
+  const coraDiff = coraBefore.split('\n')
+    .map((l, i) => [i, l, coraAfter.split('\n')[i]])
+    .filter(([, a, b]) => a !== b);
+  check('exactly one line changed in the Cora page', coraDiff.length === 1,
+    coraDiff.map(([i]) => i + 1).join(','));
+  if (coraDiff.length === 1) {
+    // The writer re-appends a swapped class in the non-cn() path, so the token
+    // moves within the line. What must hold is that ONE token changed.
+    const list = (l) => (/className="([^"]*)"/.exec(l) || [, l])[1].trim().split(/\s+/);
+    const B = list(coraDiff[0][1]), A = list(coraDiff[0][2]);
+    check('the only token that changed is the radius',
+      B.filter((t) => !A.includes(t)).join() === 'rounded-full' &&
+      A.filter((t) => !B.includes(t)).join() === 'rounded-lg' && A.length === B.length,
+      `-${B.filter((t) => !A.includes(t)).join(' ')} +${A.filter((t) => !B.includes(t)).join(' ')}`);
+  }
+
+  // The escape hatch. gw-web writes 180 arbitrary radii against 90 named ones,
+  // so this path is the majority idiom there, not a corner case.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const btn2 = page.locator('button.rounded-lg').first();
+  await btn2.scrollIntoViewIfNeeded();
+  await btn2.click();
+  await page.waitForTimeout(300);
+  const handle2 = await btn2.elementHandle();
+  await panel.locator('[data-tw-radius-open]').click();
+  await page.locator('[data-tw-radius-filter]').fill('13');
+  await page.waitForTimeout(150);
+  check('typing a number offers an arbitrary radius',
+    await page.locator('[data-tw-radius-custom]').isVisible());
+  await page.locator('[data-tw-radius-custom]').click();
+  await page.waitForTimeout(600);
+  const custom = await handle2.evaluate((x) => getComputedStyle(x).borderTopLeftRadius);
+  check('arbitrary radius previews, with no rule in any source file',
+    custom === '13px', custom);
+
+  // A radius shows nothing on an element with no edge to round, so the row
+  // stays off — and stays one click away in the Add strip.
+  await page.locator('fieldset').first().click({ position: { x: 3, y: 3 } });
+  await page.waitForTimeout(300);
+  check('unpainted element: row is off but reachable from Add',
+    !(await radiusRow.isVisible()) && (await panel.locator('[data-tw-add="radius"]').count()) === 1);
+
+  await page.goto(APP + '/', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
 
   // ---- refusal: template-literal className must not be touched ----
   const loc = await page.evaluate(() => document.documentElement.getAttribute('data-bw-loc'));

@@ -63,6 +63,25 @@ function extractTextSizes(root) {
   return sizes;
 }
 
+/**
+ * The border-radius ladder, from the project's own theme.
+ *
+ * Only xs..4xl are theme variables. `rounded-none` (0) and `rounded-full`
+ * (calc(infinity * 1px)) are baked into the utility itself and appear nowhere
+ * in theme.css, so the overlay owns those two ends of the ladder.
+ */
+function extractRadii(root) {
+  const req = createRequire(path.join(root, 'package.json'));
+  const css = fs.readFileSync(req.resolve('tailwindcss/theme.css'), 'utf8');
+  const radii = {};
+  // The hyphen matters: bare `--radius: 0.25rem` is the legacy alias behind a
+  // suffix-less `rounded`, not a rung on the scale.
+  const re = /--radius-([a-z0-9]+):\s*([^;]+);/g;
+  let m;
+  while ((m = re.exec(css))) radii[m[1]] = m[2].trim();
+  return radii;
+}
+
 /** The font-weight ladder, from the project's own theme. */
 function extractFontWeights(root) {
   const req = createRequire(path.join(root, 'package.json'));
@@ -94,6 +113,14 @@ const CANDIDATES = [
   `{bg,text}-{${HUES.join(',')}}-{${SHADES.join(',')}}`,
 ].join(' ');
 
+// Radius is deliberately NOT in that list. Unlike a colour ramp or the type
+// scale, every project redefines the radius ladder, and `@theme inline` bakes
+// the result straight into the utility: on the Cora route `.rounded-lg` is
+// `var(--radius)` — 12px — while `--radius-lg` still resolves to the stock 8px.
+// A pre-generated `[data-bw-edited].rounded-lg` would outrank the route's own
+// rule and visibly shrink an element the moment it was touched. The overlay
+// reads the rungs off the live page instead, and emits a rule only for the
+// ones this route has never generated.
 const SHEET = `@import "tailwindcss/theme.css" theme(reference);
 @tailwind utilities source(none);
 @source inline("${CANDIDATES}");
@@ -126,6 +153,6 @@ async function compilePalette(root) {
 }
 
 module.exports = {
-  compilePalette, extractColors, extractTextSizes, extractFontWeights,
+  compilePalette, extractColors, extractTextSizes, extractFontWeights, extractRadii,
   CANDIDATES, SCOPE, HUES, SHADES,
 };

@@ -56,6 +56,15 @@
     // named scale twice and text-[13px] and friends 497 times. Both forms are
     // one family — writing either must clear the other.
     fontSizeArb: /^text-\[[\d.]+(?:px|rem|em)\]$/,
+    // Arbitrary radii are not a fringe idiom: 66 against 171 named tokens in
+    // uiux_experiment, and 180 against 90 in gw-web, where they are the
+    // majority. Same two-idiom shape as font size, same rule — writing either
+    // form clears the other.
+    radiusArb: /^rounded-\[[^\]]+\]$/,
+    // The per-corner utilities. Never touched, only noticed: rounded-l-[2px]
+    // still wins on the left after rounded-lg is written, and the row says so
+    // rather than pretending the element has one radius.
+    radiusSide: /^rounded-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee)(?:-|$)/,
   };
 
   // Shared spacing scale for every padding/margin field.
@@ -124,6 +133,20 @@
   var FONT_WEIGHTS = CFG.fontWeights || {};
   var WEIGHT_TOKENS = Object.keys(FONT_WEIGHTS).sort(function (a, b) {
     return Number(FONT_WEIGHTS[a]) - Number(FONT_WEIGHTS[b]);
+  });
+
+  // rounded- is shared between the all-corner utilities and the per-corner
+  // ones: rounded-sm is a rung on the ladder, rounded-s is the two start
+  // corners. Membership decides, never /^rounded-/ — that would swallow
+  // rounded-t-lg and leave the element wearing two competing radii.
+  var RADIUS_ORDER = ['none', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', 'full'];
+  // none (0) and full (calc(infinity * 1px)) are baked into the utility, not
+  // into the theme: they have no --radius-* variable anywhere, so the two ends
+  // of the ladder are completed here rather than shipped by the server.
+  var RADII = Object.assign({ none: '0px', full: 'calc(infinity * 1px)' }, CFG.radii || {});
+  var RADIUS_TOKENS = Object.keys(RADII).sort(function (a, b) {
+    var ia = RADIUS_ORDER.indexOf(a), ib = RADIUS_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
 
   var selected = null;
@@ -532,6 +555,10 @@
       'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.2 2.6 3.5 4.9l2.3-2.3"/></svg>',
     weight: glyph('<path d="M2.2 9.8 5.2 2.2h1.6l3 7.6" stroke-width="1.6"/><path d="M3.6 7.4h4.8" stroke-width="1.6"/>'),
     font: glyph('<path d="M2 3.2V2.1h8v1.1M6 2.4v7.5M4.3 9.9h3.4"/>'),
+    // The control is about one corner, so the glyph shows one: two edges
+    // running off the box and the arc that joins them.
+    radius: glyph('<path d="M2.1 10V5.1a3 3 0 0 1 3-3H10" stroke-width="1.5"/>' +
+      '<path d="M2.1 2.1h1.2M9.9 9.9v-1.2" opacity=".45"/>'),
     plus: '<svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round"><path d="M4.5 1.4v6.2M1.4 4.5h6.2"/></svg>',
     gapAll: glyph('<rect x="1.6" y="1.6" width="3.6" height="3.6" rx="1"/>' +
@@ -693,9 +720,15 @@
       PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       PP + ' .bw-custom{border-top:1px solid var(--bw-hair);margin-top:3px;padding-top:6px}',
       PP + ' .bw-sizesample{flex:0 0 44px;line-height:1.05;color:var(--bw-fg);overflow:hidden}',
+      // One corner, drawn at true scale in the same 44px column the type
+      // samples use, so the two lists line up.
+      // 26 + 18 keeps the name column aligned with the type list's 44px sample.
+      PP + ' .bw-radsample{flex:0 0 26px;height:20px;margin-right:18px;box-sizing:border-box;' +
+        'border-top:1.5px solid var(--bw-fg);border-left:1.5px solid var(--bw-fg)}',
       PP + ' .bw-sizename{flex:1;font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
       PP + ' .bw-sizepx{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint)}',
       PP + ' [data-tw-size]{align-items:baseline;min-height:30px}',
+      PP + ' [data-tw-radius]{align-items:center;min-height:30px}',
       PP + ' [aria-current="true"]{background:var(--bw-press)}',
       P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
@@ -1007,6 +1040,12 @@
           readFontWeight(selected).kind !== 'token') {
         missing.push({ key: 'weight', label: 'Weight' });
       }
+      // Radius hides where nothing would show it, but an element about to get
+      // a background should not have to get one first to round its corners.
+      if (selected && !revealed.radius && !showsCorners(selected) &&
+          readRadius(selected).kind === 'none') {
+        missing.push({ key: 'radius', label: 'Radius' });
+      }
       row.style.display = missing.length ? '' : 'none';
       strip.innerHTML = '';
       missing.forEach(function (box) {
@@ -1157,6 +1196,176 @@
     refresh();
   }
 
+  // ------------------------------------------------------------ border radius
+
+  /**
+   * Does this colour paint anything at all?
+   *
+   * Alpha is read by painting it, never by matching the serialised string:
+   * the same colour arrives as rgb(), oklch() or lab() depending on where it
+   * came from, and `transparent` is only one of the spellings of nothing.
+   */
+  function isPainted(css) {
+    if (!css) return false;
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = 1;
+    var ctx = cv.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0)'; // an unparseable value leaves this in place
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data[3] > 0;
+  }
+
+  /**
+   * A radius is only visible where there is an edge to round — a painted
+   * background, a border, a shadow, replaced content, or a clipped overflow.
+   * On a bare run of text it changes nothing, so the row stays off and lives
+   * one click away in the Add strip instead.
+   */
+  function showsCorners(el) {
+    if (!el) return false;
+    if (/^(IMG|VIDEO|CANVAS|SVG|PICTURE)$/.test(el.tagName.toUpperCase())) return true;
+    var cs = getComputedStyle(el);
+    if (cs.overflow !== 'visible') return true;      // the clip follows the radius
+    if (cs.backgroundImage !== 'none') return true;
+    if (cs.boxShadow !== 'none') return true;
+    var edges = ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+    for (var i = 0; i < edges.length; i++) {
+      if (parseFloat(cs[edges[i]]) > 0) return true; // width is 0 when style is none
+    }
+    return isPainted(cs.backgroundColor);
+  }
+
+  /** Is this class one of the all-corner radius utilities we own? */
+  function isRadiusClass(cls) {
+    if (cls === 'rounded') return true;              // the v3 alias, still 0.25rem
+    if (FAMILY.radiusArb.test(cls)) return true;
+    return cls.indexOf('rounded-') === 0 && !!RADII[cls.slice(8)];
+  }
+
+  function readRadius(el) {
+    if (!el) return { kind: 'none', value: '', corners: [] };
+    var classes = classesOf(el);
+    var corners = classes.filter(function (c) { return FAMILY.radiusSide.test(c); });
+    for (var i = classes.length - 1; i >= 0; i--) {
+      var c = classes[i];
+      if (FAMILY.radiusArb.test(c)) {
+        return { kind: 'arbitrary', name: c.slice(9, -1), cls: c, corners: corners };
+      }
+      // A suffix-less `rounded` is the v3 alias, still 0.25rem: 11 uses across
+      // these two codebases. Read so it is visible and replaceable; never
+      // offered, because rounded-sm is the same value spelled the way v4
+      // spells it.
+      if (c === 'rounded') return { kind: 'legacy', name: 'rounded', cls: c, corners: corners };
+      if (c.indexOf('rounded-') === 0 && RADII[c.slice(8)]) {
+        return { kind: 'token', name: c.slice(8), cls: c, corners: corners };
+      }
+    }
+    var now = getComputedStyle(el).borderTopLeftRadius;
+    return { kind: 'none', value: parseFloat(now) ? now : '', corners: corners };
+  }
+
+  /** Clear every all-corner idiom, then write one. Per-corner classes stay. */
+  function setRadius(el, cls) {
+    classesOf(el).forEach(function (c) {
+      if (isRadiusClass(c)) el.classList.remove(c);
+    });
+    if (cls) {
+      ensureRadiusRule(cls);
+      el.classList.add(cls);
+    }
+    markDirty(el, 'classes');
+    refresh();
+  }
+
+  /**
+   * The rungs this page can already render, keyed by token.
+   *
+   * `@theme inline` — which every one of these projects uses — substitutes the
+   * token straight into the utility and emits no `--radius-*` at all. On the
+   * Cora route `.rounded-lg` is `var(--radius)`, 12px, while `--radius-lg`
+   * still resolves to the stock 8px. Reading the variable would be reading the
+   * wrong number; reading the generated rule answers the question that
+   * matters, which is what this page will actually paint.
+   */
+  function liveRadii() {
+    return (renderable && renderable.radius) || {};
+  }
+
+  /**
+   * An arbitrary radius exists in no source file, so Tailwind generates
+   * nothing for it — the same gap arbitrary colours and sizes have. A rung
+   * this route has never used has the same gap for the same reason, and gets
+   * the ladder the server read off theme.css; a rung the route DOES render is
+   * left alone, because its own rule already carries the right value and ours
+   * would only override it with the stock one.
+   */
+  function ensureRadiusRule(cls) {
+    if (!cls || dynSeen[cls]) return;
+    var value;
+    var arb = /^rounded-\[([\d.]+(?:px|rem|em|%))\]$/.exec(cls);
+    if (arb) {
+      value = arb[1];
+    } else {
+      var t = cls.slice(8);
+      if (!RADII[t] || liveRadii()[t]) return;
+      value = RADII[t];
+    }
+    dynSeen[cls] = true;
+    if (!dynStyle) {
+      dynStyle = document.createElement('style');
+      dynStyle.setAttribute('data-tw-editor', 'dynamic');
+      document.head.appendChild(dynStyle);
+    }
+    var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
+    try {
+      dynStyle.sheet.insertRule(
+        sel + '{border-radius:' + value + '}', dynStyle.sheet.cssRules.length);
+    } catch (e) {
+      dynSeen[cls] = false;
+    }
+  }
+
+  /**
+   * Measure a declaration where the selection sits, so a value written as
+   * `var(--radius)` resolves against the same scope the element does. The
+   * probe is fixed-position and removed immediately, and it goes beside the
+   * element rather than inside it — appending to the selection would mutate
+   * the very thing being edited.
+   */
+  function measureRadius(css) {
+    var host = (selected && selected.parentElement) || document.body;
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:fixed;left:-9999px;top:0;border-radius:' + css;
+    host.appendChild(probe);
+    var px = parseFloat(getComputedStyle(probe).borderTopLeftRadius) || 0;
+    probe.remove();
+    return px;
+  }
+
+  /** What a rung renders as here: the page's own rule first, theme after. */
+  function radiusPx(t) {
+    if (t === 'full') return Infinity;                  // calc(infinity * 1px)
+    var live = liveRadii()[t];
+    if (live) return Math.round(measureRadius(live));
+    if (t === 'none') return 0;
+    return Math.round(measureRadius('var(--radius-' + t + ',' + (RADII[t] || 0) + ')'));
+  }
+
+  function pxOfRadius(t) {
+    var n = radiusPx(t);
+    return n === Infinity ? '\u221e' : n + 'px';
+  }
+
+  /**
+   * One top-left corner drawn at its true radius, capped so a row stays a row.
+   * Past the cap every rung would read as the same quarter circle anyway; the
+   * px label beside it still carries the real value.
+   */
+  function setSampleRadius(node, px) {
+    node.style.borderTopLeftRadius = Math.max(0, Math.min(20, px)) + 'px';
+  }
+
   /** Preview type, clamped so a row stays a row. */
   function sampleSize(px) {
     var n = parseFloat(px);
@@ -1238,6 +1447,71 @@
     return row;
   }
 
+  function radiusRow() {
+    var row = el('div', 'bw-row');
+    row.setAttribute('data-tw-field', 'radius');
+    row.setAttribute('data-tw-optional', 'radius');
+    row.appendChild(el('span', 'bw-lbl', 'Radius'));
+
+    var field = el('div', 'bw-field bw-color');
+    var token = el('button', 'bw-ctoken');
+    token.setAttribute('data-tw-radius-open', '');
+    var mark = el('span', 'bw-ico');
+    mark.innerHTML = ICONS.radius;
+    var name = el('span', 'bw-cname', '\u2014');
+    var note = el('span', 'bw-unit', '');
+    token.appendChild(mark);
+    token.appendChild(name);
+    field.appendChild(token);
+    field.appendChild(note);
+    row.appendChild(field);
+
+    token.addEventListener('click', function () {
+      if (!RADIUS_TOKENS.length) return;
+      popState.prefix = 'radius';
+      popState.hue = null;
+      popState.anchor = row;
+      renderPopover();
+      popover.style.display = 'flex';
+      placePopover(row);
+    });
+
+    readouts.push(function () {
+      var state = readRadius(selected);
+      var show = revealed.radius || state.kind !== 'none' || showsCorners(selected);
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
+
+      if (state.kind === 'none') {
+        name.textContent = state.value || '\u2014';
+        name.className = 'bw-cname is-unset';
+        note.textContent = state.value ? 'inherited' : '';
+        token.title = state.value
+          ? 'not set \u2014 rendering at ' + state.value
+          : 'No radius set \u2014 click to pick one';
+      } else {
+        name.textContent = state.name;
+        name.className = 'bw-cname';
+        note.textContent = state.kind === 'token' ? pxOfRadius(state.name)
+          : state.kind === 'legacy'
+            ? Math.round(measureRadius(liveRadii().DEFAULT || '0.25rem')) + 'px'
+            : '';
+        token.title = state.cls + (state.kind === 'legacy'
+          ? ' \u2014 the v3 alias for rounded-sm' : '');
+      }
+      // Per-corner classes are left alone by every write, so a lingering
+      // rounded-l-[2px] still wins on the left. Say so instead of showing one
+      // radius and meaning two.
+      if (state.corners.length) {
+        note.textContent = (note.textContent ? note.textContent + ' ' : '') +
+          '+' + state.corners.length;
+        token.title += ' \u2014 also ' + state.corners.join(' ') + ', left as written';
+      }
+    });
+
+    return row;
+  }
+
   function textRow() {
     var row = el('div', 'bw-row top');
     row.setAttribute('data-tw-field', 'text');
@@ -1283,7 +1557,7 @@
    * about, which is what will render rather than what is declared.
    */
   function discoverUtilities() {
-    var found = { bg: {}, text: {} };
+    var found = { bg: {}, text: {}, radius: {} };
 
     function walk(rules) {
       for (var i = 0; i < rules.length; i++) {
@@ -1299,6 +1573,14 @@
           if (m) {
             var value = m[1] === 'bg' ? rule.style.backgroundColor : rule.style.color;
             if (value) found[m[1]][m[2]] = value;
+          }
+
+          // Radius rungs are read the same way and for the same reason: the
+          // route's own `.rounded-lg` is what will render, and under
+          // `@theme inline` it carries a value --radius-lg does not have.
+          var r = /^\.rounded(?:-([a-z0-9]+))?$/.exec(sel);
+          if (r && rule.style.borderRadius) {
+            found.radius[r[1] || 'DEFAULT'] = rule.style.borderRadius;
           }
         }
 
@@ -1583,6 +1865,100 @@
     popover.style.top = Math.round(top) + 'px';
   }
 
+  /**
+   * A filtered ladder with an escape hatch at the bottom — the shape the size
+   * and radius pickers share. Filtering hides rows rather than re-rendering
+   * the list, so the input never loses focus or caret position mid-type.
+   */
+  function tokenList(body, opt) {
+    var search = el('div', 'bw-pop-search');
+    var query = document.createElement('input');
+    query.className = 'bw-search-in';
+    query.type = 'text';
+    query.placeholder = opt.placeholder;
+    query.setAttribute(opt.attrs.filter, '');
+    query.autocomplete = 'off';
+    query.spellcheck = false;
+    search.appendChild(query);
+    popover.appendChild(search);
+
+    var rows = opt.tokens.map(function (t) {
+      var item = el('button', 'bw-hue');
+      item.setAttribute(opt.attrs.item, t);
+      var sample = el('span');
+      opt.sample(sample, t);
+      item.appendChild(sample);
+      item.appendChild(el('span', 'bw-sizename', t));
+      item.appendChild(el('span', 'bw-sizepx', opt.meta(t)));
+      if (opt.isCurrent(t)) item.setAttribute('aria-current', 'true');
+      item.addEventListener('click', function () { opt.pick(t); closePopover(); });
+      body.appendChild(item);
+      return { token: t, node: item };
+    });
+
+    // The escape hatch: a numeric query offers an arbitrary value, always
+    // ranked below every token so it is reachable but never the easy default.
+    var custom = el('button', 'bw-hue bw-custom');
+    custom.setAttribute(opt.attrs.custom, '');
+    var customSample = el('span');
+    opt.sample(customSample, null);
+    var customName = el('span', 'bw-sizename', '');
+    custom.appendChild(customSample);
+    custom.appendChild(customName);
+    custom.appendChild(el('span', 'bw-sizepx', 'custom'));
+    custom.style.display = 'none';
+    body.appendChild(custom);
+
+    var pending = null;
+    custom.addEventListener('click', function () {
+      if (pending == null) return;
+      opt.pickCustom(pending);
+      closePopover();
+    });
+
+    var empty = el('div', 'bw-pop-empty', 'no match');
+    empty.style.display = 'none';
+    body.appendChild(empty);
+
+    function applyFilter() {
+      var q = query.value.trim().toLowerCase();
+      var n = parseFloat(q);
+      var visible = 0;
+      rows.forEach(function (r) {
+        var hit = !q || r.token.indexOf(q) !== -1;
+        r.node.style.display = hit ? '' : 'none';
+        if (hit) visible++;
+      });
+      pending = isFinite(n) && n > 0 && /^[\d.]+(px)?$/.test(q) ? n : null;
+      if (pending == null) {
+        custom.style.display = 'none';
+      } else {
+        custom.style.display = '';
+        customName.textContent = pending + 'px';
+        opt.previewCustom(customSample, pending);
+        visible++;
+      }
+      empty.style.display = visible ? 'none' : '';
+    }
+
+    query.addEventListener('input', applyFilter);
+    query.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closePopover(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      // Enter takes the first thing on screen — a token if one matches, the
+      // custom value only when nothing else does.
+      var first = rows.find(function (r) { return r.node.style.display !== 'none'; });
+      if (first) first.node.click();
+      else if (custom.style.display !== 'none') custom.click();
+    });
+
+    popover.appendChild(body);
+    applyFilter();
+    if (popState.anchor) placePopover(popState.anchor);
+    setTimeout(function () { query.focus(); }, 0);
+  }
+
   function renderPopover() {
     popover.innerHTML = '';
     var head = el('div', 'bw-pop-h');
@@ -1597,6 +1973,7 @@
     head.appendChild(el('strong', null,
       popState.prefix === 'font' ? 'Font size'
         : popState.prefix === 'weight' ? 'Weight'
+        : popState.prefix === 'radius' ? 'Radius'
         : (popState.hue || 'Colour')));
     var shut = el('button', 'bw-x', '×');
     shut.addEventListener('click', closePopover);
@@ -1647,104 +2024,43 @@
 
     if (popState.prefix === 'font') {
       var current = readFontSize(selected);
-
-      // Filtering hides rows rather than re-rendering the list, so the input
-      // never loses focus or caret position mid-type.
-      var search = el('div', 'bw-pop-search');
-      var query = document.createElement('input');
-      query.className = 'bw-search-in';
-      query.type = 'text';
-      query.placeholder = 'filter, or type a size';
-      query.setAttribute('data-tw-size-filter', '');
-      query.autocomplete = 'off';
-      query.spellcheck = false;
-      search.appendChild(query);
-      popover.appendChild(search);
-
-      var rows = [];
-      FONT_SIZES.forEach(function (cls) {
-        var t = cls.replace('text-', '');
-        var item = el('button', 'bw-hue');
-        item.setAttribute('data-tw-size', t);
+      tokenList(body, {
+        tokens: FONT_TOKENS,
+        placeholder: 'filter, or type a size',
+        attrs: { item: 'data-tw-size', filter: 'data-tw-size-filter', custom: 'data-tw-size-custom' },
         // Each sample is set at its own size so the list reads as a type ramp,
         // but capped: 9xl is 128px and would swallow the row whole. The px
         // label still carries the true value.
-        var sample = el('span', 'bw-sizesample', 'Ag');
-        sample.style.fontSize = sampleSize(pxOfToken(cls));
-        item.appendChild(sample);
-        item.appendChild(el('span', 'bw-sizename', t));
-        item.appendChild(el('span', 'bw-sizepx', pxOfToken(cls)));
-        if (current.kind === 'scale' && current.name === cls) {
-          item.setAttribute('aria-current', 'true');
-        }
-        item.addEventListener('click', function () {
-          setFontSize(selected, cls);
-          closePopover();
-        });
-        rows.push({ token: t, node: item });
-        body.appendChild(item);
+        sample: function (node, t) {
+          node.className = 'bw-sizesample';
+          node.textContent = 'Ag';
+          if (t) node.style.fontSize = sampleSize(pxOfToken('text-' + t));
+        },
+        meta: function (t) { return pxOfToken('text-' + t); },
+        isCurrent: function (t) { return current.kind === 'scale' && current.name === 'text-' + t; },
+        pick: function (t) { setFontSize(selected, 'text-' + t); },
+        previewCustom: function (node, v) { node.style.fontSize = sampleSize(v + 'px'); },
+        pickCustom: function (v) { setFontSize(selected, 'text-[' + v + 'px]'); },
       });
+      return;
+    }
 
-      // The escape hatch: a numeric query offers an arbitrary size, always
-      // ranked below every token so it is reachable but never the easy default.
-      var custom = el('button', 'bw-hue bw-custom');
-      custom.setAttribute('data-tw-size-custom', '');
-      var customSample = el('span', 'bw-sizesample', 'Ag');
-      var customName = el('span', 'bw-sizename', '');
-      custom.appendChild(customSample);
-      custom.appendChild(customName);
-      custom.appendChild(el('span', 'bw-sizepx', 'custom'));
-      custom.style.display = 'none';
-      body.appendChild(custom);
-
-      var pending = null;
-      custom.addEventListener('click', function () {
-        if (pending == null) return;
-        setFontSize(selected, 'text-[' + pending + 'px]');
-        closePopover();
+    if (popState.prefix === 'radius') {
+      var currentR = readRadius(selected);
+      tokenList(body, {
+        tokens: RADIUS_TOKENS,
+        placeholder: 'filter, or type a radius',
+        attrs: { item: 'data-tw-radius', filter: 'data-tw-radius-filter', custom: 'data-tw-radius-custom' },
+        sample: function (node, t) {
+          node.className = 'bw-radsample';
+          setSampleRadius(node, t ? radiusPx(t) : 0);
+        },
+        meta: function (t) { return pxOfRadius(t); },
+        isCurrent: function (t) { return currentR.kind === 'token' && currentR.name === t; },
+        pick: function (t) { setRadius(selected, 'rounded-' + t); },
+        previewCustom: function (node, v) { setSampleRadius(node, v); },
+        pickCustom: function (v) { setRadius(selected, 'rounded-[' + v + 'px]'); },
       });
-
-      function applyFilter() {
-        var q = query.value.trim().toLowerCase();
-        var n = parseFloat(q);
-        var visible = 0;
-        rows.forEach(function (r) {
-          var hit = !q || r.token.indexOf(q) !== -1;
-          r.node.style.display = hit ? '' : 'none';
-          if (hit) visible++;
-        });
-        pending = isFinite(n) && n > 0 && /^[\d.]+(px)?$/.test(q) ? n : null;
-        if (pending == null) {
-          custom.style.display = 'none';
-        } else {
-          custom.style.display = '';
-            customName.textContent = pending + 'px';
-          customSample.style.fontSize = sampleSize(pending + 'px');
-          visible++;
-        }
-        empty.style.display = visible ? 'none' : '';
-      }
-
-      var empty = el('div', 'bw-pop-empty', 'no match');
-      empty.style.display = 'none';
-      body.appendChild(empty);
-
-      query.addEventListener('input', applyFilter);
-      query.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { e.stopPropagation(); closePopover(); return; }
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        // Enter takes the first thing on screen — a token if one matches, the
-        // custom size only when nothing else does.
-        var first = rows.find(function (r) { return r.node.style.display !== 'none'; });
-        if (first) first.node.click();
-        else if (custom.style.display !== 'none') custom.click();
-      });
-
-      popover.appendChild(body);
-      applyFilter();
-      if (popState.anchor) placePopover(popState.anchor);
-      setTimeout(function () { query.focus(); }, 0);
       return;
     }
 
@@ -1908,6 +2224,7 @@
     body.appendChild(addRow());
     body.appendChild(fontRow());
     body.appendChild(weightRow());
+    body.appendChild(radiusRow());
     body.appendChild(colorRow('bg', 'Background'));
     body.appendChild(colorRow('text', 'Text color'));
 

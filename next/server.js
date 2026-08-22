@@ -18,7 +18,7 @@ const path = require('path');
 
 const { loadTypeScript, parseLoc, editFile } = require('./jsx-adapter');
 const {
-  compilePalette, extractColors, extractTextSizes, extractFontWeights, HUES,
+  compilePalette, extractColors, extractTextSizes, extractFontWeights, extractRadii, HUES,
 } = require('./palette');
 
 function arg(name, fallback) {
@@ -67,6 +67,13 @@ try {
   fontWeights = extractFontWeights(ROOT);
 } catch {
   fontWeights = require('./font-weights.json');
+}
+
+let radii = {};
+try {
+  radii = extractRadii(ROOT);
+} catch {
+  radii = require('./radii.json');
 }
 
 /** Resolve a project-relative path, refusing anything that escapes the root. */
@@ -194,6 +201,7 @@ const server = http.createServer((req, res) => {
         colors: colors,
         textSizes: textSizes,
         fontWeights: fontWeights,
+        radii: radii,
       }) +
       ';\n';
     res.writeHead(200, { 'Content-Type': 'application/javascript' });
