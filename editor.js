@@ -672,6 +672,14 @@
       PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
       '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
+      PP + ' .bw-pop-search{padding:6px 6px 2px;border-bottom:1px solid var(--bw-hair)}',
+      PP + ' .bw-search-in{width:100%;border:1px solid var(--bw-border);border-radius:6px;',
+      '  background:var(--bw-sunken);color:var(--bw-fg);padding:5px 7px;',
+      '  font:11px/1.2 ' + UI_MONO + '}',
+      PP + ' .bw-search-in:focus{outline:none;border-color:var(--bw-brand)}',
+      PP + ' .bw-search-in::placeholder{color:var(--bw-faint)}',
+      PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
+      PP + ' .bw-custom{border-top:1px solid var(--bw-hair);margin-top:3px;padding-top:6px}',
       PP + ' .bw-sizesample{flex:0 0 44px;line-height:1.05;color:var(--bw-fg);overflow:hidden}',
       PP + ' .bw-sizename{flex:1;font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
       PP + ' .bw-sizepx{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint)}',
@@ -1042,8 +1050,10 @@
         // the list is how you get back onto the scale.
         name.textContent = state.px + state.unit;
         name.className = 'bw-cname is-custom';
-        note.textContent = 'custom';
-        token.title = state.cls + ' \u2014 not a scale token';
+        var near = nearestToken(state.px);
+        note.textContent = near && near.d > 0 ? 'near ' + near.name : 'custom';
+        token.title = state.cls + ' \u2014 not a scale token' +
+          (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
       } else {
         name.textContent = state.px ? state.px + 'px' : '\u2014';
         name.className = 'bw-cname is-unset';
@@ -1053,6 +1063,28 @@
     });
 
     return row;
+  }
+
+  /**
+   * The token closest to a given pixel size, so a custom value can say what it
+   * is near. A nudge toward the scale rather than a wall in front of it.
+   */
+  function nearestToken(px) {
+    var best = null;
+    FONT_SIZES.forEach(function (cls) {
+      var v = parseFloat(pxOfToken(cls));
+      if (!v) return;
+      var d = Math.abs(v - px);
+      if (!best || d < best.d) best = { d: d, name: cls.replace('text-', ''), px: v };
+    });
+    return best;
+  }
+
+  /** Preview type, clamped so a row stays a row. */
+  function sampleSize(px) {
+    var n = parseFloat(px);
+    if (!n) return '';
+    return Math.max(9, Math.min(26, n)) + 'px';
   }
 
   /** The rendered size of a scale token, measured against the page. */
@@ -1445,13 +1477,30 @@
 
     if (popState.prefix === 'font') {
       var current = readFontSize(selected);
+
+      // Filtering hides rows rather than re-rendering the list, so the input
+      // never loses focus or caret position mid-type.
+      var search = el('div', 'bw-pop-search');
+      var query = document.createElement('input');
+      query.className = 'bw-search-in';
+      query.type = 'text';
+      query.placeholder = 'filter, or type a size';
+      query.setAttribute('data-tw-size-filter', '');
+      query.autocomplete = 'off';
+      query.spellcheck = false;
+      search.appendChild(query);
+      popover.appendChild(search);
+
+      var rows = [];
       FONT_SIZES.forEach(function (cls) {
         var t = cls.replace('text-', '');
         var item = el('button', 'bw-hue');
         item.setAttribute('data-tw-size', t);
-        // Each sample is set at its own size, so the list reads as a type ramp.
+        // Each sample is set at its own size so the list reads as a type ramp,
+        // but capped: 9xl is 128px and would swallow the row whole. The px
+        // label still carries the true value.
         var sample = el('span', 'bw-sizesample', 'Ag');
-        sample.style.fontSize = 'var(--text-' + t + ',' + TEXT_SIZES[t] + ')';
+        sample.style.fontSize = sampleSize(pxOfToken(cls));
         item.appendChild(sample);
         item.appendChild(el('span', 'bw-sizename', t));
         item.appendChild(el('span', 'bw-sizepx', pxOfToken(cls)));
@@ -1462,10 +1511,70 @@
           setFontSize(selected, cls);
           closePopover();
         });
+        rows.push({ token: t, node: item });
         body.appendChild(item);
       });
+
+      // The escape hatch: a numeric query offers an arbitrary size, always
+      // ranked below every token so it is reachable but never the easy default.
+      var custom = el('button', 'bw-hue bw-custom');
+      custom.setAttribute('data-tw-size-custom', '');
+      var customSample = el('span', 'bw-sizesample', 'Ag');
+      var customName = el('span', 'bw-sizename', '');
+      custom.appendChild(customSample);
+      custom.appendChild(customName);
+      custom.appendChild(el('span', 'bw-sizepx', 'custom'));
+      custom.style.display = 'none';
+      body.appendChild(custom);
+
+      var pending = null;
+      custom.addEventListener('click', function () {
+        if (pending == null) return;
+        setFontSize(selected, 'text-[' + pending + 'px]');
+        closePopover();
+      });
+
+      function applyFilter() {
+        var q = query.value.trim().toLowerCase();
+        var n = parseFloat(q);
+        var visible = 0;
+        rows.forEach(function (r) {
+          var hit = !q || r.token.indexOf(q) !== -1;
+          r.node.style.display = hit ? '' : 'none';
+          if (hit) visible++;
+        });
+        pending = isFinite(n) && n > 0 && /^[\d.]+(px)?$/.test(q) ? n : null;
+        if (pending == null) {
+          custom.style.display = 'none';
+        } else {
+          custom.style.display = '';
+            customName.textContent = pending + 'px';
+          customSample.style.fontSize = sampleSize(pending + 'px');
+          visible++;
+        }
+        empty.style.display = visible ? 'none' : '';
+      }
+
+      var empty = el('div', 'bw-pop-empty', 'no match');
+      empty.style.display = 'none';
+      body.appendChild(empty);
+
+      query.addEventListener('input', applyFilter);
+      query.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.stopPropagation(); closePopover(); return; }
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        // Enter takes the first thing on screen — a token if one matches, the
+        // custom size only when nothing else does.
+        var first = rows.find(function (r) { return r.node.style.display !== 'none'; });
+        if (first) first.node.click();
+        else if (custom.style.display !== 'none') custom.click();
+      });
+
       popover.appendChild(body);
+      applyFilter();
       if (popState.anchor) placePopover(popState.anchor);
+      setTimeout(function () { query.focus(); }, 0);
       return;
     }
 
