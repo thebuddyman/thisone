@@ -24,6 +24,9 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+  // The editor is off until it is asked for: nothing is selectable, and the
+  // page's own clicks are its own, until edit mode is on.
+  await page.locator('[data-tw-mode]').click();
 
   const panel = page.locator('[data-tw-editor="panel"]');
   const handle = page.locator('[data-tw-delete]');

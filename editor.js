@@ -311,6 +311,98 @@
     updateFooter();
   }
 
+  // -------------------------------------------------------------- edit mode
+
+  /**
+   * The editor is off until it is asked for.
+   *
+   * While it is on, every click on the page is swallowed in the capture phase
+   * so the app's own links and buttons cannot fire — which is what makes the
+   * page selectable, and also what makes it unusable as an app. Leaving that
+   * on by default meant the target site could not be navigated, scrolled
+   * through a form, or clicked at all without editing something.
+   *
+   * The choice is remembered for the tab, not the browser: a reload or a route
+   * change mid-session keeps you editing, and a fresh tab always starts on the
+   * page as its own users see it.
+   */
+  var MODE_KEY = 'bw-editor-mode';
+  var editing = false;
+  var modeToggle = null;
+  var modeRing = null;
+
+  function rememberMode(on) {
+    try {
+      window.sessionStorage.setItem(MODE_KEY, on ? '1' : '0');
+    } catch (e) {
+      /* private mode, blocked storage — the session just does not persist */
+    }
+  }
+
+  function recallMode() {
+    try {
+      return window.sessionStorage.getItem(MODE_KEY) === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setEditing(on) {
+    if (editing === on) return;
+    editing = on;
+    if (!on) {
+      // Pending edits are NOT dropped — their markers stay on the page and the
+      // count stays on the toggle, so unsaved work survives leaving the mode.
+      closePopover();
+      deselect();
+      if (hovered) { releaseOutline(hovered); hovered = null; }
+    }
+    rememberMode(on);
+    updateModeToggle();
+  }
+
+  function updateModeToggle() {
+    if (!modeToggle) return;
+    modeToggle.setAttribute('aria-pressed', editing ? 'true' : 'false');
+    modeToggle.querySelector('.bw-label').textContent = editing ? 'Editing' : 'Edit';
+
+    var count = modeToggle.querySelector('.bw-count');
+    count.textContent = dirty.size ? String(dirty.size) : '';
+    count.style.display = dirty.size ? '' : 'none';
+
+    modeToggle.title = dirty.size
+      ? dirty.size + ' unsaved change' + (dirty.size === 1 ? '' : 's') +
+        (editing ? '' : ' \u2014 click to pick up where you left off')
+      : editing
+        ? 'Editing \u2014 the page\'s own clicks are being held (Esc to stop)'
+        : 'Turn on edit mode';
+
+    if (modeRing) modeRing.style.display = editing ? 'block' : 'none';
+  }
+
+  function buildModeToggle() {
+    modeRing = document.createElement('div');
+    modeRing.setAttribute('data-tw-editor', 'ring');
+    document.body.appendChild(modeRing);
+
+    modeToggle = document.createElement('button');
+    modeToggle.type = 'button';
+    modeToggle.setAttribute('data-tw-editor', 'toggle');
+    modeToggle.setAttribute('data-tw-mode', '');
+    modeToggle.setAttribute('aria-pressed', 'false');
+    modeToggle.appendChild(el('span', 'bw-dot'));
+    modeToggle.appendChild(el('span', 'bw-label', 'Edit'));
+    modeToggle.appendChild(el('span', 'bw-count', ''));
+    bindTheme(modeToggle);
+    modeToggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditing(!editing);
+    });
+    document.body.appendChild(modeToggle);
+    updateModeToggle();
+  }
+
   // ---------------------------------------------------------------- removal
 
   /**
@@ -787,13 +879,14 @@
   };
 
   var D = '[data-tw-editor="delete"]';
+  var T = '[data-tw-editor="toggle"]';
   var P = '[data-tw-editor="panel"]';
   var PP = '[data-tw-editor="popover"]';
-  // Both surfaces carry the same tokens: the popover lives on <body>, not
-  // inside the panel, so it cannot inherit them.
-  var SURFACES = P + ',' + PP;
-  /** Same rule on both surfaces: both(' .bw-x') → '[…panel] .bw-x,[…popover] .bw-x'. */
-  function both(sel) { return P + sel + ',' + PP + sel; }
+  // Every surface carries the same tokens: the popover and the toggle live on
+  // <body>, not inside the panel, so neither can inherit them.
+  var SURFACES = [P, PP, T].join(',');
+  /** Same rule on each surface: both(' .bw-x') → '[…panel] .bw-x,[…popover] .bw-x,…'. */
+  function both(sel) { return [P, PP, T].map(function (s) { return s + sel; }).join(','); }
 
   function styleSheet() {
     return [
@@ -823,6 +916,22 @@
 
       /* body */
       P + ' .bw-body{padding:10px 12px;display:flex;flex-direction:column;gap:9px;overflow-y:auto}',
+      // Edit mode is off until it is asked for, so the toggle is the only part
+      // of the editor a visiting page shows by default.
+      T + '{position:fixed;bottom:16px;right:16px;z-index:2147483646;display:flex;',
+      '  align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;',
+      '  font:600 12px/1 ' + UI_FONT + ';cursor:pointer;border:1px solid var(--bw-border);',
+      '  background:var(--bw-card);color:var(--bw-fg);box-shadow:0 2px 10px rgba(0,0,0,.16)}',
+      T + '[aria-pressed="true"]{background:' + BRAND + ';border-color:' + BRAND + ';color:#fff}',
+      T + ' .bw-dot{width:7px;height:7px;border-radius:999px;background:var(--bw-faint)}',
+      T + '[aria-pressed="true"] .bw-dot{background:#fff}',
+      T + ' .bw-count{padding:1px 6px;border-radius:999px;font:600 10px/1.5 ' + UI_MONO + ';',
+      '  background:' + BRAND + ';color:#fff}',
+      T + '[aria-pressed="true"] .bw-count{background:rgba(255,255,255,.28)}',
+      // A ring around the viewport while edit mode is on: the page's own links
+      // and buttons are being swallowed, which is worth saying out loud.
+      '[data-tw-editor="ring"]{position:fixed;inset:0;z-index:2147483645;pointer-events:none;',
+      '  display:none;box-shadow:inset 0 0 0 2px rgba(217,121,89,.55)}',
       // The floating delete handle and the ghost it leaves behind. Both live on
       // page elements rather than an editor surface, so they carry their own
       // colours instead of the panel's tokens, and both shout — !important —
@@ -2524,6 +2633,7 @@
   }
 
   function updateFooter() {
+    updateModeToggle();
     if (!ui.save) return;
     var n = dirty.size;
     ui.save.disabled = n === 0;
@@ -2689,6 +2799,7 @@
 
   function init() {
     buildPanel();
+    buildModeToggle();
 
     // The fingerprint of the bytes these eids were derived from. Quoted back on
     // every write so the server can reject a save aimed at a file that moved.
@@ -2702,6 +2813,7 @@
     });
 
     document.addEventListener('mouseover', function (e) {
+      if (!editing) return;
       var el = editable(e.target);
       if (el === hovered) return;
       if (hovered && hovered !== selected) releaseOutline(hovered);
@@ -2710,14 +2822,17 @@
     });
 
     document.addEventListener('mouseout', function (e) {
-      if (!hovered) return;
+      if (!editing || !hovered) return;
       if (e.relatedTarget && hovered.contains(e.relatedTarget)) return;
       if (hovered !== selected) releaseOutline(hovered);
       hovered = null;
     });
 
-    // Capture phase: the page's own links and buttons must not fire while editing.
+    // Capture phase: the page's own links and buttons must not fire while
+    // editing. Off the mode, this returns before any of that and the page
+    // behaves exactly as it does without the editor loaded.
     document.addEventListener('click', function (e) {
+      if (!editing) return;
       // A floating popover has to dismiss itself; it is no longer clipped by
       // (or a child of) the panel, so nothing else closes it. The dismissing
       // click is swallowed rather than also changing the selection — one click
@@ -2745,10 +2860,13 @@
       else deselect();
     }, true);
 
+    // Escape steps out one layer at a time: popover, then selection, then the
+    // mode itself — so there is always a way back to the page from the keyboard.
     document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || !editing) return;
       if (popoverOpen()) { closePopover(); return; }
-      deselect();
+      if (selected) { deselect(); return; }
+      setEditing(false);
     });
 
     var reflow = function () {
@@ -2758,7 +2876,8 @@
     window.addEventListener('resize', reflow);
     window.addEventListener('scroll', reflow, true);
 
-    console.log('[tw-editor] ready — click an element to edit it');
+    if (recallMode()) setEditing(true);
+    console.log('[tw-editor] ready — turn on edit mode to select elements');
   }
 
   if (document.readyState === 'loading') {

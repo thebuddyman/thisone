@@ -50,6 +50,9 @@ function check(name, pass, detail) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on('console', m => { if (m.type() === 'error') console.log('  [console error]', m.text()); });
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+  // The editor is off until it is asked for: nothing is selectable, and the
+  // page's own clicks are its own, until edit mode is on.
+  await page.locator('[data-tw-mode]').click();
 
   const card = page.locator('[data-eid="8"]');
 

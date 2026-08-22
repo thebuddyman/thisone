@@ -96,6 +96,17 @@ function restore(g) {
   const panel = page.locator('[data-tw-editor="panel"]');
   check('overlay mounted in the Next app', (await panel.count()) === 1);
 
+  // Edit mode is off until asked for: the app is just the app until then. The
+  // choice is kept for the tab, so the route changes below inherit it.
+  const mode = page.locator('[data-tw-mode]');
+  check('the editor starts off, with only its toggle showing',
+    (await mode.count()) === 1 && (await mode.getAttribute('aria-pressed')) === 'false',
+    await mode.getAttribute('aria-pressed'));
+  await page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
+  check('clicking the page selects nothing while it is off', !(await panel.isVisible()));
+  await mode.click();
+  check('turning it on says so', (await mode.getAttribute('aria-pressed')) === 'true');
+
   const target = page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]');
   check('loader stamped the page.tsx element', (await target.count()) === 1,
     await target.getAttribute('data-bw-loc'));
