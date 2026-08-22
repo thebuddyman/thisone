@@ -1,0 +1,201 @@
+# bw-pl-browsereditor — handover
+
+A visual Tailwind editor: click an element in the browser, change its classes and
+text, and the edit is written back into the source file it came from.
+
+Two modes share one client:
+
+- **HTML** — `server.js` tags elements as it serves a flat `index.html`.
+- **Next.js** — a Turbopack loader stamps each JSX host element with its source
+  location; `next/server.js` runs as a separate process and writes the `.tsx`.
+
+Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
+8 commits, working tree clean, `npm test` green.
+
+---
+
+## Run it
+
+```bash
+npm test                                   # 7 suites, ~40s
+node cli.js --root ../uiux_experiment --check   # inspect a project
+node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
+cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
+
+PORT=3001 node server.js                   # the standalone HTML demo
+node next/verify.js --root ../uiux_experiment   # 23 live checks against the real app
+```
+
+`uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
+`tools/bw-loader.cjs`). `cli.js --unwire` removes it, byte-exactly.
+
+---
+
+## Layout
+
+| file | what it is |
+|---|---|
+| `editor.js` | the whole client overlay — panel, selection, all controls (~2200 lines) |
+| `server.js` | HTML mode: tags, serves, writes back |
+| `next/loader.cjs` | Turbopack loader — stamps `data-bw-loc="file:line:col:hash"` |
+| `next/jsx-adapter.js` | the writer: resolves a location, replaces a byte span |
+| `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights |
+| `next/server.js` | the editor server for a Next project |
+| `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
+| `detect.js` / `cli.js` | framework detection and `bw-edit` |
+| `test/` | 7 suites; `run.mjs` orchestrates |
+
+Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
+`how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
+
+---
+
+## Design decisions that were *not* obvious
+
+Every one of these came from measuring the real codebases. Do not undo them
+without re-measuring.
+
+**Writes are byte-span replacements, never AST reprints.** A save changes one
+line; nothing else moves, no quote style or trailing comma shifts into the diff.
+The loader and the writer share `hostElements()` so they cannot disagree about
+what sits at `line:col`.
+
+**Tailwind v4 has no runtime JIT.** A class the editor invents has no CSS until
+it is in a source file. Preview comes from a dev-only palette compiled with the
+*project's own* Tailwind, scoped to `[data-bw-edited]`. Unscoped it beat the
+app's own responsive variants — `px-6 md:px-12` rendered at 24px instead of 48px.
+Scoped, it changes nothing until an element is selected.
+
+**Colours are discovered from generated utility *rules* on the live page, not
+from config files or CSS variables.** `@theme inline` — which every one of these
+projects uses — substitutes token values into utilities and emits **no**
+`--color-*` at all: on the Cora route `--color-clay` appears zero times while
+`.text-clay` is right there. Rule-scanning also answers the question that
+matters: what can this page actually render.
+
+**Font sizes and weights come from the server, not the page.** Opposite of
+colours, because Tailwind v4 emits utilities *and* theme variables on demand — a
+route using two sizes exposes exactly two. The full ladder only exists in
+`theme.css`.
+
+**`cn()` is edited by delta, not by snapshot.** The rendered class string is the
+union of every argument, so writing it into argument one would duplicate what the
+conditionals contributed. The client sends `added`/`removed` against a baseline
+captured at selection.
+
+**Family matching is by membership, not prefix.** `font-medium` is a weight,
+`font-sans` is a family — `/^font-/` would delete `font-sans` on every weight
+change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
+`text-clay` a colour. `gap-` needs a lookahead because `gap-x-4` starts with it.
+
+**Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
+string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
+paths outside the root. Refusals surface in the panel.
+
+---
+
+## Measured facts about these codebases
+
+These drove the design; re-check them if the target changes.
+
+| | uiux_experiment | gw-web |
+|---|---|---|
+| static `className="…"` | 1372 | 1956 (86%) |
+| `cn()` | 0 | 47 |
+| template literals | 26 | 217 (7.3%) |
+| **stock Tailwind palette colours** | **0** | **0** |
+| semantic/project colour tokens | 63 | 19 |
+| arbitrary `rgb()` colours | — | **608** |
+| named font sizes | **2** | 198 |
+| arbitrary `text-[13px]` | **497** | **832** |
+| named font weights | 295 | 717 |
+| arbitrary weights | 0 | 0 |
+
+Editable coverage on gw-web: **91.4%** of 2881 host elements.
+
+Fonts ship fewer weights than Tailwind offers: Space Mono declares **400 only**,
+Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
+
+---
+
+## Known gaps, ranked
+
+1. **Blast radius — nothing warns you.** Editing an element inside a shared
+   component changes every instance. Measured: cora 42% of elements, polaris
+   72%, volt **78%**, worst case one location rendering 19 elements. The fix is
+   scoped in the plan and small: count
+   `[data-bw-loc^="file:line:col:"]` in the DOM and confirm before saving.
+   **Do this first.**
+2. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
+   safely editable; the delta mechanism from `cn()` already does the hard part.
+3. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
+   and only refuses at save. The panel should say so up front. On Cora only
+   25.7% of elements have writable text; 59.6% are `mixed-content`.
+4. **Packaging** — not installable by anyone else. Largest remaining chunk, and
+   only worth it if other people will use it.
+5. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
+   is 608 arbitrary colours, so "detached" is the norm there.
+
+**Astro is blocked.** Astro 7 never routes project files through Vite plugins:
+instrumented, **1,271 plugin calls, zero for anything under `src/`**. The locator
+logic itself works (10/10 stamped offline). None of Astro's twelve integration
+hooks is transform-shaped. `next/astro-locator.mjs` is finished but unreachable.
+
+**React Native / Expo is out.** No DOM, Metro runs no loader, Tailwind v3, and
+components are capitalised so "host element" means something else.
+
+---
+
+## Traps — these bit repeatedly
+
+**Stale servers give misleading results.** Three times a `lsof | kill` did not
+take, the new server died with `EADDRINUSE`, and an old one kept serving. Always
+`pkill -f next-server; pkill -f "next dev"` and verify the port is free before
+concluding anything.
+
+**Back up every file a test *could* touch, not the one you expect.** Two files of
+the user's were damaged this way (`cora/layout.tsx`, `meridian/design-system/
+page.tsx`), both untracked so git could not help. `next/verify.js` does this
+correctly — copies to `.backups/` and asserts byte-exact restore. Ad-hoc probes
+must do the same.
+
+**Never compare colours as strings.** The same colour arrives as `rgb()`,
+`oklch()` or `lab()` depending on where it came from. Paint it to a 1×1 canvas
+and compare the resolved RGB. This produced three separate false failures.
+
+**Assert that a patch matched.** A `str.replace()` whose anchor did not match
+fails silently. One such no-op left three functions undefined and produced
+`readFontSize is not defined` on every selection, surfacing as three unrelated
+test failures.
+
+**CSS nesting means every `CSSStyleRule` has a `cssRules` list.** Treating that
+as "this is a group, recurse and skip" skipped all 1,580 real rules on the page.
+Read the rule first, recurse only when the list is non-empty.
+
+**Attributes bind to the last item in a comma-separated selector.**
+`'[a],[b]' + '[data-theme]'` gives `[a],[b][data-theme]`. This made the panel
+permanently dark. Use the `both()` helper.
+
+**Address elements by role, not DOM position.** Tests that used "first button" or
+"last span in the panel" broke every time the UI moved. Use `data-tw-step`,
+`data-tw-status`, `data-tw-field`, `data-tw-add`.
+
+**Clean `.next` before asserting a production build is clean** — Next 16 keeps
+dev and build output in separate trees, and a stale `.next/dev/` produced a false
+positive.
+
+---
+
+## Test discipline
+
+`npm test` runs 7 suites: 3 pure-unit (`00`, `05`, `06`) and 4 browser suites
+against `test/fixture.html` copied to a temp dir — the demo page is never
+mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
+runs are offline-capable and deterministic.
+
+`next/verify.js` is the live suite: 23 checks against the real Next app,
+including refusals, security (401/403/415), and byte-exact restore of every file
+it touches.
+
+Every change here has ended with a real edit to a real file and a byte-level diff
+assertion. Keep that bar.
