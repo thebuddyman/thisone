@@ -63,6 +63,17 @@ function extractTextSizes(root) {
   return sizes;
 }
 
+/** The font-weight ladder, from the project's own theme. */
+function extractFontWeights(root) {
+  const req = createRequire(path.join(root, 'package.json'));
+  const css = fs.readFileSync(req.resolve('tailwindcss/theme.css'), 'utf8');
+  const weights = {};
+  const re = /--font-weight-([a-z]+):\s*([^;]+);/g;
+  let m;
+  while ((m = re.exec(css))) weights[m[1]] = m[2].trim();
+  return weights;
+}
+
 // Must stay in step with the overlay's controls — same source of truth.
 const HUES = [
   'slate', 'gray', 'zinc', 'neutral', 'stone', 'taupe', 'mauve', 'mist', 'olive',
@@ -78,6 +89,7 @@ const CANDIDATES = [
   'gap{,-x,-y}-{0,2,4,6,8,12}',
   // Every offered token must be pre-generated, or picking one previews nothing.
   'text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}',
+  'font-{thin,extralight,light,normal,medium,semibold,bold,extrabold,black}',
   '{bg,text}-{white,black}',
   `{bg,text}-{${HUES.join(',')}}-{${SHADES.join(',')}}`,
 ].join(' ');
@@ -113,4 +125,7 @@ async function compilePalette(root) {
   };
 }
 
-module.exports = { compilePalette, extractColors, extractTextSizes, CANDIDATES, SCOPE, HUES, SHADES };
+module.exports = {
+  compilePalette, extractColors, extractTextSizes, extractFontWeights,
+  CANDIDATES, SCOPE, HUES, SHADES,
+};

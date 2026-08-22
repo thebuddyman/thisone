@@ -116,6 +116,16 @@
   });
   var FONT_SIZES = FONT_TOKENS.map(function (t) { return 'text-' + t; });
 
+  // font- is shared between weight and family utilities: font-medium is a
+  // weight, font-sans is a family (150 and 438 uses across these projects).
+  // Membership in the ladder is the only safe test — never /^font-/.
+  var WEIGHT_ORDER = ['thin', 'extralight', 'light', 'normal', 'medium',
+    'semibold', 'bold', 'extrabold', 'black'];
+  var FONT_WEIGHTS = CFG.fontWeights || {};
+  var WEIGHT_TOKENS = Object.keys(FONT_WEIGHTS).sort(function (a, b) {
+    return Number(FONT_WEIGHTS[a]) - Number(FONT_WEIGHTS[b]);
+  });
+
   var selected = null;
   var hovered = null;
   var panel = null;
@@ -520,6 +530,7 @@
       'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.2 4.4 3.5 2.1l2.3 2.3"/></svg>',
     down: '<svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" ' +
       'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.2 2.6 3.5 4.9l2.3-2.3"/></svg>',
+    weight: glyph('<path d="M2.2 9.8 5.2 2.2h1.6l3 7.6" stroke-width="1.6"/><path d="M3.6 7.4h4.8" stroke-width="1.6"/>'),
     font: glyph('<path d="M2 3.2V2.1h8v1.1M6 2.4v7.5M4.3 9.9h3.4"/>'),
     plus: '<svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round"><path d="M4.5 1.4v6.2M1.4 4.5h6.2"/></svg>',
@@ -991,6 +1002,10 @@
           readFontSize(selected).kind === 'none') {
         missing.push({ key: 'font', label: 'Font size' });
       }
+      if (selected && !hasOwnText(selected) && !revealed.weight &&
+          readFontWeight(selected).kind !== 'token') {
+        missing.push({ key: 'weight', label: 'Weight' });
+      }
       row.style.display = missing.length ? '' : 'none';
       strip.innerHTML = '';
       missing.forEach(function (box) {
@@ -1080,6 +1095,27 @@
     return best;
   }
 
+  function readFontWeight(el) {
+    if (!el) return { kind: 'none', value: '' };
+    var classes = classesOf(el);
+    for (var i = classes.length - 1; i >= 0; i--) {
+      var name = classes[i].indexOf('font-') === 0 ? classes[i].slice(5) : null;
+      if (name && FONT_WEIGHTS[name]) {
+        return { kind: 'token', name: name, value: FONT_WEIGHTS[name], cls: classes[i] };
+      }
+    }
+    return { kind: 'none', value: getComputedStyle(el).fontWeight };
+  }
+
+  function setFontWeight(el, cls) {
+    classesOf(el).forEach(function (c) {
+      if (c.indexOf('font-') === 0 && FONT_WEIGHTS[c.slice(5)]) el.classList.remove(c);
+    });
+    if (cls) el.classList.add(cls);
+    markDirty(el, 'classes');
+    refresh();
+  }
+
   /** Preview type, clamped so a row stays a row. */
   function sampleSize(px) {
     var n = parseFloat(px);
@@ -1108,6 +1144,57 @@
     renderPopover();
     popover.style.display = 'flex';
     placePopover(anchor);
+  }
+
+  function weightRow() {
+    var row = el('div', 'bw-row');
+    row.setAttribute('data-tw-field', 'weight');
+    row.setAttribute('data-tw-optional', 'weight');
+    row.appendChild(el('span', 'bw-lbl', 'Weight'));
+
+    var field = el('div', 'bw-field bw-color');
+    var token = el('button', 'bw-ctoken');
+    token.setAttribute('data-tw-weight-open', '');
+    var mark = el('span', 'bw-ico');
+    mark.innerHTML = ICONS.weight;
+    var name = el('span', 'bw-cname', '\u2014');
+    var note = el('span', 'bw-unit', '');
+    token.appendChild(mark);
+    token.appendChild(name);
+    field.appendChild(token);
+    field.appendChild(note);
+    row.appendChild(field);
+
+    token.addEventListener('click', function () {
+      if (!WEIGHT_TOKENS.length) return;
+      popState.prefix = 'weight';
+      popState.hue = null;
+      popState.anchor = row;
+      renderPopover();
+      popover.style.display = 'flex';
+      placePopover(row);
+    });
+
+    readouts.push(function () {
+      var state = readFontWeight(selected);
+      var show = hasOwnText(selected) || revealed.weight || state.kind === 'token';
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
+
+      if (state.kind === 'token') {
+        name.textContent = state.name;
+        name.className = 'bw-cname';
+        note.textContent = state.value;
+        token.title = state.cls;
+      } else {
+        name.textContent = state.value || '\u2014';
+        name.className = 'bw-cname is-unset';
+        note.textContent = state.value ? 'inherited' : '';
+        token.title = 'not set \u2014 rendering at ' + state.value;
+      }
+    });
+
+    return row;
   }
 
   function textRow() {
@@ -1467,13 +1554,39 @@
       head.appendChild(back);
     }
     head.appendChild(el('strong', null,
-      popState.prefix === 'font' ? 'Font size' : (popState.hue || 'Colour')));
+      popState.prefix === 'font' ? 'Font size'
+        : popState.prefix === 'weight' ? 'Weight'
+        : (popState.hue || 'Colour')));
     var shut = el('button', 'bw-x', '×');
     shut.addEventListener('click', closePopover);
     head.appendChild(shut);
     popover.appendChild(head);
 
     var body = el('div', 'bw-pop-body');
+
+    if (popState.prefix === 'weight') {
+      var currentW = readFontWeight(selected);
+      WEIGHT_TOKENS.forEach(function (t) {
+        var item = el('button', 'bw-hue');
+        item.setAttribute('data-tw-weight', t);
+        var sample = el('span', 'bw-sizesample', 'Ag');
+        sample.style.cssText = 'font-size:16px;font-weight:' + FONT_WEIGHTS[t];
+        item.appendChild(sample);
+        item.appendChild(el('span', 'bw-sizename', t));
+        item.appendChild(el('span', 'bw-sizepx', FONT_WEIGHTS[t]));
+        if (currentW.kind === 'token' && currentW.name === t) {
+          item.setAttribute('aria-current', 'true');
+        }
+        item.addEventListener('click', function () {
+          setFontWeight(selected, 'font-' + t);
+          closePopover();
+        });
+        body.appendChild(item);
+      });
+      popover.appendChild(body);
+      if (popState.anchor) placePopover(popState.anchor);
+      return;
+    }
 
     if (popState.prefix === 'font') {
       var current = readFontSize(selected);
@@ -1737,6 +1850,7 @@
     BOXES.forEach(function (box) { body.appendChild(boxSection(box)); });
     body.appendChild(addRow());
     body.appendChild(fontRow());
+    body.appendChild(weightRow());
     body.appendChild(colorRow('bg', 'Background'));
     body.appendChild(colorRow('text', 'Text color'));
 

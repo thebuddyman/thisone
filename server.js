@@ -81,6 +81,7 @@ app.get('/', (req, res) => {
 const COLOR_RAMPS = require('./next/colors.json');
 const { HUES } = require('./next/palette');
 const TEXT_SIZES = require('./next/text-sizes.json');
+const FONT_WEIGHTS = require('./next/font-weights.json');
 
 // Served locally rather than from a CDN: the test suite must not depend on a
 // network fetch, which made runs intermittently fail with unstyled pages.
@@ -91,7 +92,7 @@ app.get('/tailwind-browser.js', (req, res) => {
 app.get('/editor.js', (req, res) => {
   const prelude =
     'window.__TW_EDITOR__ = ' +
-    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS }, textSizes: TEXT_SIZES }) +
+    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS }, textSizes: TEXT_SIZES, fontWeights: FONT_WEIGHTS }) +
     ';\n';
   res.type('application/javascript').send(prelude + fs.readFileSync(EDITOR_FILE, 'utf8'));
 });
