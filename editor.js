@@ -689,6 +689,7 @@
       '  font:11px/1.2 ' + UI_MONO + '}',
       PP + ' .bw-search-in:focus{outline:none;border-color:var(--bw-brand)}',
       PP + ' .bw-search-in::placeholder{color:var(--bw-faint)}',
+      PP + ' [data-tw-synthetic] .bw-sizepx{color:var(--bw-danger)}',
       PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       PP + ' .bw-custom{border-top:1px solid var(--bw-hair);margin-top:3px;padding-top:6px}',
       PP + ' .bw-sizesample{flex:0 0 44px;line-height:1.05;color:var(--bw-fg);overflow:hidden}',
@@ -1093,6 +1094,46 @@
       if (!best || d < best.d) best = { d: d, name: cls.replace('text-', ''), px: v };
     });
     return best;
+  }
+
+  /**
+   * Which weights the element's own font actually ships.
+   *
+   * Anything else is synthesized by the browser — faux bold, faux light — so
+   * offering all nine is offering eight lies on a font like Space Mono, which
+   * declares 400 and nothing else. A variable font declares a range
+   * ("100 900") and genuinely covers it.
+   *
+   * Returns null when it cannot be known — a system font with no @font-face —
+   * in which case everything is offered rather than guessing.
+   */
+  function availableWeights(el) {
+    if (!el || !document.fonts) return null;
+    var strip = function (v) { return String(v).replace(/^["']|["']$/g, '').toLowerCase(); };
+    var family = strip(getComputedStyle(el).fontFamily.split(',')[0].trim());
+    if (!family) return null;
+
+    var declared = [];
+    document.fonts.forEach(function (face) {
+      if (strip(face.family) === family) declared.push(String(face.weight));
+    });
+    if (!declared.length) return null; // system font: nothing declared to read
+
+    var KEYWORD = { normal: 400, bold: 700 };
+    var ok = {};
+    declared.forEach(function (spec) {
+      var parts = spec.trim().split(/\s+/).map(function (v) {
+        return KEYWORD[v] !== undefined ? KEYWORD[v] : Number(v);
+      }).filter(function (n) { return !isNaN(n); });
+      if (!parts.length) return;
+      var lo = parts[0];
+      var hi = parts.length > 1 ? parts[1] : parts[0];
+      WEIGHT_TOKENS.forEach(function (t) {
+        var n = Number(FONT_WEIGHTS[t]);
+        if (n >= lo && n <= hi) ok[t] = true;
+      });
+    });
+    return Object.keys(ok).length ? ok : null;
   }
 
   function readFontWeight(el) {
@@ -1566,7 +1607,17 @@
 
     if (popState.prefix === 'weight') {
       var currentW = readFontWeight(selected);
-      WEIGHT_TOKENS.forEach(function (t) {
+      var available = availableWeights(selected);
+      var shownW = WEIGHT_TOKENS.filter(function (t) {
+        if (!available) return true;                       // unknown: offer all
+        if (available[t]) return true;
+        return currentW.kind === 'token' && currentW.name === t; // keep what is set
+      });
+      if (available && shownW.length < WEIGHT_TOKENS.length) {
+        body.appendChild(el('div', 'bw-pop-group',
+          shownW.length + ' of ' + WEIGHT_TOKENS.length + ' shipped by this font'));
+      }
+      shownW.forEach(function (t) {
         var item = el('button', 'bw-hue');
         item.setAttribute('data-tw-weight', t);
         var sample = el('span', 'bw-sizesample', 'Ag');
@@ -1576,6 +1627,12 @@
         item.appendChild(el('span', 'bw-sizepx', FONT_WEIGHTS[t]));
         if (currentW.kind === 'token' && currentW.name === t) {
           item.setAttribute('aria-current', 'true');
+        }
+        // A weight that is set but not shipped is kept visible, and labelled,
+        // rather than silently dropped from the list.
+        if (available && !available[t]) {
+          item.setAttribute('data-tw-synthetic', '');
+          item.lastChild.textContent = 'faux';
         }
         item.addEventListener('click', function () {
           setFontWeight(selected, 'font-' + t);
