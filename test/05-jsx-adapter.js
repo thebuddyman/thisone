@@ -155,6 +155,84 @@ check('a refusal aborts the entire batch', !r.ok && r.refusals[0].reason === 'dy
 
 // ------------------------------------------------------------- staleness
 
+// ------------------------------------------------------------------- remove
+
+const PAGE = [
+  'export default function Page() {',
+  '  return (',
+  '    <div className="wrap">',
+  '      <p>keep me</p>',
+  '      <span className="gone">bye</span>',
+  '      <p>keep me too</p>',
+  '    </div>',
+  '  );',
+  '}',
+  '',
+].join('\n');
+
+r = run(PAGE, [{ tag: 'span', remove: true }]);
+check('child element removed, whole line and all',
+  r.ok && r.contents === PAGE.replace('      <span className="gone">bye</span>\n', ''),
+  r.ok ? JSON.stringify(r.contents.split('\n')[4]) : r.refusals[0].detail);
+check('no blank line left behind', r.ok && !/\n\s*\n/.test(r.contents));
+check('the siblings are untouched byte for byte',
+  r.ok && r.contents.split('\n').filter((l) => l.includes('keep me')).length === 2);
+
+// An element with children goes as a whole, closing tag included.
+const NESTED = PAGE.replace('<span className="gone">bye</span>',
+  '<span className="gone"><b>b</b><i>i</i></span>');
+r = run(NESTED, [{ tag: 'span', remove: true }]);
+check('an element with children goes as one span',
+  r.ok && !/<span|<b>|<i>/.test(r.contents), r.ok ? '' : r.refusals[0].detail);
+
+// Inline, sharing its line with other content: cut exactly, no line surgery.
+r = run('const a = <p>one <em>two</em> three</p>;', [{ tag: 'em', remove: true }]);
+check('an inline element takes only its own bytes',
+  r.ok && r.contents === 'const a = <p>one  three</p>;', JSON.stringify(r.ok ? r.contents : ''));
+
+// ---- refusals: the three shapes that would not parse afterwards ----
+
+r = run('export default function P() {\n  return <div className="root">x</div>;\n}\n',
+  [{ tag: 'div', remove: true }]);
+check('a component root is refused',
+  !r.ok && r.refusals[0].reason === 'root-element', r.ok ? 'ACCEPTED' : r.refusals[0].detail);
+
+r = run('const a = <div>{open && <span>x</span>}</div>;', [{ tag: 'span', remove: true }]);
+check('the value of a {expression} is refused',
+  !r.ok && r.refusals[0].reason === 'unsupported-parent', r.ok ? 'ACCEPTED' : r.refusals[0].detail);
+
+r = run('const a = <ul>{items.map((i) => <li key={i}>{i}</li>)}</ul>;', [{ tag: 'li', remove: true }]);
+check('a .map() body is refused',
+  !r.ok && r.refusals[0].reason === 'root-element', r.ok ? 'ACCEPTED' : r.refusals[0].detail);
+check('a refusal writes nothing at all', !r.ok && r.contents === undefined);
+
+// A fragment IS a valid parent — its children are a children list.
+r = run('const a = <>\n  <p>a</p>\n  <p>b</p>\n</>;', [{ tag: 'p', nth: 1, remove: true }]);
+check('a fragment child may be removed',
+  r.ok && r.contents === 'const a = <>\n  <p>a</p>\n</>;', r.ok ? '' : r.refusals[0].detail);
+
+// ---- remove combined with other edits in one batch ----
+
+r = run(PAGE, [{ tag: 'span', remove: true }, { tag: 'p', nth: 1, classes: 'edited' }]);
+check('a sibling edit still applies alongside a removal',
+  r.ok && !/gone/.test(r.contents) && /<p className="edited">keep me too<\/p>/.test(r.contents),
+  r.ok ? '' : r.refusals[0].detail);
+
+// The dangerous one: editing a child of the element being cut. Applying that
+// splice first would move the bytes the cut is measuring from.
+r = run(NESTED, [{ tag: 'span', remove: true }, { tag: 'b', classes: 'doomed' }]);
+check('an edit inside a removed element is dropped, not spliced',
+  r.ok && !/doomed/.test(r.contents) && !/<span/.test(r.contents),
+  r.ok ? JSON.stringify(r.contents) : r.refusals[0].detail);
+check('dropping it left the rest of the file intact',
+  r.ok && r.contents.split('\n').filter((l) => l.includes('keep me')).length === 2);
+
+// Removing a parent and its child in the same batch: the inner cut is dropped.
+r = run(NESTED, [{ tag: 'span', remove: true }, { tag: 'b', remove: true }]);
+check('a removal nested inside a removal collapses to one cut',
+  r.ok && !/<span|<b>/.test(r.contents) && !/\n\s*\n/.test(r.contents),
+  r.ok ? '' : r.refusals[0].detail);
+
 const src = 'const a = <p>x</p>;';
 r = editFile(ts, 'test.tsx', src, [
   { id: 'x', loc: { file: 'test.tsx', line: 1, col: 11, hash: 'deadbeef' }, text: 'y' },

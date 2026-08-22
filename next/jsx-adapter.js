@@ -90,6 +90,8 @@ const REFUSALS = {
   'unsupported-shape': 'unsupported className expression',
   'mixed-content': 'text is mixed with markup or an expression',
   'no-text': 'element has no text body',
+  'root-element': 'the element is what its component returns',
+  'unsupported-parent': 'the element is not a child of other JSX',
 };
 
 /**
@@ -143,6 +145,54 @@ function textSpan(ts, sourceFile, opening, source) {
   const leading = full.match(/^\s*/)[0].length;
   const trailing = full.match(/\s*$/)[0].length;
   return { start: node.pos + leading, end: node.end - trailing };
+}
+
+/**
+ * The byte span to cut when removing an element.
+ *
+ * Only a child of another JSX element or fragment may go. That is the one
+ * position where lifting the node out leaves the file parsing: a component's
+ * root has to return something, `{open && <div/>}` would be left as
+ * `{open && }`, and the body of a `.map()` arrow is the value it yields. Each
+ * of those is refused by name rather than guessed at.
+ *
+ * When the element owns its lines outright, the indentation in front of it and
+ * the newline behind it go with it, so the cut closes over instead of leaving a
+ * blank line in the diff.
+ */
+function removeSpan(ts, sourceFile, node, source) {
+  const element = ts.isJsxSelfClosingElement(node) ? node : node.parent;
+  if (!element || !(ts.isJsxElement(element) || ts.isJsxSelfClosingElement(element))) {
+    return { reason: 'unsupported-parent', detail: 'the element could not be resolved' };
+  }
+
+  const parent = element.parent;
+  if (!parent || !(ts.isJsxElement(parent) || ts.isJsxFragment(parent))) {
+    if (parent && (ts.isReturnStatement(parent) || ts.isParenthesizedExpression(parent) ||
+        ts.isArrowFunction(parent) || ts.isVariableDeclaration(parent))) {
+      return { reason: 'root-element', detail: 'removing it would leave nothing to render' };
+    }
+    if (parent && ts.isJsxExpression(parent)) {
+      return { reason: 'unsupported-parent', detail: 'it is the value of a {expression}' };
+    }
+    return {
+      reason: 'unsupported-parent',
+      detail: 'its parent is ' + (parent ? ts.SyntaxKind[parent.kind] : 'nothing'),
+    };
+  }
+
+  let start = element.getStart(sourceFile);
+  let end = element.getEnd();
+
+  const lineStart = source.lastIndexOf('\n', start - 1) + 1;
+  const nextNewline = source.indexOf('\n', end);
+  const lineEnd = nextNewline === -1 ? source.length : nextNewline;
+  if (/^\s*$/.test(source.slice(lineStart, start)) && /^\s*$/.test(source.slice(end, lineEnd))) {
+    start = lineStart;
+    end = nextNewline === -1 ? source.length : nextNewline + 1;
+  }
+
+  return { start, end };
 }
 
 /**
@@ -281,6 +331,19 @@ function editFile(ts, filePath, source, edits) {
     }
     const tag = node.tagName.getText(sourceFile);
 
+    // Resolved first and on its own: an element that is going away has no use
+    // for a class or text edit, and letting one through would leave the cut
+    // holding offsets that the earlier splice had already moved.
+    if (edit.remove) {
+      const span = removeSpan(ts, sourceFile, node, source);
+      if (span.reason) {
+        refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
+        continue;
+      }
+      spans.push({ span, tag, insertion: (v) => v, value: '', remove: true });
+      continue;
+    }
+
     if (edit.classes !== undefined) {
       const span = classNameSpan(ts, sourceFile, node);
       if (span.reason) {
@@ -323,10 +386,19 @@ function editFile(ts, filePath, source, edits) {
 
   // Back to front, so every offset resolved above stays valid.
   const posOf = (s) => (s.span.insertAt !== undefined ? s.span.insertAt : s.span.start);
-  spans.sort((a, b) => posOf(b) - posOf(a));
+
+  // A span sitting inside one that is being cut has nothing left to apply to,
+  // and splicing it first would change the length the cut is measuring from.
+  // Dropping it covers both the nested-delete case and an edit made to a child
+  // of a deleted parent in the same batch.
+  const cuts = spans.filter((s) => s.remove);
+  const live = spans.filter((s) => !cuts.some(
+    (c) => c !== s && posOf(s) >= c.span.start && posOf(s) < c.span.end));
+
+  live.sort((a, b) => posOf(b) - posOf(a));
 
   let out = source;
-  for (const item of spans) {
+  for (const item of live) {
     if (item.span.insertAt !== undefined) {
       out = out.slice(0, item.span.insertAt) + item.insertion(item.value) + out.slice(item.span.insertAt);
     } else {
@@ -334,7 +406,7 @@ function editFile(ts, filePath, source, edits) {
     }
   }
 
-  return { ok: true, contents: out, applied: [...new Set(spans.map((s) => s.tag))] };
+  return { ok: true, contents: out, applied: [...new Set(live.map((s) => s.tag))] };
 }
 
-module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, classNameSpan, textSpan, escapeJsxText, editSource, editFile, REFUSALS };
+module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, classNameSpan, textSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };

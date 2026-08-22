@@ -1,7 +1,8 @@
 # bw-pl-browsereditor — handover
 
 A visual Tailwind editor: click an element in the browser, change its classes and
-text, and the edit is written back into the source file it came from.
+text or remove it outright, and the edit is written back into the source file it
+came from.
 
 Two modes share one client:
 
@@ -10,20 +11,20 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-9 commits, working tree clean, `npm test` green.
+10 commits, working tree clean, `npm test` green.
 
 ---
 
 ## Run it
 
 ```bash
-npm test                                   # 7 suites, ~40s
+npm test                                   # 8 suites, ~50s
 node cli.js --root ../uiux_experiment --check   # inspect a project
 node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                   # the standalone HTML demo
-node next/verify.js --root ../uiux_experiment   # 36 live checks against the real app
+node next/verify.js --root ../uiux_experiment   # 51 live checks against the real app
 ```
 
 `uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
@@ -35,15 +36,15 @@ node next/verify.js --root ../uiux_experiment   # 36 live checks against the rea
 
 | file | what it is |
 |---|---|
-| `editor.js` | the whole client overlay — panel, selection, all controls (~2400 lines) |
+| `editor.js` | the whole client overlay — panel, selection, all controls (~2600 lines) |
 | `server.js` | HTML mode: tags, serves, writes back |
 | `next/loader.cjs` | Turbopack loader — stamps `data-bw-loc="file:line:col:hash"` |
-| `next/jsx-adapter.js` | the writer: resolves a location, replaces a byte span |
+| `next/jsx-adapter.js` | the writer: resolves a location, replaces or cuts a byte span |
 | `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights/radii |
 | `next/server.js` | the editor server for a Next project |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
-| `test/` | 7 suites; `run.mjs` orchestrates |
+| `test/` | 8 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 `how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
@@ -100,6 +101,26 @@ change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
 `rounded-` is the same trap twice over: `rounded-sm` is a rung, `rounded-s` is
 the two start corners, and `rounded-t-lg` is neither.
 
+**Removal is marked, not done.** Clicking the × ghosts the element and every
+other instance of its source location, folds the panel down to a notice and an
+Undo, and writes nothing. Save is what cuts the source. Ghosting rather than
+hiding is deliberate: a hidden element cannot be clicked, so it could not be
+undone, and the editor already marks unsaved edits on the page instead of
+pretending they are committed.
+
+**An element may only be removed from a JSX children list.** That is the one
+position where lifting the node out still parses. A component root has to return
+something, `{open && <div/>}` would be left as `{open && }`, and a `.map()`
+arrow's body is the value it yields — each refused by name. The cut takes the
+element's own lines whole, indentation and trailing newline included, so no
+blank line is left in the diff.
+
+**The overlay must not take removed nodes off the page under Next.** The dev
+server re-renders from the new source; pulling a node out from under React makes
+its next reconcile throw `removeChild` on something it no longer owns. The
+backend says which world it is in (`hmr: true`), and only the HTML one — where
+nothing re-renders — has its DOM updated by hand.
+
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
@@ -136,12 +157,12 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
 
 ## Known gaps, ranked
 
-1. **Blast radius — nothing warns you.** Editing an element inside a shared
-   component changes every instance. Measured: cora 42% of elements, polaris
-   72%, volt **78%**, worst case one location rendering 19 elements. The fix is
-   scoped in the plan and small: count
-   `[data-bw-loc^="file:line:col:"]` in the DOM and confirm before saving.
-   **Do this first.**
+1. **Blast radius — warned about on removal only.** Editing an element inside a
+   shared component changes every instance. Measured: cora 42% of elements,
+   polaris 72%, volt **78%**, worst case one location rendering 19 elements.
+   Removal now counts `[data-bw-loc^="file:line:col:"]`, ghosts all of them and
+   says "renders 19 elements … removes all 19" before you can save. **Class and
+   text edits still say nothing** — same one-line count, same place to put it.
 2. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
    safely editable; the delta mechanism from `cn()` already does the hard part.
 3. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
@@ -185,6 +206,16 @@ page.tsx`), both untracked so git could not help. `next/verify.js` does this
 correctly — copies to `.backups/` and asserts byte-exact restore. Ad-hoc probes
 must do the same.
 
+**A backup is only a backup if the restore always runs.** `verify.js` used to
+restore on the happy path only, so one thrown locator skipped it and left a test
+edit sitting in the user's file. It happened again while adding removal. The
+writes now live in a `try` and the restore in a `finally`.
+
+**Name backups after the path, not the basename.** Three of the guarded files
+are called `page.tsx`. Two guards taken in the same millisecond produced the
+same `page.tsx.<ms>.bak` and one silently overwrote the other — the only copy of
+a file, gone, in the code whose entire job is not to do that.
+
 **Never compare colours as strings.** The same colour arrives as `rgb()`,
 `oklch()` or `lab()` depending on where it came from. Paint it to a 1×1 canvas
 and compare the resolved RGB. This produced three separate false failures.
@@ -214,16 +245,18 @@ positive.
 
 ## Test discipline
 
-`npm test` runs 7 suites: 3 pure-unit (`00`, `05`, `06`) and 4 browser suites
+`npm test` runs 8 suites: 3 pure-unit (`00`, `05`, `06`) and 5 browser suites
 against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
 
-`next/verify.js` is the live suite: 36 checks against the real Next app,
+`next/verify.js` is the live suite: 51 checks against the real Next app,
 including refusals, security (401/403/415), and byte-exact restore of every file
 it touches. The radius block runs against `experiments/cora/login` specifically
 because Cora redefines the radius ladder — every number it asserts would be
-wrong if the overlay read `--radius-*` instead of the generated rule.
+wrong if the overlay read `--radius-*` instead of the generated rule. The
+removal block runs against `volt/design-system` for the opposite reason: one
+line there renders 19 elements, which is the case the warning exists for.
 
 Every change here has ended with a real edit to a real file and a byte-level diff
 assertion. Keep that bar.

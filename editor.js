@@ -28,6 +28,9 @@
   // the preview stylesheet is scoped to this attribute and applied only to
   // elements the editor has actually touched.
   var PREVIEW_ATTR = CFG.previewAttr || null;
+  // Does the page rebuild itself from the file after a write? The Next backend
+  // says yes; the HTML one has no such loop and needs the DOM updated by hand.
+  var HMR = CFG.hmr === true;
   // { order, ramps, projectCount } — the server's stock ramps merged with the
   // tokens actually defined on the live page. Built lazily on first selection,
   // because stylesheets may still be loading at script time.
@@ -41,6 +44,9 @@
   // Amber marks an element changed but not yet written, so unsaved work stays
   // visible after you move on to another element.
   var DIRTY_OUTLINE = '2px dashed rgba(217, 121, 89, .95)';
+  // A pending removal is not a pending edit: it reads red, not amber, and the
+  // element is ghosted rather than hidden so it stays clickable and undoable.
+  var REMOVE_OUTLINE = '2px dashed rgba(220, 40, 40, .9)';
 
   /**
    * Each control owns a "family" of classes. Before adding a value we strip
@@ -179,10 +185,13 @@
     el.style.outlineOffset = '2px';
   }
 
-  /** Stop highlighting an element — but keep the amber marker if it is unsaved. */
+  /** Stop highlighting an element — but keep the marker if it is unsaved. */
   function releaseOutline(el) {
     if (!el) return;
-    if (dirty.has(el)) setOutline(el, DIRTY_OUTLINE);
+    // Red outranks amber: a pending removal is not a pending edit, and every
+    // instance of a shared location wears it, not only the dirty one.
+    if (isRemoved(el)) setOutline(el, REMOVE_OUTLINE);
+    else if (dirty.has(el)) setOutline(el, DIRTY_OUTLINE);
     else clearOutline(el);
   }
 
@@ -293,12 +302,201 @@
 
   function markDirty(el, kind) {
     if (!el) return;
-    var entry = dirty.get(el) || { text: false, classes: false };
+    var entry = dirty.get(el) || { text: false, classes: false, remove: false };
     if (kind === 'text') entry.text = true;
     if (kind === 'classes') entry.classes = true;
+    if (kind === 'remove') entry.remove = true;
     dirty.set(el, entry);
     if (PREVIEW_ATTR) el.setAttribute(PREVIEW_ATTR, '');
     updateFooter();
+  }
+
+  // ---------------------------------------------------------------- removal
+
+  /**
+   * Every element on the page that this one's source location renders.
+   *
+   * One line inside a shared component renders many: measured on these routes,
+   * 42% of Cora's elements, 72% of Polaris', 78% of Volt's, worst case 19
+   * elements from a single location. For a class change that is a surprise.
+   * For a removal it is the difference between deleting one card and deleting
+   * the list — so the count is said out loud before the save, and every
+   * instance is ghosted, not just the one that was clicked.
+   */
+  function sameSource(el) {
+    if (!el) return [];
+    var id = el.getAttribute(ID_ATTR);
+    // HTML mode stamps a positional index, unique by construction.
+    if (!id || id.indexOf(':') === -1) return [el];
+    var bits = id.split(':');
+    if (bits.length < 3) return [el];
+    var prefix = bits.slice(0, 3).join(':') + ':';
+    var out = [];
+    var all = document.querySelectorAll('[' + ID_ATTR + ']');
+    for (var i = 0; i < all.length; i++) {
+      if ((all[i].getAttribute(ID_ATTR) || '').indexOf(prefix) === 0) out.push(all[i]);
+    }
+    return out.length ? out : [el];
+  }
+
+  /**
+   * The ghost attribute is the fast answer, because refresh() asks on every
+   * interaction and walking every stamped element on the page to answer it
+   * would not be free. It is set and cleared in lockstep with the dirty entry.
+   */
+  function isRemoved(el) {
+    return !!(el && el.nodeType === 1 && el.hasAttribute('data-tw-removed'));
+  }
+
+  /** Which element of the group actually holds the pending edit. */
+  function removalKey(el) {
+    var group = sameSource(el);
+    for (var i = 0; i < group.length; i++) {
+      var entry = dirty.get(group[i]);
+      if (entry && entry.remove) return group[i];
+    }
+    return null;
+  }
+
+  /**
+   * Mark for removal. Nothing is written here — the element is ghosted rather
+   * than hidden, so it stays on the page, stays clickable, and stays undoable
+   * right up until Save, which is the step that actually cuts the source.
+   */
+  function markRemoved(el) {
+    if (!el || isRemoved(el)) return;
+    sameSource(el).forEach(function (node) {
+      node.setAttribute('data-tw-removed', '');
+      setOutline(node, REMOVE_OUTLINE);
+    });
+    markDirty(el, 'remove');
+    refresh();
+  }
+
+  function unmarkRemoved(el) {
+    var key = removalKey(el);
+    if (!key) return;
+    var entry = dirty.get(key);
+    if (entry) {
+      entry.remove = false;
+      if (!entry.classes && !entry.text) dirty.delete(key);
+    }
+    sameSource(key).forEach(function (node) {
+      node.removeAttribute('data-tw-removed');
+      if (node === selected) setOutline(node, SELECT_OUTLINE);
+      else releaseOutline(node);
+    });
+    updateFooter();
+    refresh();
+  }
+
+  // The handle floats on <body> rather than inside the element: parenting it to
+  // the page would put an editor node into the very tree being edited.
+  var deleteHandle = null;
+
+  function buildDeleteHandle() {
+    deleteHandle = document.createElement('button');
+    deleteHandle.type = 'button';
+    deleteHandle.setAttribute('data-tw-editor', 'delete');
+    deleteHandle.setAttribute('data-tw-delete', '');
+    deleteHandle.innerHTML = ICONS.cross;
+    deleteHandle.title = 'Remove this element \u2014 undoable until you save';
+    deleteHandle.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (selected) markRemoved(selected);
+    });
+    document.body.appendChild(deleteHandle);
+  }
+
+  /**
+   * Pinned half over the element's top-right corner — but only if that corner
+   * is reachable.
+   *
+   * The panel is fixed to the top right at the maximum z-index, so for
+   * anything in that band the preferred corner sits underneath it and the
+   * handle cannot be clicked at all. Raising the handle above the panel is not
+   * an option (nothing outranks 2147483647, and a delete button floating over
+   * the controls would be worse), so it walks the other three corners instead
+   * and only falls back to the first when every one of them is covered.
+   */
+  function updateDeleteHandle() {
+    if (!deleteHandle) return;
+    if (!selected || isRemoved(selected)) {
+      deleteHandle.style.display = 'none';
+      return;
+    }
+    var r = selected.getBoundingClientRect();
+    if (!r.width && !r.height) {
+      deleteHandle.style.display = 'none';
+      return;
+    }
+
+    var size = 20, gap = 4;
+    var clampX = function (x) { return Math.max(gap, Math.min(window.innerWidth - size - gap, x)); };
+    var clampY = function (y) { return Math.max(gap, Math.min(window.innerHeight - size - gap, y)); };
+    var corners = [
+      [r.right - size / 2, r.top - size / 2],
+      [r.left - size / 2, r.top - size / 2],
+      [r.right - size / 2, r.bottom - size / 2],
+      [r.left - size / 2, r.bottom - size / 2],
+    ].map(function (c) { return [clampX(c[0]), clampY(c[1])]; });
+
+    var blockers = [panel, popover].filter(function (node) {
+      return node && node.style.display !== 'none' && node.offsetWidth;
+    }).map(function (node) { return node.getBoundingClientRect(); });
+
+    var hits = function (c) {
+      return blockers.some(function (b) {
+        return c[0] + size > b.left && c[0] < b.right && c[1] + size > b.top && c[1] < b.bottom;
+      });
+    };
+    var clear = corners.find(function (c) { return !hits(c); });
+
+    // A short element in the top-right band has all four of its corners under
+    // the panel. Rather than hand back one that cannot be clicked, slide out
+    // past the blocker's edge and keep the element's own vertical line.
+    if (!clear) {
+      var edge = Math.min.apply(null, blockers.map(function (b) { return b.left; }));
+      clear = [clampX(edge - size - gap), corners[0][1]];
+      if (hits(clear)) {
+        var far = Math.max.apply(null, blockers.map(function (b) { return b.right; }));
+        clear = [clampX(far + gap), corners[0][1]];
+      }
+    }
+
+    deleteHandle.style.left = Math.round(clear[0]) + 'px';
+    deleteHandle.style.top = Math.round(clear[1]) + 'px';
+    deleteHandle.style.display = 'flex';
+  }
+
+  /** The panel has nothing to offer an element on its way out — just the undo. */
+  function removeRow() {
+    var row = el('div', 'bw-rm');
+    row.setAttribute('data-tw-field', 'removed');
+    var txt = el('div', 'bw-rm-txt');
+    txt.appendChild(el('strong', null, 'Marked for removal'));
+    var detail = el('span', null, '');
+    txt.appendChild(detail);
+    row.appendChild(txt);
+
+    var undo = el('button', 'bw-rm-undo', 'Undo');
+    undo.setAttribute('data-tw-undo-remove', '');
+    undo.addEventListener('click', function () { unmarkRemoved(selected); });
+    row.appendChild(undo);
+
+    readouts.push(function () {
+      var on = isRemoved(selected);
+      row.style.display = on ? 'flex' : 'none';
+      if (ui.body) ui.body.classList.toggle('is-cutting', on);
+      if (!on) return;
+      var n = sameSource(selected).length;
+      detail.textContent = n > 1
+        ? 'This one line renders ' + n + ' elements on this page. Saving removes all ' + n + '.'
+        : 'It is cut from the source file when you save.';
+    });
+
+    return row;
   }
 
   // --------------------------------------------------------- spacing fields
@@ -561,6 +759,10 @@
       '<path d="M2.1 2.1h1.2M9.9 9.9v-1.2" opacity=".45"/>'),
     plus: '<svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round"><path d="M4.5 1.4v6.2M1.4 4.5h6.2"/></svg>',
+    // The delete handle's mark. Heavier than the panel's dismiss ×, because
+    // this one removes source rather than closing a window.
+    cross: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
     gapAll: glyph('<rect x="1.6" y="1.6" width="3.6" height="3.6" rx="1"/>' +
       '<rect x="6.8" y="1.6" width="3.6" height="3.6" rx="1"/>' +
       '<rect x="1.6" y="6.8" width="3.6" height="3.6" rx="1"/>' +
@@ -584,6 +786,7 @@
       '<path d="M1.65 3.5v5M10.35 3.5v5"/>'),
   };
 
+  var D = '[data-tw-editor="delete"]';
   var P = '[data-tw-editor="panel"]';
   var PP = '[data-tw-editor="popover"]';
   // Both surfaces carry the same tokens: the popover lives on <body>, not
@@ -620,6 +823,29 @@
 
       /* body */
       P + ' .bw-body{padding:10px 12px;display:flex;flex-direction:column;gap:9px;overflow-y:auto}',
+      // The floating delete handle and the ghost it leaves behind. Both live on
+      // page elements rather than an editor surface, so they carry their own
+      // colours instead of the panel's tokens, and both shout — !important —
+      // because whatever the page styles that element with has to lose.
+      D + '{position:fixed;z-index:2147483646;width:20px;height:20px;display:none;',
+      '  align-items:center;justify-content:center;padding:0;border:0;border-radius:999px;',
+      '  background:' + DANGER + ';color:#fff;cursor:pointer;',
+      '  box-shadow:0 1px 4px rgba(0,0,0,.35),0 0 0 2px rgba(255,255,255,.9)}',
+      D + ':hover{background:#b81f1f}',
+      '[data-tw-removed]{opacity:.3!important;filter:grayscale(.7)!important}',
+      // The panel has nothing to offer an element that is on its way out, so
+      // every control folds away and leaves only the notice and its undo.
+      // A class, not [data-tw-removed]: that attribute means "this element is
+      // being cut", it is counted to size the blast radius, and it carries the
+      // ghost styling — all three of which are wrong for the panel's own body.
+      P + ' .bw-body.is-cutting > *:not(.bw-rm){display:none!important}',
+      P + ' .bw-rm{display:flex;align-items:flex-start;gap:9px;padding:11px;border-radius:8px;',
+      '  background:rgba(220,40,40,.09);border:1px solid rgba(220,40,40,.32)}',
+      P + ' .bw-rm-txt{flex:1;font:11px/1.45 ' + UI_FONT + ';color:var(--bw-fg)}',
+      P + ' .bw-rm-txt strong{display:block;font:600 11px/1.5 ' + UI_FONT + ';color:' + DANGER + '}',
+      P + ' .bw-rm-undo{flex:0 0 auto;font:600 11px/1 ' + UI_FONT + ';color:var(--bw-fg);',
+      '  border:1px solid var(--bw-border);border-radius:6px;padding:5px 9px;background:var(--bw-card)}',
+      P + ' .bw-rm-undo:hover{border-color:var(--bw-fg)}',
       P + ' .bw-row{display:flex;align-items:center;gap:8px}',
       P + ' .bw-row.top{align-items:flex-start}',
       P + ' .bw-lbl{flex:0 0 auto;width:58px;font:500 11px/1.3 ' + UI_FONT + ';color:var(--bw-muted);white-space:nowrap}',
@@ -2219,6 +2445,8 @@
     makeDraggable(panel, header);
 
     var body = el('div', 'bw-body');
+    ui.body = body;
+    body.appendChild(removeRow());
     body.appendChild(textRow());
     BOXES.forEach(function (box) { body.appendChild(boxSection(box)); });
     body.appendChild(addRow());
@@ -2244,6 +2472,7 @@
 
     document.body.appendChild(panel);
     buildPopover();
+    buildDeleteHandle();
   }
 
   function makeDraggable(box, handle) {
@@ -2277,6 +2506,7 @@
       shortId(selected) + (textEditable ? '  ✎' : '');
     readouts.forEach(function (update) { update(); });
     ui.classes.textContent = liveClasses(selected) || '(no classes)';
+    updateDeleteHandle();
     updateFooter();
   }
 
@@ -2318,8 +2548,10 @@
     if (!baseline.has(el)) baseline.set(el, classesOf(el));
     revealed = {}; // reveals are per-selection, not sticky across elements
     buildColorModel(); // re-read: a client-routed page can swap its @theme
-    setOutline(selected, SELECT_OUTLINE);
-    textEditable = TEXT_ENABLED && enableTextEditing(selected);
+    if (!isRemoved(selected)) setOutline(selected, SELECT_OUTLINE);
+    // Nothing about an element marked for removal is editable, and making it
+    // contenteditable would invite typing into something already on its way out.
+    textEditable = TEXT_ENABLED && !isRemoved(selected) && enableTextEditing(selected);
     if (textEditable) focusText(selected, point);
     panel.style.display = 'flex';
     ui.status.textContent = '';
@@ -2335,6 +2567,7 @@
     releaseOutline(selected);
     selected = null;
     panel.style.display = 'none';
+    updateDeleteHandle();
   }
 
   // ------------------------------------------------------------------- save
@@ -2356,6 +2589,14 @@
       // elements that legitimately had none (styled by a stylesheet, not by
       // utilities) — an edit the user never asked for.
       var edit = { id: el.getAttribute(ID_ATTR) };
+      // An element on its way out has nothing else to say. The writer drops
+      // any edit landing inside a cut anyway; not sending one keeps the
+      // request honest about what it is asking for.
+      if (entry.remove) {
+        edit.remove = true;
+        edits.push(edit);
+        return;
+      }
       if (entry.classes) {
         edit.classes = liveClasses(el);
         var was = baseline.get(el) || [];
@@ -2373,7 +2614,11 @@
     });
 
     var saving = [];
-    dirty.forEach(function (_entry, el) { saving.push(el); });
+    var removing = [];
+    dirty.forEach(function (entry, el) {
+      saving.push(el);
+      if (entry.remove) removing.push(el);
+    });
 
     ui.save.disabled = true;
     ui.status.textContent = 'saving…';
@@ -2401,6 +2646,19 @@
             if (el === selected) setOutline(el, SELECT_OUTLINE);
             else releaseOutline(el);
           });
+          // Cut from the file — but only take the nodes off the page where
+          // nothing else will. A framework backend re-renders from the new
+          // source, and pulling a node out from under React makes its next
+          // reconcile throw removeChild on something it no longer owns. In
+          // HTML mode nothing re-renders, so there the page must be told.
+          var gone = false;
+          removing.forEach(function (el) {
+            sameSource(el).forEach(function (node) {
+              if (node === selected) gone = true;
+              if (!HMR) node.remove();
+            });
+          });
+          if (gone) deselect();
           ui.status.textContent = data.files && data.files.length
             ? 'written to ' + data.files.map(function (f) { return f.split('/').pop(); }).join(', ')
             : 'written to index.html';
@@ -2495,6 +2753,7 @@
 
     var reflow = function () {
       if (popoverOpen() && popState.anchor) placePopover(popState.anchor);
+      updateDeleteHandle();
     };
     window.addEventListener('resize', reflow);
     window.addEventListener('scroll', reflow, true);

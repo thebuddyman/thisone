@@ -130,8 +130,11 @@ function validateEdit(edit) {
   if (edit.text !== undefined && typeof edit.text !== 'string') {
     return 'text must be a string';
   }
-  if (edit.classes === undefined && edit.text === undefined) {
-    return 'nothing to edit: send classes and/or text';
+  if (edit.remove !== undefined && typeof edit.remove !== 'boolean') {
+    return 'remove must be a boolean';
+  }
+  if (edit.classes === undefined && edit.text === undefined && !edit.remove) {
+    return 'nothing to edit: send classes, text and/or remove';
   }
   return null;
 }
@@ -177,6 +180,26 @@ app.post('/edit', (req, res) => {
       const element = elements[index];
       if (!element) {
         return res.status(404).json({ ok: false, reason: 'not-found', error: `no element with eid ${index}` });
+      }
+
+      // Resolved before anything else: an element on its way out has no use
+      // for a class or text edit.
+      if (edit.remove) {
+        if (!element.parentNode) {
+          return res.status(409).json({
+            ok: false,
+            reason: 'root-element',
+            error: `eid ${index} <${element.rawTagName}> has no parent; refusing to remove it`,
+          });
+        }
+        // Take the indentation in front of it too. Left behind, it serializes
+        // as a blank line full of trailing spaces where the element used to be.
+        const siblings = element.parentNode.childNodes;
+        const before = siblings[siblings.indexOf(element) - 1];
+        if (before && before.nodeType === 3 && !before.rawText.trim()) before.remove();
+        element.remove();
+        applied.push(`#${index} <${element.rawTagName}> removed`);
+        continue;
       }
 
       if (edit.classes !== undefined) {

@@ -137,14 +137,17 @@ function handleEdit(req, res, payload) {
     if (edit.text !== undefined && typeof edit.text !== 'string') {
       return json(res, 400, { ok: false, error: 'text must be a string' });
     }
-    if (edit.classes === undefined && edit.text === undefined) {
-      return json(res, 400, { ok: false, error: 'nothing to edit: send classes and/or text' });
+    if (edit.remove !== undefined && typeof edit.remove !== 'boolean') {
+      return json(res, 400, { ok: false, error: 'remove must be a boolean' });
+    }
+    if (edit.classes === undefined && edit.text === undefined && !edit.remove) {
+      return json(res, 400, { ok: false, error: 'nothing to edit: send classes, text and/or remove' });
     }
     const abs = safeResolve(loc.file);
     if (!abs) return json(res, 403, { ok: false, reason: 'outside-root', error: `refusing path: ${loc.file}` });
     if (!byFile.has(abs)) byFile.set(abs, []);
     byFile.get(abs).push({
-      id: edit.id, loc, classes: edit.classes, text: edit.text,
+      id: edit.id, loc, classes: edit.classes, text: edit.text, remove: edit.remove === true,
       // What actually changed, for spans that own only part of the class list.
       added: Array.isArray(edit.added) ? edit.added : undefined,
       removed: Array.isArray(edit.removed) ? edit.removed : undefined,
@@ -198,6 +201,9 @@ const server = http.createServer((req, res) => {
         endpoint: `http://localhost:${PORT}/edit`,
         token: TOKEN,
         text: true, // only a lone static JsxText child is editable; the rest is refused
+        // The dev server re-renders from the new source after a write, so the
+        // overlay must not take removed nodes out of the DOM itself.
+        hmr: true,
         colors: colors,
         textSizes: textSizes,
         fontWeights: fontWeights,

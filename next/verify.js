@@ -36,6 +36,9 @@ const LAYOUT = path.join(ROOT, 'src/app/layout.tsx');
 // The radius checks need a route that redefines the ladder; Cora does, and its
 // login page has a static className carrying rounded-full.
 const CORA = path.join(ROOT, 'src/app/experiments/cora/login/page.tsx');
+// Volt's design system renders 19 elements from one line — the worst blast
+// radius measured on these routes, and the reason a removal states a count.
+const VOLT = path.join(ROOT, 'src/app/experiments/volt/design-system/page.tsx');
 
 const results = [];
 const check = (name, pass, detail) => {
@@ -53,7 +56,10 @@ const snapshot = (f) => fs.readFileSync(f, 'utf8');
 const BACKUPS = path.join(__dirname, '..', '.backups');
 function guard(file) {
   fs.mkdirSync(BACKUPS, { recursive: true });
-  const dest = path.join(BACKUPS, path.basename(file) + '.' + Date.now() + '.bak');
+  // Keyed on the relative path, not the basename: three of the guarded files
+  // are called page.tsx, and two guards taken in the same millisecond used to
+  // land on one filename — silently throwing away the first file's only copy.
+  const dest = path.join(BACKUPS, path.relative(ROOT, file).replace(/[\\/]/g, '-') + '.bak');
   fs.copyFileSync(file, dest);
   return { file, dest, before: snapshot(file) };
 }
@@ -68,11 +74,17 @@ function restore(g) {
 }
 
 (async () => {
-  const guards = [guard(PAGE), guard(LAYOUT), guard(CORA)];
+  const guards = [guard(PAGE), guard(LAYOUT), guard(CORA), guard(VOLT)];
   const pageBefore = guards[0].before;
   const layoutBefore = guards[1].before;
 
-  const browser = await chromium.launch();
+  // Every write below happens inside the try. A thrown locator — a renamed
+  // selector, a route that moved — used to skip the restore entirely and leave
+  // a test edit sitting in the user's file, which is exactly the accident this
+  // harness exists to prevent. The finally is the whole point of the backups.
+  let browser;
+  try {
+  browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -298,13 +310,107 @@ function restore(g) {
   check('non-JSON content-type → 415', sec.badType === 415, String(sec.badType));
   check('path escape → 403', sec.escape === 403, String(sec.escape));
 
+  // ---- removing an element ----
+  //
+  // Nothing is destroyed until Save, so most of this is about what has NOT
+  // happened yet.
+  const xHandle = page.locator('[data-tw-delete]');
+  const notice = panel.locator('[data-tw-field="removed"]');
+
+  // A component root cannot go: removing it would leave nothing to return.
+  await page.goto(APP + '/', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  const rootBefore = snapshot(PAGE);
+  await page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
+  await page.waitForTimeout(250);
+  check('the delete handle appears on a selection', await xHandle.isVisible());
+  await xHandle.click();
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1200);
+  const rootStatus = await panel.locator('[data-tw-status]').textContent();
+  check('removing a component root is refused, by name',
+    /returns|render/i.test(rootStatus), JSON.stringify(rootStatus));
+  check('the refusal wrote nothing', snapshot(PAGE) === rootBefore);
+  check('the pending removal is kept, not silently dropped',
+    (await panel.locator('[data-tw-save]').textContent()).trim() === 'Save 1 change',
+    await panel.locator('[data-tw-save]').textContent());
+  await panel.locator('[data-tw-undo-remove]').click();
+
+  // Blast radius: one line, nineteen elements, all ghosted and all counted.
+  await page.goto(APP + '/experiments/volt/design-system', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  const voltBefore = snapshot(VOLT);
+  const shared = page.locator('[data-bw-loc^="src/app/experiments/volt/design-system/page.tsx:555:9:"]').first();
+  await shared.scrollIntoViewIfNeeded();
+  await shared.click();
+  await page.waitForTimeout(250);
+  await xHandle.click();
+  await page.waitForTimeout(250);
+  const noticeText = await notice.textContent();
+  check('the panel names the blast radius before you can save',
+    /renders 19 elements/.test(noticeText) && /removes all 19/.test(noticeText),
+    JSON.stringify(noticeText));
+  check('all 19 instances are ghosted, not just the one clicked',
+    (await page.locator('[data-tw-removed]').count()) === 19,
+    String(await page.locator('[data-tw-removed]').count()));
+  check('marking wrote nothing to disk', snapshot(VOLT) === voltBefore);
+  await panel.locator('[data-tw-undo-remove]').click();
+  await page.waitForTimeout(200);
+  check('undo clears all 19 ghosts', (await page.locator('[data-tw-removed]').count()) === 0);
+  check('undo drops the pending change',
+    (await panel.locator('[data-tw-save]').textContent()).trim() === 'Saved');
+
+  // And now a real one, written and diffed.
+  await page.goto(APP + '/experiments/cora/login', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const cutOrig = snapshot(CORA).split('\n');
+  // NOT by class: the radius block rewrote this button's rounded-full to
+  // rounded-lg earlier in the same run. type is what does not move.
+  const doomed = page.locator('button[type="submit"]').first();
+  await doomed.scrollIntoViewIfNeeded();
+  await doomed.click();
+  await page.waitForTimeout(250);
+  await xHandle.click();
+  await page.waitForTimeout(200);
+  check('a one-instance location says so plainly',
+    /cut from the source file/.test(await notice.textContent()),
+    JSON.stringify(await notice.textContent()));
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1500);
+
+  // The exact property: the file is the original minus ONE contiguous run of
+  // lines. A reflow, a moved brace or a stray second edit all break it.
+  const cutAfter = snapshot(CORA).split('\n');
+  let head = 0;
+  while (head < cutAfter.length && cutAfter[head] === cutOrig[head]) head++;
+  let tail = 0;
+  while (tail < cutAfter.length - head &&
+         cutAfter[cutAfter.length - 1 - tail] === cutOrig[cutOrig.length - 1 - tail]) tail++;
+  const cut = cutOrig.slice(head, cutOrig.length - tail);
+  check('the file is the original minus one contiguous run of lines',
+    head + tail === cutAfter.length &&
+    cutOrig.slice(0, head).concat(cutOrig.slice(cutOrig.length - tail)).join('\n') === cutAfter.join('\n'),
+    `${cut.length} lines cut at ${head + 1}`);
+  check('the run that went is exactly the element',
+    /<button/.test(cut[0]) && /<\/button>/.test(cut[cut.length - 1]),
+    JSON.stringify([cut[0].trim(), cut[cut.length - 1].trim()]));
+  check('no blank line was left where it stood', !/\n[ \t]+\n/.test(cutAfter.join('\n')));
+  // The overlay must NOT take it off the page itself — pulling a node out from
+  // under React makes the next reconcile throw. HMR is what removes it.
+  await page.waitForTimeout(2500);
+  check('HMR re-rendered the page without it',
+    (await page.locator('button[type="submit"]').count()) === 0);
+
   check('no page errors throughout', errors.length === 0, errors.slice(0, 2).join(' | '));
 
   await page.screenshot({ path: path.join(__dirname, '..', 'next-verify.png') });
-  await browser.close();
-
-  console.log('');
-  guards.forEach((g) => results.push(restore(g)));
+  } catch (err) {
+    check('the run completed without throwing', false, err.message.split('\n')[0]);
+  } finally {
+    if (browser) await browser.close();
+    console.log('');
+    guards.forEach((g) => results.push(restore(g)));
+  }
 
   const failed = results.filter((r) => !r).length;
   console.log(`${results.length - failed}/${results.length} checks passed`);
