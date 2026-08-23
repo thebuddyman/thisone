@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-13 commits, working tree clean, `npm test` green.
+14 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -128,6 +128,14 @@ down the screen. For the same reason the status message sits *above* the
 buttons: underneath them, a message appearing or clearing changed the footer's
 height and slid the buttons 22px.
 
+**The delete handle belongs to its element's top edge, not to the viewport.**
+Clamping it into view unconditionally left it stuck to the top of the screen
+long after the element had scrolled away above it, pointing at nothing. It may
+be nudged into view by up to its own size — which is what an element sitting
+flush against an edge needs — and past that it hides. The two candidate
+positions are the element's top corners only; the second exists to dodge the
+panel, not to follow the scroll.
+
 **Edit mode is off until it is asked for.** While it is on, every click is
 swallowed in the capture phase so the app's own links and buttons cannot fire —
 which is what makes the page selectable, and equally what makes it unusable as an
@@ -231,6 +239,11 @@ components are capitalised so "host element" means something else.
 ---
 
 ## Traps — these bit repeatedly
+
+**Do not wait a fixed number of milliseconds for HMR.** Turbopack's recompile
+is not on a clock: a `waitForTimeout(2500)` before the two HMR assertions in
+`verify.js` failed about one run in five, and passing four times in a row is not
+evidence. Poll for the result and then assert on it.
 
 **Stale servers give misleading results.** Three times a `lsof | kill` did not
 take, the new server died with `EADDRINUSE`, and an old one kept serving. Always

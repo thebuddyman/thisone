@@ -139,13 +139,29 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   //
   // The header it used to be dragged by is folded away exactly when the bar is
   // all that is on screen, so there was nothing left to grab.
-  await page.keyboard.press('Escape');
-  const grip = panel.locator('[data-tw-grip]');
-  check('a grip shows on the bar', await grip.isVisible());
+  // Unfolded first: the header is a handle too, and has to say the same thing
+  // the bar does. It used to say `move` while the bar said `grab`.
+  await card.click();
+  const cursorOf = (loc) => loc.evaluate(el => getComputedStyle(el).cursor);
+  const foot = panel.locator('.bw-foot');
+  check('unfolded, the header offers the open hand',
+    (await cursorOf(panel.locator('.bw-h'))) === 'grab', await cursorOf(panel.locator('.bw-h')));
+  check('and the bar says exactly the same thing',
+    (await cursorOf(foot)) === 'grab', await cursorOf(foot));
+  check('buttons on a handle still point, they do not grab',
+    (await cursorOf(panel.locator('.bw-h .bw-x'))) === 'pointer',
+    await cursorOf(panel.locator('.bw-h .bw-x')));
+  check('a disabled one offers nothing',
+    (await cursorOf(save)) === 'default', await cursorOf(save));
 
-  const g = await grip.boundingBox();
+  await page.keyboard.press('Escape');
+
+  // Grab the empty run between the history buttons and Save — no grip icon to
+  // aim at, the whole bar is the handle.
+  const rb = await redo.boundingBox();
+  const sbx = await save.boundingBox();
   const wasAt = await panel.boundingBox();
-  const from = { x: g.x + g.width / 2, y: g.y + g.height / 2 };
+  const from = { x: (rb.x + rb.width + sbx.x) / 2, y: rb.y + rb.height / 2 };
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x - 300, from.y - 200, { steps: 8 });

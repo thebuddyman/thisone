@@ -47,6 +47,38 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
     Math.abs(hb.y + hb.height / 2 - box.y) < 3,
     `handle ${Math.round(hb.x)},${Math.round(hb.y)} vs corner ${Math.round(box.x + box.width)},${Math.round(box.y)}`);
 
+  // ---- the handle belongs to the element, not to the viewport ----
+  //
+  // Clamped into view unconditionally it stuck to the top of the screen long
+  // after the element had scrolled away above it, pointing at nothing. Tested
+  // on an element near the top of the page: the fixture cannot scroll far
+  // enough to push a mid-page one off the screen.
+  await page.setViewportSize({ width: 1280, height: 380 });
+  const near = page.locator('[data-eid="6"]');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await near.click();
+  await page.waitForTimeout(150);
+  check('the handle rides the element it belongs to', await handle.isVisible());
+  const onScreen = await handle.boundingBox();
+  const corner = await near.boundingBox();
+  check('…on its top-right corner',
+    Math.abs(onScreen.y + onScreen.height / 2 - corner.y) < 3,
+    `${Math.round(onScreen.y)} vs corner ${Math.round(corner.y)}`);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(200);
+  check('scrolling past the element takes the handle with it',
+    !(await handle.isVisible()),
+    await handle.evaluate(el => `${el.style.display} @${el.style.top}`));
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(200);
+  check('scrolling back brings it back', await handle.isVisible());
+
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.waitForTimeout(150);
+  await button.click(); // back to the element the rest of this suite removes
+
   // ---- marking is a preview, not a write ----
   await handle.click();
   check('the element is ghosted, not removed from the page',

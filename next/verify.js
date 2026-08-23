@@ -176,7 +176,23 @@ function restore(g) {
   // Compare RESOLVED RGB, not the serialized string: the palette emits a
   // literal oklch() while the app's own theme resolves to lab(), and the two
   // serialize differently while painting the identical colour.
-  await page.waitForTimeout(2500);
+  // Turbopack's recompile is not on a clock. A fixed wait here failed about one
+  // run in five — poll for the result, then assert on it.
+  const settled = (fn) => page.waitForFunction(fn, null, { timeout: 20000 })
+    .then(() => true).catch(() => false);
+  await settled(() => {
+    const el = document.querySelector('[data-bw-loc^="src/app/page.tsx:5:5:"]');
+    if (!el) return false;
+    const px = (css) => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 1;
+      const x = cv.getContext('2d');
+      x.fillStyle = css;
+      x.fillRect(0, 0, 1, 1);
+      return Array.from(x.getImageData(0, 0, 1, 1).data).slice(0, 3).join(',');
+    };
+    return px(getComputedStyle(el).backgroundColor) === px('oklch(69.6% 0.17 162.48)');
+  });
   const hmr = await page.evaluate(() => {
     const el = document.querySelector('[data-bw-loc^="src/app/page.tsx:5:5:"]');
     if (!el) return { missing: true };
@@ -411,9 +427,8 @@ function restore(g) {
   check('no blank line was left where it stood', !/\n[ \t]+\n/.test(cutAfter.join('\n')));
   // The overlay must NOT take it off the page itself — pulling a node out from
   // under React makes the next reconcile throw. HMR is what removes it.
-  await page.waitForTimeout(2500);
   check('HMR re-rendered the page without it',
-    (await page.locator('button[type="submit"]').count()) === 0);
+    await settled(() => !document.querySelector('button[type="submit"]')));
 
   check('no page errors throughout', errors.length === 0, errors.slice(0, 2).join(' | '));
 

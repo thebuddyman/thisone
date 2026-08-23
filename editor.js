@@ -679,13 +679,27 @@
     }
 
     var size = 20, gap = 4;
+    // The handle belongs to the element's TOP edge and to nothing else.
+    // Clamped into the viewport unconditionally, it used to stick to the top of
+    // the screen long after the element had scrolled away above it, pointing at
+    // nothing. It may still be nudged into view by up to its own size — that is
+    // what an element sitting flush against an edge needs — but once its line
+    // has left the viewport altogether it is simply not there.
+    var line = r.top - size / 2;
+    var offscreen = line + size <= 0 || line >= window.innerHeight ||
+      r.right + size / 2 <= 0 || r.left - size / 2 >= window.innerWidth;
+    if (offscreen) {
+      deleteHandle.style.display = 'none';
+      return;
+    }
+
     var clampX = function (x) { return Math.max(gap, Math.min(window.innerWidth - size - gap, x)); };
     var clampY = function (y) { return Math.max(gap, Math.min(window.innerHeight - size - gap, y)); };
+    // Two candidates, not four: the other side of the element is the panel
+    // dodge, the bottom of it is a different element's business.
     var corners = [
-      [r.right - size / 2, r.top - size / 2],
-      [r.left - size / 2, r.top - size / 2],
-      [r.right - size / 2, r.bottom - size / 2],
-      [r.left - size / 2, r.bottom - size / 2],
+      [r.right - size / 2, line],
+      [r.left - size / 2, line],
     ].map(function (c) { return [clampX(c[0]), clampY(c[1])]; });
 
     var blockers = [panel, popover].filter(function (node) {
@@ -699,9 +713,9 @@
     };
     var clear = corners.find(function (c) { return !hits(c); });
 
-    // A short element in the top-right band has all four of its corners under
+    // A short element in the top-right band has both of its top corners under
     // the panel. Rather than hand back one that cannot be clicked, slide out
-    // past the blocker's edge and keep the element's own vertical line.
+    // past the blocker's edge and keep the element's own top line.
     if (!clear) {
       var edge = Math.min.apply(null, blockers.map(function (b) { return b.left; }));
       clear = [clampX(edge - size - gap), corners[0][1]];
@@ -1010,10 +1024,6 @@
     // this one removes source rather than closing a window.
     cross: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
       'stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
-    grip: '<svg width="10" height="13" viewBox="0 0 10 13" fill="currentColor">' +
-      '<circle cx="3" cy="3" r="1.05"/><circle cx="7" cy="3" r="1.05"/>' +
-      '<circle cx="3" cy="6.5" r="1.05"/><circle cx="7" cy="6.5" r="1.05"/>' +
-      '<circle cx="3" cy="10" r="1.05"/><circle cx="7" cy="10" r="1.05"/></svg>',
     undo: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" ' +
       'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M2.2 5.4h5.4a3 3 0 0 1 0 6H5.2"/><path d="M4.6 2.6 2 5.4l2.6 2.8"/></svg>',
@@ -1052,6 +1062,8 @@
   var SURFACES = [P, PP, T].join(',');
   /** Same rule on each surface: both(' .bw-x') → '[…panel] .bw-x,[…popover] .bw-x,…'. */
   function both(sel) { return [P, PP, T].map(function (s) { return s + sel; }).join(','); }
+  /** The two drag handles, which drifted apart once — move on one, grab on the other. */
+  function handles(sel) { return P + ' .bw-h' + sel + ',' + P + ' .bw-foot' + sel; }
 
   function styleSheet() {
     return [
@@ -1076,7 +1088,7 @@
 
       /* header */
       P + ' .bw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;',
-      '  padding:9px 10px 9px 12px;border-bottom:1px solid var(--bw-hair);cursor:move;flex:0 0 auto}',
+      '  padding:9px 10px 9px 12px;border-bottom:1px solid var(--bw-hair);flex:0 0 auto}',
       P + ' .bw-h strong{font:600 12px/1.2 ' + UI_FONT + ';letter-spacing:-.01em}',
       both(' .bw-x') + '{width:22px;height:22px;border-radius:6px;color:var(--bw-faint);',
       '  font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center}',
@@ -1263,15 +1275,13 @@
       P + '[data-tw-idle] .bw-foot{border-top:0}',
       P + ' .bw-foot-row{display:flex;align-items:center;gap:6px}',
       // The bar is the only part of the panel on screen when nothing is
-      // selected, so it has to be the handle too — the header it used to be
-      // dragged by is folded away exactly then.
-      P + ' .bw-foot{cursor:grab}',
-      P + ' .bw-foot:active{cursor:grabbing}',
-      P + ' .bw-foot button{cursor:pointer}',
-      P + ' .bw-foot button:disabled{cursor:default}',
-      P + ' .bw-grip{flex:0 0 auto;display:flex;align-items:center;padding:0 1px;',
-      '  color:var(--bw-faint)}',
-      P + ' .bw-foot:hover .bw-grip{color:var(--bw-muted)}',
+      // selected, so it has to be a handle too — the header it used to be
+      // dragged by is folded away exactly then. Both wear the same cursor:
+      // the open hand IS the affordance, which is why there is no grip icon.
+      handles('') + '{cursor:grab}',
+      handles(':active') + '{cursor:grabbing}',
+      handles(' button') + '{cursor:pointer}',
+      handles(' button:disabled') + '{cursor:default}',
       P + ' .bw-hbtn{flex:0 0 auto;width:28px;height:28px;display:flex;align-items:center;',
       '  justify-content:center;border-radius:6px;color:var(--bw-fg);',
       '  box-shadow:inset 0 0 0 1px var(--bw-border)}',
@@ -2762,12 +2772,6 @@
 
     var footer = el('div', 'bw-foot');
     var row = el('div', 'bw-foot-row');
-
-    var grip = el('span', 'bw-grip');
-    grip.setAttribute('data-tw-grip', '');
-    grip.innerHTML = ICONS.grip;
-    grip.title = 'Drag to move';
-    row.appendChild(grip);
 
     ui.undo = el('button', 'bw-hbtn');
     ui.undo.setAttribute('data-tw-undo', '');
