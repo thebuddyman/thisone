@@ -124,7 +124,9 @@ function check(name, pass, detail) {
 
   // Escape deselects
   await page.keyboard.press('Escape');
-  check('escape hides panel', !(await panel.isVisible()));
+  // The panel outlives the selection now — only its body folds away.
+  check('escape drops the selection', (await panel.getAttribute('data-tw-idle')) !== null);
+  check('…and leaves the button bar behind', await panel.locator('[data-tw-save]').isVisible());
   // Park the cursor away from the card first. Deselecting does not stop hover
   // highlighting, so leaving the mouse on the element lets the next mouse event
   // re-apply the hover outline — which raced this assertion about 1 run in 10.

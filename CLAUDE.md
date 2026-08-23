@@ -11,20 +11,20 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-11 commits, working tree clean, `npm test` green.
+12 commits, working tree clean, `npm test` green.
 
 ---
 
 ## Run it
 
 ```bash
-npm test                                   # 9 suites, ~60s
+npm test                                   # 10 suites, ~70s
 node cli.js --root ../uiux_experiment --check   # inspect a project
 node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                   # the standalone HTML demo
-node next/verify.js --root ../uiux_experiment   # 54 live checks against the real app
+node next/verify.js --root ../uiux_experiment   # 55 live checks against the real app
 ```
 
 `uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
@@ -44,7 +44,7 @@ node next/verify.js --root ../uiux_experiment   # 54 live checks against the rea
 | `next/server.js` | the editor server for a Next project |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
-| `test/` | 9 suites; `run.mjs` orchestrates |
+| `test/` | 10 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 `how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
@@ -100,6 +100,24 @@ change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
 `text-clay` a colour. `gap-` needs a lookahead because `gap-x-4` starts with it.
 `rounded-` is the same trap twice over: `rounded-sm` is a rung, `rounded-s` is
 the two start corners, and `rounded-t-lg` is neither.
+
+**Undo/redo is by snapshot, not by command.** Every control already writes
+straight to the DOM and to `dirty`, so recording the state after each mutation
+is cheaper and far harder to get wrong than teaching a dozen call sites to
+describe and invert themselves. A state is one entry per element the session has
+touched, and these sessions touch a handful. Pristine state is captured in
+`select()`, not in `markDirty()`: every mutation acts on the current selection,
+so selection is the last moment the element is still untouched.
+
+**Undo stops at a save.** The file has already changed by then, so stepping back
+could only stage the reverse as a fresh edit while claiming to have undone
+something. The saved state becomes the new starting point.
+
+**The button bar outlives the selection, and the panel is anchored to the
+bottom.** Save, undo and redo have nothing to do with which element is selected,
+and losing the Save button by clicking the background was a way to strand unsaved
+work behind a click. Bottom-anchored so the bar holds still and the panel grows
+*upward* above it — top-anchored, every selection shoved Save down the screen.
 
 **Edit mode is off until it is asked for.** While it is on, every click is
 swallowed in the capture phase so the app's own links and buttons cannot fire —
@@ -243,6 +261,11 @@ Read the rule first, recurse only when the list is non-empty.
 `'[a],[b]' + '[data-theme]'` gives `[a],[b][data-theme]`. This made the panel
 permanently dark. Use the `both()` helper.
 
+**A visible panel no longer means something is selected.** The panel is on
+screen for the whole of edit mode; only its body folds away. Four assertions
+across three suites were using `panel.isVisible()` as a proxy for "an element is
+selected". `[data-tw-idle]` on the panel is the signal.
+
 **Hovering a container lands on whichever child owns its centre.** A test that
 hovered a `<section>` and asserted the outline on that section found nothing —
 Playwright aims at the centre point, the `<h1>` inside owns it, and the editor
@@ -261,12 +284,12 @@ positive.
 
 ## Test discipline
 
-`npm test` runs 9 suites: 3 pure-unit (`00`, `05`, `06`) and 6 browser suites
+`npm test` runs 10 suites: 3 pure-unit (`00`, `05`, `06`) and 7 browser suites
 against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
 
-`next/verify.js` is the live suite: 54 checks against the real Next app,
+`next/verify.js` is the live suite: 55 checks against the real Next app,
 including refusals, security (401/403/415), and byte-exact restore of every file
 it touches. The radius block runs against `experiments/cora/login` specifically
 because Cora redefines the radius ladder — every number it asserts would be

@@ -113,7 +113,10 @@ function restore(g) {
 
   // ---- select and preview ----
   await target.click({ position: { x: 5, y: 5 } });
-  check('panel opened', await panel.isVisible());
+  // The panel outlives the selection now — `data-tw-idle` is what says whether
+  // anything is selected, and the button bar below it is always on screen.
+  check('panel opened', (await panel.getAttribute('data-tw-idle')) === null);
+  check('the button bar is on screen', await panel.locator('[data-tw-save]').isVisible());
   check('panel names the source location',
     (await panel.locator('strong').first().textContent()).includes('page.tsx:5'),
     await panel.locator('strong').first().textContent());

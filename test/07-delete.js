@@ -93,7 +93,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
     `${before.split('\n').length} → ${after.split('\n').length}`);
   check('no blank line was left where it stood', !/\n[ \t]+\n/.test(after));
   check('the element left the page too', (await button.count()) === 0);
-  check('the panel closed with it', !(await panel.isVisible()));
+  check('the panel went back to idle', (await panel.getAttribute('data-tw-idle')) !== null);
   check('the handle went with it', !(await handle.isVisible()));
 
   // ---- a second removal against the rewritten file ----

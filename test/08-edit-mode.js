@@ -57,11 +57,14 @@ const hits = (page) => page.evaluate(() => window.__hits);
   await toggle.click();
   check('it reports itself as on', (await toggle.getAttribute('aria-pressed')) === 'true');
   check('a ring marks that clicks are being held', await ring.isVisible());
-  check('turning it on selects nothing by itself', !(await panel.isVisible()));
+  check('turning it on selects nothing by itself',
+    (await panel.getAttribute('data-tw-idle')) !== null);
+  check('but the button bar is there from the start',
+    await panel.locator('[data-tw-save]').isVisible());
 
   const before = await hits(page);
   await card.click();
-  check('now clicking an element opens the panel', await panel.isVisible());
+  check('now clicking an element opens the panel', await panel.locator('.bw-body').isVisible());
   check("the page's own click was swallowed", (await hits(page)) === before,
     `${before} → ${await hits(page)}`);
 
@@ -75,7 +78,7 @@ const hits = (page) => page.evaluate(() => window.__hits);
 
   // ---- escape steps out one layer at a time ----
   await page.keyboard.press('Escape');
-  check('escape drops the selection first', !(await panel.isVisible()));
+  check('escape drops the selection first', (await panel.getAttribute('data-tw-idle')) !== null);
   check('…and stays in edit mode', (await toggle.getAttribute('aria-pressed')) === 'true');
   await page.keyboard.press('Escape');
   check('escape again leaves edit mode', (await toggle.getAttribute('aria-pressed')) === 'false');

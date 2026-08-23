@@ -308,7 +308,156 @@
     if (kind === 'remove') entry.remove = true;
     dirty.set(el, entry);
     if (PREVIEW_ATTR) el.setAttribute(PREVIEW_ATTR, '');
+    pushHistory(kind);
     updateFooter();
+  }
+
+  // ----------------------------------------------------------------- history
+
+  /**
+   * Undo/redo by snapshot, not by command.
+   *
+   * Every control in the panel already writes straight to the DOM and to
+   * `dirty`; recording the state after each one is both cheaper and far harder
+   * to get wrong than teaching a dozen call sites to describe and invert
+   * themselves. The states are small — one entry per element the session has
+   * touched, and these sessions touch a handful.
+   */
+  var history = [[]];      // history[0] is the session's starting point
+  var historyAt = 0;       // the state currently on screen
+  var touched = [];        // every element seen, in the order it was selected
+  var pristine = new Map();// each one as it was before anything was done to it
+  var restoring = false;   // guards pushHistory while a state is being applied
+  var lastPush = null;     // for coalescing a run of keystrokes into one step
+  var HISTORY_CAP = 100;
+
+  /** One element's complete editable state. */
+  function stateOf(el) {
+    var entry = dirty.get(el);
+    return {
+      el: el,
+      cls: el.getAttribute('class'),
+      // Only a leaf's text round-trips. textContent on a container would
+      // flatten its markup — the very thing the writer refuses to do.
+      text: el.children.length === 0 ? el.textContent : null,
+      removed: isRemoved(el),
+      dirty: entry ? { text: entry.text, classes: entry.classes, remove: entry.remove } : null,
+    };
+  }
+
+  /**
+   * Remember an element and how it looked before the session got to it.
+   *
+   * Called from select(), never from markDirty: every mutation acts on the
+   * current selection, so selection is the moment the element is still
+   * pristine. Capturing it after a mutation would record the mutation as the
+   * thing to go back to.
+   */
+  function noteTouched(el) {
+    if (!el || pristine.has(el)) return;
+    pristine.set(el, stateOf(el));
+    touched.push(el);
+  }
+
+  function pushHistory(kind) {
+    if (restoring) return;
+    var now = Date.now();
+    // A run of keystrokes is one step, not one per character.
+    var coalesce = kind === 'text' && lastPush && lastPush.kind === 'text' &&
+      lastPush.el === selected && now - lastPush.at < 700 &&
+      historyAt === history.length - 1 && historyAt > 0;
+
+    history = history.slice(0, historyAt + 1);
+    if (coalesce) {
+      history[historyAt] = touched.map(stateOf);
+    } else {
+      history.push(touched.map(stateOf));
+      if (history.length > HISTORY_CAP) history.shift();
+      historyAt = history.length - 1;
+    }
+    lastPush = { el: selected, kind: kind, at: now };
+    updateHistoryButtons();
+  }
+
+  /** Everything goes back to how the session's starting point had it. */
+  function forgetHistory() {
+    history = [[]];
+    historyAt = 0;
+    touched = [];
+    pristine = new Map();
+    lastPush = null;
+    updateHistoryButtons();
+  }
+
+  function applyState(state) {
+    restoring = true;
+    var byEl = new Map();
+    state.forEach(function (s) { byEl.set(s.el, s); });
+
+    touched.forEach(function (el) {
+      var s = byEl.get(el) || pristine.get(el);
+      if (!s) return;
+
+      if (s.cls === null) el.removeAttribute('class');
+      else if (el.getAttribute('class') !== s.cls) el.setAttribute('class', s.cls);
+
+      if (s.text !== null && el.children.length === 0 && el.textContent !== s.text) {
+        el.textContent = s.text;
+      }
+
+      // Removal is recorded on the element that holds the edit, and applied to
+      // every instance its source location renders.
+      sameSource(el).forEach(function (node) {
+        if (s.removed) node.setAttribute('data-tw-removed', '');
+        else node.removeAttribute('data-tw-removed');
+      });
+
+      if (s.dirty) dirty.set(el, { text: s.dirty.text, classes: s.dirty.classes, remove: s.dirty.remove });
+      else dirty.delete(el);
+
+      if (PREVIEW_ATTR) {
+        if (dirty.has(el)) el.setAttribute(PREVIEW_ATTR, '');
+        else el.removeAttribute(PREVIEW_ATTR);
+      }
+    });
+
+    // Outlines last: releaseOutline reads both the dirty entry and the ghost
+    // attribute, and both had to settle first.
+    touched.forEach(function (el) {
+      sameSource(el).forEach(function (node) {
+        if (node === selected) setOutline(node, isRemoved(node) ? REMOVE_OUTLINE : SELECT_OUTLINE);
+        else releaseOutline(node);
+      });
+    });
+
+    restoring = false;
+    lastPush = null;
+    refresh();
+    updateDeleteHandle();
+    updateFooter();
+  }
+
+  function canUndo() { return historyAt > 0; }
+  function canRedo() { return historyAt < history.length - 1; }
+
+  function undo() {
+    if (!canUndo()) return;
+    historyAt--;
+    applyState(history[historyAt]);
+  }
+
+  function redo() {
+    if (!canRedo()) return;
+    historyAt++;
+    applyState(history[historyAt]);
+  }
+
+  function updateHistoryButtons() {
+    if (!ui.undo) return;
+    ui.undo.disabled = !canUndo();
+    ui.redo.disabled = !canRedo();
+    ui.undo.title = canUndo() ? 'Undo (' + MOD + 'Z)' : 'Nothing to undo';
+    ui.redo.title = canRedo() ? 'Redo (' + MOD + '\u21e7Z)' : 'Nothing to redo';
   }
 
   // -------------------------------------------------------------- edit mode
@@ -358,6 +507,7 @@
       if (hovered) { releaseOutline(hovered); hovered = null; }
     }
     rememberMode(on);
+    updatePanelChrome();
     updateModeToggle();
   }
 
@@ -478,6 +628,10 @@
       if (node === selected) setOutline(node, SELECT_OUTLINE);
       else releaseOutline(node);
     });
+    // This clears the dirty entry by hand rather than through markDirty, so
+    // the step has to be recorded by hand too — otherwise the top of the
+    // history would describe a page that no longer exists.
+    pushHistory('remove');
     updateFooter();
     refresh();
   }
@@ -816,6 +970,7 @@
   var OKGREEN = '#2f9e64';
   var UI_FONT = "Figtree, Figtree_400Regular, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   var UI_MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace";
+  var MOD = /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '\u2318' : 'Ctrl+';
 
   function vars(t) {
     return Object.keys(t)
@@ -855,6 +1010,12 @@
     // this one removes source rather than closing a window.
     cross: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
       'stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
+    undo: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M2.2 5.4h5.4a3 3 0 0 1 0 6H5.2"/><path d="M4.6 2.6 2 5.4l2.6 2.8"/></svg>',
+    redo: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M10.8 5.4H5.4a3 3 0 0 0 0 6h2.4"/><path d="M8.4 2.6 11 5.4l-2.6 2.8"/></svg>',
     gapAll: glyph('<rect x="1.6" y="1.6" width="3.6" height="3.6" rx="1"/>' +
       '<rect x="6.8" y="1.6" width="3.6" height="3.6" rx="1"/>' +
       '<rect x="1.6" y="6.8" width="3.6" height="3.6" rx="1"/>' +
@@ -897,8 +1058,11 @@
       both('[data-theme="dark"]') + '{' + vars(TOKENS.dark) + '}',
       PP + ' *{box-sizing:border-box;margin:0}',
       PP + ' button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}',
+      // Anchored to the BOTTOM, so the button bar holds still and the panel
+      // grows upward above it when something is selected. Top-anchored, every
+      // selection shoved the Save button down the screen.
       P + '{',
-      '  position:fixed;top:16px;right:16px;width:300px;max-height:calc(100vh - 32px);',
+      '  position:fixed;bottom:58px;right:16px;width:300px;max-height:calc(100vh - 74px);',
       '  z-index:2147483647;display:none;flex-direction:column;overflow:hidden;',
       '  background:var(--bw-card);color:var(--bw-fg);border:1px solid var(--bw-border);',
       '  border-radius:12px;box-shadow:var(--bw-shadow);font:13px/1.45 ' + UI_FONT + ';',
@@ -1088,14 +1252,26 @@
       '  word-break:break-word;max-height:76px;overflow-y:auto;user-select:text}',
 
       /* footer */
-      P + ' .bw-foot{flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:10px 12px;',
+      P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;',
       '  border-top:1px solid var(--bw-hair);background:var(--bw-bg)}',
+      // With nothing selected the footer IS the panel, so it carries no top
+      // border of its own — there is nothing above it to be divided from.
+      P + '[data-tw-idle] .bw-foot{border-top:0}',
+      P + ' .bw-foot-row{display:flex;align-items:center;gap:6px}',
+      P + ' .bw-hbtn{flex:0 0 auto;width:28px;height:28px;display:flex;align-items:center;',
+      '  justify-content:center;border-radius:6px;color:var(--bw-fg);',
+      '  box-shadow:inset 0 0 0 1px var(--bw-border)}',
+      P + ' .bw-hbtn:hover:not(:disabled){background:var(--bw-hover)}',
+      P + ' .bw-hbtn:disabled{color:var(--bw-faint);box-shadow:inset 0 0 0 1px var(--bw-hair);',
+      '  cursor:default}',
+      P + ' .bw-foot-row .bw-save{margin-left:auto}',
       P + ' .bw-save{font:600 12px/1 ' + UI_FONT + ';color:#fff;background:var(--bw-brand);',
       '  border-radius:6px;padding:8px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08);white-space:nowrap}',
       P + ' .bw-save:hover{filter:brightness(1.06)}',
       P + ' .bw-save:disabled{background:transparent;color:var(--bw-faint);',
       '  box-shadow:inset 0 0 0 1px var(--bw-border);cursor:default}',
-      P + ' .bw-status{flex:1;min-width:0;font:11px/1.35 ' + UI_FONT + ';color:var(--bw-muted);word-break:break-word}',
+      P + ' .bw-status{min-width:0;font:11px/1.35 ' + UI_FONT + ';color:var(--bw-muted);word-break:break-word}',
+      P + ' .bw-status:empty{display:none}',
       P + ' .bw-status.is-ok{color:var(--bw-ok)}',
       P + ' .bw-status.is-err{color:var(--bw-danger)}',
     ].join('\n');
@@ -2544,6 +2720,7 @@
     bindTheme(panel);
 
     var header = el('div', 'bw-h');
+    ui.header = header;
     ui.title = el('strong', null, 'nothing selected');
     var close = el('button', 'bw-x', '×');
     close.title = 'Deselect (Esc)';
@@ -2570,12 +2747,28 @@
     panel.appendChild(body);
 
     var footer = el('div', 'bw-foot');
+    var row = el('div', 'bw-foot-row');
+
+    ui.undo = el('button', 'bw-hbtn');
+    ui.undo.setAttribute('data-tw-undo', '');
+    ui.undo.innerHTML = ICONS.undo;
+    ui.undo.addEventListener('click', undo);
+
+    ui.redo = el('button', 'bw-hbtn');
+    ui.redo.setAttribute('data-tw-redo', '');
+    ui.redo.innerHTML = ICONS.redo;
+    ui.redo.addEventListener('click', redo);
+
     ui.save = el('button', 'bw-save', 'Saved');
     ui.save.setAttribute('data-tw-save', '');
     ui.save.addEventListener('click', save);
     ui.status = el('span', 'bw-status', '');
     ui.status.setAttribute('data-tw-status', '');
-    footer.appendChild(ui.save);
+
+    row.appendChild(ui.undo);
+    row.appendChild(ui.redo);
+    row.appendChild(ui.save);
+    footer.appendChild(row);
     footer.appendChild(ui.status);
     panel.appendChild(footer);
 
@@ -2596,7 +2789,11 @@
       offsetX = e.clientX - rect.left;
       offsetY = e.clientY - rect.top;
       box.style.right = 'auto';
+      // Dragging pins the top edge, so the bottom anchor has to let go or the
+      // panel would be stretched between the two.
+      box.style.bottom = 'auto';
       box.style.left = rect.left + 'px';
+      box.style.top = rect.top + 'px';
       e.preventDefault();
     });
 
@@ -2632,8 +2829,26 @@
     return classesOf(el).join(' ');
   }
 
+  /**
+   * Edit mode decides whether the panel is on screen at all; the selection
+   * decides only how much of it. The button bar has to outlive the selection —
+   * losing the Save button by clicking the background was a way to strand
+   * unsaved work behind a click.
+   */
+  function updatePanelChrome() {
+    if (!panel) return;
+    panel.style.display = editing ? 'flex' : 'none';
+    var on = !!selected;
+    if (on) panel.removeAttribute('data-tw-idle');
+    else panel.setAttribute('data-tw-idle', '');
+    if (ui.header) ui.header.style.display = on ? 'flex' : 'none';
+    if (ui.body) ui.body.style.display = on ? '' : 'none';
+  }
+
   function updateFooter() {
     updateModeToggle();
+    updatePanelChrome();
+    updateHistoryButtons();
     if (!ui.save) return;
     var n = dirty.size;
     ui.save.disabled = n === 0;
@@ -2656,6 +2871,7 @@
     if (hovered === el) { releaseOutline(hovered); hovered = null; }
     selected = el;
     if (!baseline.has(el)) baseline.set(el, classesOf(el));
+    noteTouched(el); // while it is still untouched — see noteTouched
     revealed = {}; // reveals are per-selection, not sticky across elements
     buildColorModel(); // re-read: a client-routed page can swap its @theme
     if (!isRemoved(selected)) setOutline(selected, SELECT_OUTLINE);
@@ -2663,7 +2879,7 @@
     // contenteditable would invite typing into something already on its way out.
     textEditable = TEXT_ENABLED && !isRemoved(selected) && enableTextEditing(selected);
     if (textEditable) focusText(selected, point);
-    panel.style.display = 'flex';
+    updatePanelChrome();
     ui.status.textContent = '';
     ui.status.className = 'bw-status';
     refresh();
@@ -2676,8 +2892,11 @@
     textEditable = false;
     releaseOutline(selected);
     selected = null;
-    panel.style.display = 'none';
+    // The panel stays; only its top half goes. The bar below it holds the
+    // Save button and the history, which have nothing to do with a selection.
+    updatePanelChrome();
     updateDeleteHandle();
+    updateFooter();
   }
 
   // ------------------------------------------------------------------- save
@@ -2752,6 +2971,11 @@
           fileHash = data.hash || fileHash;
           dirty.clear();
           baseline.clear();
+          // Undo cannot reach across a write: the file has already changed, so
+          // stepping back would only stage the reverse as a fresh edit while
+          // silently claiming to have undone something. The saved state is the
+          // new starting point.
+          forgetHistory();
           saving.forEach(function (el) {
             if (el === selected) setOutline(el, SELECT_OUTLINE);
             else releaseOutline(el);
@@ -2859,6 +3083,16 @@
       if (el) select(el, { x: e.clientX, y: e.clientY });
       else deselect();
     }, true);
+
+    document.addEventListener('keydown', function (e) {
+      if (!editing || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      // Inside the text being typed, the browser's own undo is the better one
+      // and it fires input events we still record. Everywhere else, ours.
+      if (textEditable && selected && document.activeElement === selected) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    });
 
     // Escape steps out one layer at a time: popover, then selection, then the
     // mode itself — so there is always a way back to the page from the keyboard.
