@@ -118,6 +118,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
 
   // ---- a write is the end of the line ----
   const before = disk();
+  const barPreSave = await save.boundingBox();
   await save.click();
   await page.waitForFunction(() => {
     const el = document.querySelector('[data-tw-status]');
@@ -127,6 +128,55 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   check('undo cannot reach across the write', await undo.isDisabled());
   check('neither can redo', await redo.isDisabled());
   check('and the bar is still there', await save.isVisible());
+  // The status message grows upward like everything else. Below the buttons it
+  // changed the footer's height and slid them 22px down as it came and went.
+  check('a status message does not move the buttons',
+    Math.abs((await save.boundingBox()).y - barPreSave.y) < 1,
+    `${Math.round(barPreSave.y)} → ${Math.round((await save.boundingBox()).y)}` +
+    `  (status: ${JSON.stringify((await panel.locator('[data-tw-status]').textContent()).trim())})`);
+
+  // ---- folded, the bar itself is the handle ----
+  //
+  // The header it used to be dragged by is folded away exactly when the bar is
+  // all that is on screen, so there was nothing left to grab.
+  await page.keyboard.press('Escape');
+  const grip = panel.locator('[data-tw-grip]');
+  check('a grip shows on the bar', await grip.isVisible());
+
+  const g = await grip.boundingBox();
+  const wasAt = await panel.boundingBox();
+  const from = { x: g.x + g.width / 2, y: g.y + g.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x - 300, from.y - 200, { steps: 8 });
+  await page.mouse.up();
+  const nowAt = await panel.boundingBox();
+  check('the folded bar can be dragged',
+    Math.abs(nowAt.x - (wasAt.x - 300)) < 2 && Math.abs(nowAt.y - (wasAt.y - 200)) < 2,
+    `${Math.round(wasAt.x)},${Math.round(wasAt.y)} → ${Math.round(nowAt.x)},${Math.round(nowAt.y)}`);
+
+  // The bottom anchor has to survive the move, or the next selection shoves the
+  // bar back down the screen — which is what dragging by the top edge did.
+  const barMoved = await save.boundingBox();
+  await card.click();
+  const barMovedOpen = await save.boundingBox();
+  check('after a drag the bar still holds still when the panel opens',
+    Math.abs(barMoved.y - barMovedOpen.y) < 1,
+    `${Math.round(barMoved.y)} → ${Math.round(barMovedOpen.y)}`);
+
+  // ---- pressing a control is not a drag ----
+  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await page.keyboard.press('Escape');
+  const parked = await panel.boundingBox();
+  const sb = await save.boundingBox();
+  await page.mouse.move(sb.x + 6, sb.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(sb.x - 150, sb.y - 120, { steps: 5 });
+  await page.mouse.up();
+  const stillParked = await panel.boundingBox();
+  check('pressing a button does not drag the panel',
+    Math.abs(stillParked.x - parked.x) < 2 && Math.abs(stillParked.y - parked.y) < 2,
+    `${Math.round(parked.x)},${Math.round(parked.y)} → ${Math.round(stillParked.x)},${Math.round(stillParked.y)}`);
 
   check('no page errors', errors.length === 0, errors.join(' | '));
 

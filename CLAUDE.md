@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-12 commits, working tree clean, `npm test` green.
+13 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -118,6 +118,15 @@ bottom.** Save, undo and redo have nothing to do with which element is selected,
 and losing the Save button by clicking the background was a way to strand unsaved
 work behind a click. Bottom-anchored so the bar holds still and the panel grows
 *upward* above it — top-anchored, every selection shoved Save down the screen.
+
+**Everything in the panel grows upward out of the button row, including
+dragging.** The bar is the drag handle as well as the header, because the header
+is folded away exactly when the bar is all there is. Dragging therefore pins the
+*bottom* edge; pinning `top`, which is how it was first written and how such
+code usually is, meant that after a drag the next selection pushed the bar back
+down the screen. For the same reason the status message sits *above* the
+buttons: underneath them, a message appearing or clearing changed the footer's
+height and slid the buttons 22px.
 
 **Edit mode is off until it is asked for.** While it is on, every click is
 swallowed in the capture phase so the app's own links and buttons cannot fire —

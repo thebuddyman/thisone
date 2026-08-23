@@ -1010,6 +1010,10 @@
     // this one removes source rather than closing a window.
     cross: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
       'stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
+    grip: '<svg width="10" height="13" viewBox="0 0 10 13" fill="currentColor">' +
+      '<circle cx="3" cy="3" r="1.05"/><circle cx="7" cy="3" r="1.05"/>' +
+      '<circle cx="3" cy="6.5" r="1.05"/><circle cx="7" cy="6.5" r="1.05"/>' +
+      '<circle cx="3" cy="10" r="1.05"/><circle cx="7" cy="10" r="1.05"/></svg>',
     undo: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" ' +
       'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M2.2 5.4h5.4a3 3 0 0 1 0 6H5.2"/><path d="M4.6 2.6 2 5.4l2.6 2.8"/></svg>',
@@ -1258,6 +1262,16 @@
       // border of its own — there is nothing above it to be divided from.
       P + '[data-tw-idle] .bw-foot{border-top:0}',
       P + ' .bw-foot-row{display:flex;align-items:center;gap:6px}',
+      // The bar is the only part of the panel on screen when nothing is
+      // selected, so it has to be the handle too — the header it used to be
+      // dragged by is folded away exactly then.
+      P + ' .bw-foot{cursor:grab}',
+      P + ' .bw-foot:active{cursor:grabbing}',
+      P + ' .bw-foot button{cursor:pointer}',
+      P + ' .bw-foot button:disabled{cursor:default}',
+      P + ' .bw-grip{flex:0 0 auto;display:flex;align-items:center;padding:0 1px;',
+      '  color:var(--bw-faint)}',
+      P + ' .bw-foot:hover .bw-grip{color:var(--bw-muted)}',
       P + ' .bw-hbtn{flex:0 0 auto;width:28px;height:28px;display:flex;align-items:center;',
       '  justify-content:center;border-radius:6px;color:var(--bw-fg);',
       '  box-shadow:inset 0 0 0 1px var(--bw-border)}',
@@ -2749,6 +2763,12 @@
     var footer = el('div', 'bw-foot');
     var row = el('div', 'bw-foot-row');
 
+    var grip = el('span', 'bw-grip');
+    grip.setAttribute('data-tw-grip', '');
+    grip.innerHTML = ICONS.grip;
+    grip.title = 'Drag to move';
+    row.appendChild(grip);
+
     ui.undo = el('button', 'bw-hbtn');
     ui.undo.setAttribute('data-tw-undo', '');
     ui.undo.innerHTML = ICONS.undo;
@@ -2768,43 +2788,73 @@
     row.appendChild(ui.undo);
     row.appendChild(ui.redo);
     row.appendChild(ui.save);
-    footer.appendChild(row);
+    // Status ABOVE the buttons, not below. Everything in this panel grows
+    // upward out of the button row; with the status underneath it, a message
+    // appearing or clearing changed the footer's height and slid the buttons
+    // 22px down the screen — the exact thing the bottom anchor is for.
     footer.appendChild(ui.status);
+    footer.appendChild(row);
     panel.appendChild(footer);
+    makeDraggable(panel, footer);
 
     document.body.appendChild(panel);
     buildPopover();
     buildDeleteHandle();
   }
 
-  function makeDraggable(box, handle) {
-    var dragging = false;
-    var offsetX = 0;
-    var offsetY = 0;
+  /**
+   * Drag by the bottom-left corner, never the top-left.
+   *
+   * The panel grows upward out of its button bar, so the bottom edge is the one
+   * that has to stay where it was put. Pinning `top` instead — which is the
+   * obvious way to write this — meant that after a drag the next selection
+   * pushed the bar back down the screen, which is the exact behaviour the
+   * bottom anchor exists to prevent.
+   */
+  function dragOffsets(box) {
+    var rect = box.getBoundingClientRect();
+    return { left: rect.left, bottom: rect.bottom };
+  }
 
+  function placeBox(box, left, bottom) {
+    var w = box.offsetWidth;
+    box.style.right = 'auto';
+    box.style.top = 'auto';
+    box.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, left)) + 'px';
+    // Clamped so the bar can never be dragged past an edge and stranded there.
+    box.style.bottom =
+      Math.max(8, Math.min(window.innerHeight - 44, window.innerHeight - bottom)) + 'px';
+  }
+
+  var dragBox = null;
+  var dragDX = 0;
+  var dragDY = 0;
+
+  function makeDraggable(box, handle) {
     handle.addEventListener('mousedown', function (e) {
-      if (e.target.tagName === 'BUTTON') return;
-      var rect = box.getBoundingClientRect();
-      dragging = true;
-      offsetX = e.clientX - rect.left;
-      offsetY = e.clientY - rect.top;
-      box.style.right = 'auto';
-      // Dragging pins the top edge, so the bottom anchor has to let go or the
-      // panel would be stretched between the two.
-      box.style.bottom = 'auto';
-      box.style.left = rect.left + 'px';
-      box.style.top = rect.top + 'px';
+      // closest(), not tagName: a mousedown on the icon inside a button reports
+      // the <svg> as its target, so the button test missed and the panel
+      // started dragging out from under the click.
+      if (e.target.closest && e.target.closest('button,input,[contenteditable]')) return;
+      var at = dragOffsets(box);
+      dragBox = box;
+      dragDX = e.clientX - at.left;
+      dragDY = e.clientY - at.bottom;
+      document.body.style.cursor = 'grabbing';
       e.preventDefault();
     });
-
-    window.addEventListener('mousemove', function (e) {
-      if (!dragging) return;
-      box.style.left = Math.max(0, e.clientX - offsetX) + 'px';
-      box.style.top = Math.max(0, e.clientY - offsetY) + 'px';
-    });
-
-    window.addEventListener('mouseup', function () { dragging = false; });
   }
+
+  window.addEventListener('mousemove', function (e) {
+    if (!dragBox) return;
+    placeBox(dragBox, e.clientX - dragDX, e.clientY - dragDY);
+  });
+
+  window.addEventListener('mouseup', function () {
+    if (!dragBox) return;
+    dragBox = null;
+    document.body.style.cursor = '';
+  });
 
   function refresh() {
     if (!selected) return;
@@ -3105,6 +3155,12 @@
 
     var reflow = function () {
       if (popoverOpen() && popState.anchor) placePopover(popState.anchor);
+      // A panel dragged into a corner of a big window must not be left outside
+      // a small one. Only re-clamps once it has actually been moved.
+      if (panel && panel.style.left) {
+        var r = panel.getBoundingClientRect();
+        placeBox(panel, r.left, r.bottom);
+      }
       updateDeleteHandle();
     };
     window.addEventListener('resize', reflow);
