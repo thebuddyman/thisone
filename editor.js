@@ -1262,11 +1262,6 @@
       '  color:var(--bw-fg);max-height:60px;overflow-y:auto;word-break:break-word}',
       P + ' .bw-text.is-off{color:var(--bw-faint);font-style:italic}',
 
-      /* class string */
-      P + ' .bw-code{padding:8px 9px;background:var(--bw-inset);border:1px solid var(--bw-hair);',
-      '  border-radius:6px;font:11px/1.5 ' + UI_MONO + ';color:var(--bw-muted);',
-      '  word-break:break-word;max-height:76px;overflow-y:auto;user-select:text}',
-
       /* footer */
       P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;',
       '  border-top:1px solid var(--bw-hair);background:var(--bw-bg)}',
@@ -2766,8 +2761,6 @@
     body.appendChild(colorRow('bg', 'Background'));
     body.appendChild(colorRow('text', 'Text color'));
 
-    ui.classes = el('div', 'bw-code', '');
-    body.appendChild(ui.classes);
     panel.appendChild(body);
 
     var footer = el('div', 'bw-foot');
@@ -2865,7 +2858,6 @@
     ui.title.textContent = '<' + selected.tagName.toLowerCase() + '>  ' +
       shortId(selected) + (textEditable ? '  ✎' : '');
     readouts.forEach(function (update) { update(); });
-    ui.classes.textContent = liveClasses(selected) || '(no classes)';
     updateDeleteHandle();
     updateFooter();
   }

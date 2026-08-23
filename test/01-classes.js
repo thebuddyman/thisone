@@ -103,8 +103,6 @@ function check(name, pass, detail) {
     !live.includes('bg-white') && live.includes('bg-emerald-500') && live.includes('px-8'), live);
   check('unrelated classes preserved',
     live.includes('rounded-xl') && live.includes('shadow') && live.includes('m-12') && live.includes('p-4'), live);
-  check('panel shows live class string',
-    (await panel.locator('div[style*="7dd3fc"], div').filter({ hasText: 'bg-emerald-500' }).count()) > 0);
 
   // Save
   await panel.locator('[data-tw-save]').click();

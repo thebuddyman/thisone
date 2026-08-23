@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-14 commits, working tree clean, `npm test` green.
+15 commits, working tree clean, `npm test` green.
 
 ---
 
