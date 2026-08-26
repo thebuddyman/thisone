@@ -33,6 +33,34 @@ const DENIED = ['Bash', 'BashOutput', 'KillShell', 'WebFetch', 'WebSearch', 'Tas
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * The house rule every turn is held to, whatever was asked.
+ *
+ * Stated rather than hoped for, because the editor and the model would
+ * otherwise disagree about what a change even is. Every control in the panel
+ * reads and writes classes; a `style={{…}}` is invisible to all of them, so a
+ * turn that reaches for one produces a change the developer cannot then see in
+ * a field, adjust with a stepper, or undo from the overlay — and the next class
+ * edit they make will not override it either, since an inline style outranks
+ * every utility on the element.
+ *
+ * The escape hatch is named on purpose. A rule with no way out gets argued with
+ * or quietly broken; this one says which ladder to climb first — an arbitrary
+ * value covers nearly everything a stock utility misses — and asks for the
+ * reason out loud when neither can do it.
+ */
+const HOUSE_RULES = [
+  'HOW TO STYLE, whatever is asked:',
+  '- Use Tailwind utility classes. Do not add a style={{…}} attribute.',
+  '  Every control in this editor reads and writes classes, so an inline style',
+  '  is a change the developer cannot see, adjust or undo from the panel, and',
+  '  it outranks any class they set afterwards.',
+  '- If no stock utility fits, use an arbitrary value first: p-[13px],',
+  '  bg-[#f0a], w-[calc(100%-3rem)]. That covers almost everything.',
+  '- Only where neither can work — a value that is not known until runtime —',
+  '  use inline style, and say in your reply that you had to and why.',
+].join('\n');
+
+/**
  * What the element under the cursor is, said the way a person would say it.
  *
  * This is the whole reason the tab is worth building. The overlay already knows
@@ -46,6 +74,8 @@ function preamble(ctx) {
     return [
       'A developer is talking to you from a visual editor overlaid on their running app.',
       'They have no element selected, so this is a question about the project as a whole.',
+      '',
+      HOUSE_RULES,
     ].join('\n');
   }
 
@@ -71,6 +101,9 @@ function preamble(ctx) {
     '',
     'Edit that element in that file. Keep the change as small as the request:',
     'this is a live app being nudged, not a refactor. Do not reformat surrounding code.',
+    '',
+    HOUSE_RULES,
+    '',
     'Answer in one or two sentences — the reply is read in a small panel, not a terminal.'
   );
   return lines.join('\n');
@@ -209,4 +242,4 @@ function toolDetail(block) {
   return '';
 }
 
-module.exports = { runTurn, preamble, DENIED };
+module.exports = { runTurn, preamble, HOUSE_RULES, DENIED };

@@ -14,6 +14,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const { preamble } = require('./claude.js');
 
 const arg = (n, d) => {
   const i = process.argv.indexOf('--' + n);
@@ -51,6 +52,10 @@ function restore(g) {
   if (ok) { try { fs.unlinkSync(g.dest); } catch { /* already gone */ } }
   return ok;
 }
+
+check('the styling rule is in the preamble, element or not',
+  [preamble({ file: 'a.tsx', line: 1, col: 1, tag: 'div', classes: 'p-4' }), preamble(null)]
+    .every((p) => /Do not add a style=/.test(p) && /arbitrary value/.test(p)));
 
 (async () => {
   const guards = [guard(CORA)];
@@ -125,9 +130,15 @@ function restore(g) {
     check('a pending edit refuses the turn, and says why',
       /pending change/.test(hint), hint);
 
-    // Undo the probe class so the turn below runs against a clean tree.
+    // Undo the probe class so the turn below runs against a clean tree. Save,
+    // undo and redo are the editor's own ledger and are not on the Prompt tab
+    // at all, so this steps back to press one and returns.
+    await panel.locator('[data-tw-tab="editor"]').click();
+    check('the ledger is on the Editor tab, not the Prompt one',
+      await panel.locator('[data-tw-undo]').isVisible());
     await panel.locator('[data-tw-undo]').click();
     await page.waitForTimeout(200);
+    await panel.locator('[data-tw-tab="prompt"]').click();
 
     // ---- the real turn ----
     const before = snapshot(CORA);
@@ -149,15 +160,37 @@ function restore(g) {
     check('the turn wrote the file', after !== before);
     check('and wrote the thing it was asked for', after.includes('bw-prompt-probe'));
 
-    // Seconds and the plan's window, never a price: the turn runs on the
-    // machine's own OAuth credentials and nothing about it is billed per token.
-    const spent = await panel.locator('[data-tw-phint]').textContent();
-    check('the turn reports time and the plan window, not dollars',
-      /\d+\.\d+s/.test(spent) && !spent.includes('$'), spent);
+    // A turn that worked reports nothing: the seconds it took and the share of
+    // the plan's five-hour window it used are facts about the machinery, not
+    // about the change you asked for, and they sat under the field until the
+    // next thing you typed. The hint is still where a failure goes, which the
+    // pending-edit refusal above is the proof of. A price is never shown
+    // either way — the turn runs on the machine's own OAuth credentials and
+    // nothing about it is billed per token.
+    const spent = (await panel.locator('[data-tw-phint]').textContent()).trim();
+    check('a turn that worked says nothing, and never a price',
+      spent === '' && spent.indexOf('$') === -1, JSON.stringify(spent));
 
     const log = await panel.locator('.bw-plog').textContent();
     check('the transcript shows the prompt that was sent', log.includes('bw-prompt-probe'));
     check('and names the tools it used', /Edit|Read|Write/.test(log), log.slice(0, 200));
+
+    // ---- the house rule holds where it is most tempting to break ----
+    // A value with no stock utility behind it is exactly where a model reaches
+    // for style={{}}. It should reach for an arbitrary value instead. Second
+    // turn of the same session, so it costs about a tenth of the first.
+    await panel.locator('[data-tw-field="prompt"]').fill(
+      'Give this element a top padding of exactly 13px. Change nothing else.'
+    );
+    await panel.locator('[data-tw-send]').click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-tw-send]').textContent === 'Send',
+      { timeout: 240000 }
+    );
+    const styled = snapshot(CORA);
+    check('an odd value became an arbitrary class, not an inline style',
+      /pt-\[13px\]/.test(styled) && !/style=\{\{/.test(styled),
+      (styled.split('\n').find((l) => /pt-\[|style=\{\{/.test(l)) || 'neither found').trim());
 
     // ---- the conversation continues ----
     const sid = await panel.locator('[data-tw-view="prompt"]').getAttribute('data-tw-session');
