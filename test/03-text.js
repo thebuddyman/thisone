@@ -145,8 +145,8 @@ const selectAllIn = page => page.evaluate(() => {
   const card = page.locator('[data-eid="8"]');
   await card.click({ position: { x: 3, y: 3 } });
   check('container is not contenteditable', !(await card.evaluate(el => el.isContentEditable)));
-  check('the field refuses it rather than pretending', await textBox.isDisabled());
-  check('panel explains why', (await textShows()).includes('has child elements'));
+  check('a container gets no Text row at all',
+    !(await panel.locator('[data-tw-field="text"]').isVisible()));
 
   // container save still works and must not send text
   await step(panel, 'p-x', 'up');

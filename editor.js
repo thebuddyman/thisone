@@ -2873,24 +2873,13 @@
       if (e.key === 'Escape') { e.stopPropagation(); box.blur(); }
     });
 
-    /** Say why it cannot be typed into, in the field itself. */
-    function refuse(why, detail) {
-      box.disabled = true;
-      box.value = '';
-      box.placeholder = why;
-      box.className = 'bw-text is-off';
-      box.title = detail;
-    }
-
     readouts.push(function () {
-      if (!TEXT_ENABLED) {
-        return refuse('text editing is HTML-only for now',
-          'JSX text is whitespace-significant; not safe to rewrite yet');
-      }
-      if (!textEditable) {
-        return refuse('has child elements — pick one to edit its text',
-          'only leaf elements can be typed into');
-      }
+      // No text, no field. A container cannot be typed into, and a disabled box
+      // explaining that took the largest row in the panel to say nothing you
+      // could act on — the row simply is not there now.
+      var show = TEXT_ENABLED && textEditable;
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
       box.disabled = false;
       box.className = 'bw-text';
       box.placeholder = '(empty)';
