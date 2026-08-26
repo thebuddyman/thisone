@@ -578,6 +578,43 @@ function check(name, pass, detail) {
     const got = await gapShows(cls);
     check(`${cls.replace('flex p-4 ', '')} shows ${want}`, got === want, got);
   }
+  // ---- the single gap points the way the container actually pushes ----
+  //
+  // `gap-4` is a vertical gap on a flex-col and a horizontal one on a flex-row,
+  // so a fixed mark on that field is wrong half the time. The axis fields have
+  // no such problem — `gap-x-*` is column gap wherever it appears — so only the
+  // single field asks the element, and only it is expected to change here.
+  const gapMark = async (cls) => {
+    await card.click({ position: { x: 200, y: 6 } });
+    await page.locator('[data-eid="9"]').evaluate((e, c) => { e.className = c; }, cls);
+    const box = await page.locator('[data-eid="9"]').boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    return page.evaluate(() => {
+      const f = document.querySelector(
+        '[data-tw-editor="panel"] [data-tw-field="gap-all"] .bw-ico');
+      if (!f || !f.offsetParent) return '(no single gap field)';
+      const svg = f.innerHTML;
+      // Told apart by the first path of each exported asset, since the files
+      // carry no id to key on.
+      if (svg.includes('M2.5 2H3.5')) return 'hz';
+      if (svg.includes('M18 2.5L18 3.5')) return 'vt';
+      return 'other';
+    });
+  };
+  const markCases = [
+    ['flex p-4 gap-4', 'hz', 'a row pushes items apart across'],
+    ['flex flex-col p-4 gap-4', 'vt', 'a column pushes them apart down'],
+    ['flex flex-row-reverse p-4 gap-4', 'hz', 'reversed is still an axis'],
+    ['flex flex-col-reverse p-4 gap-4', 'vt', 'and so is reversed the other way'],
+    ['grid p-4 gap-4', 'hz', 'grid sets both axes and keeps the across mark'],
+  ];
+  for (const [cls, want, why] of markCases) {
+    const got = await gapMark(cls);
+    check(`${why} — ${cls.replace('p-4 ', '')}`, got === want, got);
+  }
+  check('and there is no switch between one gap and two',
+    (await panel.locator('[data-tw-toggle="gap"]').count()) === 0);
+
   // Put it back the way the margin check below expects to find it. The section
   // and not the heading, so Gap is on screen for the order check below: a
   // heading is one flex item, and gap is not offered where it can do nothing.

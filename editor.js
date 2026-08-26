@@ -105,10 +105,28 @@
     gap: { '': ['gap'], '-x': ['column-gap'], '-y': ['row-gap'] },
   };
 
-  var GAP_ONE = [{ side: '', name: 'gap', icon: 'gapAll' }];
+  /**
+   * Which way a lone `gap-*` actually pushes things apart.
+   *
+   * `gap-4` on a `flex-col` is a *vertical* gap — the same class reads the
+   * other way round on a `flex-row`, so a fixed mark is wrong half the time.
+   * The axis fields never have this problem: `gap-x-*` is column gap wherever
+   * it appears. Only the single field has to ask the element.
+   *
+   * Grid keeps the horizontal mark: there `gap-4` really does set both axes,
+   * and of the two marks the export ships, neither says "both".
+   */
+  function gapOneIcon(node) {
+    if (!node) return 'gapHz';
+    var cs = getComputedStyle(node);
+    if (!/^(inline-)?flex$/.test(cs.display)) return 'gapHz';
+    return /^column/.test(cs.flexDirection) ? 'gapVt' : 'gapHz';
+  }
+
+  var GAP_ONE = [{ side: '', name: 'gap', icon: gapOneIcon }];
   var GAP_AXES = [
-    { side: '-x', name: 'column gap', icon: 'gapX' },
-    { side: '-y', name: 'row gap', icon: 'gapY' },
+    { side: '-x', name: 'column gap', icon: 'gapHz' },
+    { side: '-y', name: 'row gap', icon: 'gapVt' },
   ];
 
   /**
@@ -1344,14 +1362,14 @@
     // file for them.
     undo: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7.50004 11.6666L3.33337 7.49992L7.50004 3.33325\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.33337 7.5H12.0834C12.6853 7.5 13.2813 7.61855 13.8373 7.84889C14.3934 8.07922 14.8987 8.41683 15.3243 8.84243C15.7499 9.26803 16.0875 9.77329 16.3178 10.3294C16.5482 10.8854 16.6667 11.4814 16.6667 12.0833C16.6667 12.6852 16.5482 13.2812 16.3178 13.8373C16.0875 14.3934 15.7499 14.8986 15.3243 15.3242C14.8987 15.7498 14.3934 16.0874 13.8373 16.3178C13.2813 16.5481 12.6853 16.6667 12.0834 16.6667H9.16671\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     redo: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12.5 11.6666L16.6667 7.49992L12.5 3.33325\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M16.6667 7.5H7.91671C6.70113 7.5 5.53534 7.98289 4.6758 8.84243C3.81626 9.70197 3.33337 10.8678 3.33337 12.0833C3.33337 12.6852 3.45193 13.2812 3.68226 13.8373C3.91259 14.3934 4.2502 14.8986 4.6758 15.3242C5.53534 16.1838 6.70113 16.6667 7.91671 16.6667H10.8334\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
-    gapAll: glyph('<rect x="1.6" y="1.6" width="3.6" height="3.6" rx="1"/>' +
-      '<rect x="6.8" y="1.6" width="3.6" height="3.6" rx="1"/>' +
-      '<rect x="1.6" y="6.8" width="3.6" height="3.6" rx="1"/>' +
-      '<rect x="6.8" y="6.8" width="3.6" height="3.6" rx="1"/>'),
-    gapX: glyph('<rect x="1.4" y="2.2" width="3.4" height="7.6" rx="1.1"/>' +
-      '<rect x="7.2" y="2.2" width="3.4" height="7.6" rx="1.1"/>'),
-    gapY: glyph('<rect x="2.2" y="1.4" width="7.6" height="3.4" rx="1.1"/>' +
-      '<rect x="2.2" y="7.2" width="7.6" height="3.4" rx="1.1"/>'),
+    // The export has a file for each gap axis, so the hand-drawn trio these
+    // replaced is gone: two bars apart across, two bars apart down. Inlined
+    // verbatim, keeping their own #AAAAAA at 1.5 like every other asset here.
+    // There is no third file for the single gap and it does not need one — a
+    // lone `gap-4` and an explicit `gap-x-*` are never on screen together, so
+    // the horizontal mark stands for both without ever being ambiguous.
+    gapHz: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M2.5 2H3.5C4.32843 2 5 2.67157 5 3.5V16.5C5 17.3284 4.32843 18 3.5 18H2.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M17.5 2H16.5C15.6716 2 15 2.67157 15 3.5V16.5C15 17.3284 15.6716 18 16.5 18H17.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M9 4.75C9 4.33579 9.33579 4 9.75 4C10.1642 4 10.5 4.33579 10.5 4.75V15.25C10.5 15.6642 10.1642 16 9.75 16C9.33579 16 9 15.6642 9 15.25V4.75Z\" fill=\"#AAAAAA\"/></svg>",
+    gapVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M18 2.5L18 3.5C18 4.32843 17.3284 5 16.5 5L3.5 5C2.67157 5 2 4.32843 2 3.5L2 2.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M18 17.5L18 16.5C18 15.6716 17.3284 15 16.5 15L3.5 15C2.67157 15 2 15.6716 2 16.5L2 17.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M15.25 9C15.6642 9 16 9.33579 16 9.75C16 10.1642 15.6642 10.5 15.25 10.5L4.75 10.5C4.33579 10.5 4 10.1642 4 9.75C4 9.33579 4.33579 9 4.75 9L15.25 9Z\" fill=\"#AAAAAA\"/></svg>",
     back: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
       'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 1.8 3 5l3.2 3.2"/></svg>',
     detach: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
@@ -1990,7 +2008,12 @@
 
     var field = el('div', 'bw-field');
     var mark = el('span', 'bw-ico');
-    mark.innerHTML = ICONS[opts.key ? boxIcon(prefix, opts.key, opts.icon) : opts.icon];
+    // An icon may be a key or a function of the selected element — the single
+    // gap is the one that has to ask, since `gap-4` points down a flex-col and
+    // across a flex-row. Built with its default; the section's readout swaps it.
+    var iconKey = typeof opts.icon === 'function' ? opts.icon(null) : opts.icon;
+    mark.innerHTML = ICONS[opts.key ? boxIcon(prefix, opts.key, iconKey) : iconKey];
+    mark.setAttribute('data-tw-icon', iconKey);
     mark.title = opts.name;
 
     var readout = document.createElement('input');
@@ -2272,7 +2295,17 @@
       if (!show) return;
       var want = box.choose(selected);
       box.fields.forEach(function (f) {
-        fields[f.side].style.display = want.indexOf(f.side) === -1 ? 'none' : '';
+        var on = want.indexOf(f.side) !== -1;
+        fields[f.side].style.display = on ? '' : 'none';
+        // Re-asked per selection, not per readout keystroke: the mark only
+        // changes when the element does, and rewriting innerHTML under the
+        // cursor would throw away the SVG for no reason.
+        if (!on || typeof f.icon !== 'function') return;
+        var mark = fields[f.side].querySelector('.bw-ico');
+        var key = f.icon(selected);
+        if (!mark || mark.getAttribute('data-tw-icon') === key) return;
+        mark.setAttribute('data-tw-icon', key);
+        mark.innerHTML = ICONS[key];
       });
       pair.className = 'bw-pair' + (want.length === 1 ? ' is-single' : '');
     });

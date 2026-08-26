@@ -605,6 +605,21 @@ own `#aaa` / `#505050` / `#858585` fills rather than being switched to
 no file (the individual edges) stay hand-drawn on a 12 grid, rendered at 20 with
 a 0.9 stroke so they land on the assets' 1.5.
 
+**Gap wears the two exported marks, and the single gap asks the element which
+one.** `ic-gap-hz` is a bar between two upright brackets, `ic-gap-vt` the same
+turned a quarter, so `gap-x-*` takes the first and `gap-y-*` the second — fixed,
+because `gap-x-*` is column gap wherever it appears. The lone `gap-4` is the one
+that cannot be fixed: it is a *vertical* gap on a `flex-col` and a horizontal one
+on a `flex-row`, the same class reading the opposite way round, so a static mark
+there is wrong half the time. `gapOneIcon` reads the container's computed
+`flex-direction` and the section's readout swaps the mark when the selection
+changes — not on every readout, since rewriting the SVG under the cursor would
+throw it away for nothing. Grid keeps the horizontal mark: there `gap-4` really
+does set both axes, and of the two files the export ships, neither says "both".
+This retired the last hand-drawn trio — a 2x2 grid and two bar pairs — which
+existed only because `assets/` had no file for them. Five checks in
+`02-spacing-sides` pin the pairing, `flex-row-reverse` and `grid` included.
+
 **Edit mode is off until it is asked for.** While it is on, every click is
 swallowed in the capture phase so the app's own links and buttons cannot fire —
 which is what makes the page selectable, and equally what makes it unusable as an
