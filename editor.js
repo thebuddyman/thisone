@@ -1333,9 +1333,10 @@
       P + ' button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}',
 
       /* header */
-      P + ' .bw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;',
-      '  height:60px;padding:0 10px 0 20px;flex:0 0 auto;',
-      '  border-bottom:1px solid ' + RULE + '}',
+      // Shorter, and no rule under it: the tab strip above already draws the
+      // panel's one horizontal line, and a second right below it boxed the
+      // element's name into a bar of its own.
+      P + ' .bw-h{display:flex;align-items:center;gap:8px;height:40px;padding:0 20px;flex:0 0 auto}',
       P + ' .bw-h strong{font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
       // 40x40 with an 8px radius, transparent by default and #232323 on hover
       // — the two states the design ships, and the ic-x asset inside them.
@@ -3810,10 +3811,19 @@
 
   function refresh() {
     if (!selected) return;
-    ui.title.textContent = '<' + selected.tagName.toLowerCase() + '>  ' + shortId(selected);
+    ui.title.textContent = selectionLabel(selected);
     readouts.forEach(function (update) { update(); });
     updateDeleteHandle();
     updateFooter();
+  }
+
+  /**
+   * The selected element, said the same way wherever it is said — the editor's
+   * header and the prompt's context line had drifted into two wordings and two
+   * type sizes for one fact.
+   */
+  function selectionLabel(el) {
+    return el ? '<' + el.tagName.toLowerCase() + '>  ' + shortId(el) : '';
   }
 
   /** Panel title: '#12' for html mode, 'page.tsx:24' for a source location. */
