@@ -1439,9 +1439,16 @@
       // No min-height and hidden while empty: the log is under the composer
       // now, so an empty one would be a blank panel-width gap below the field
       // rather than the space above it it used to fill.
+      // 20 above the first message and 20 below the last, which is the whole
+      // reason the bottom is 0: the composer's own 20px top padding is what
+      // stands under the transcript, and a padding here would have been added
+      // to it. Measured 15 above against 34 below before that.
+      //
+      // No top border either. The tab strip's rule already divides this from
+      // the tabs, and with an empty context line above it the two sat on top
+      // of each other.
       P + ' .bw-plog{flex:1 1 auto;min-height:0;max-height:280px;overflow-y:auto;',
-      '  padding:14px 20px;display:flex;flex-direction:column;gap:12px;user-select:text;',
-      '  border-top:1px solid var(--bw-hair)}',
+      '  padding:20px 20px 0;display:flex;flex-direction:column;gap:12px;user-select:text}',
       P + ' .bw-plog:empty{display:none}',
       P + ' .bw-pmsg{font:400 13px/1.45 ' + UI_FONT + ';word-break:break-word;white-space:pre-wrap}',
       P + ' .bw-pmsg.is-me{color:var(--bw-fg);padding-left:10px;',
@@ -1450,9 +1457,9 @@
       // Tool calls are named, not narrated: enough to show a long turn is alive.
       P + ' .bw-pmsg.is-tool{color:var(--bw-muted);font-size:12px;font-style:italic}',
       P + ' .bw-pmsg.is-err{color:var(--bw-danger)}',
-      // 20 all round, the panel's own gutter: the composer is the first thing
-      // under the rule and 12 made it crowd the line while sitting 20 off the
-      // sides.
+      // 20 all round, the panel's own gutter. The composer is the whole of it
+      // now — Send stands in the footer bar with Save — so the gap below is
+      // what separates the field from that bar.
       P + ' .bw-pform{flex:0 0 auto;padding:20px;display:flex;flex-direction:column;gap:8px}',
       P + ' .bw-pinput{height:120px;padding:10px 12px;display:block;background:var(--bw-sunken);',
       '  border:0;border-radius:8px;font:400 14px/1.4 ' + UI_FONT + ';color:var(--bw-fg);',
@@ -1870,10 +1877,16 @@
 
       /* footer */
       P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;',
-      '  border-top:1px solid var(--bw-hair);background:var(--bw-bg)}',
+      // EDGE, like the row dividers and the tab strip: --bw-hair is the same
+      // value as a field's background, so the line disappeared wherever a
+      // field ran up against it — which down here is most of its length.
+      '  border-top:1px solid ' + EDGE + ';background:var(--bw-bg)}',
       // With nothing selected the footer IS the panel, so it carries no top
       // border of its own — there is nothing above it to be divided from.
-      P + '[data-tw-idle] .bw-foot{border-top:0}',
+      // Keyed on the selection and not on data-tw-idle: idle means the editor
+      // controls are folded, which the Prompt tab does too, and there the
+      // footer has a composer above it to be divided from.
+      P + '[data-tw-empty] .bw-foot{border-top:0}',
       P + ' .bw-foot-row{display:flex;align-items:center;gap:6px}',
       // The bar is the only part of the panel on screen when nothing is
       // selected, so it has to be a handle too — the header it used to be
@@ -1904,6 +1917,16 @@
       '  border-radius:8px;padding:0 14px;box-shadow:0 1px 2px rgba(0,0,0,.08);white-space:nowrap}',
       P + ' .bw-save:hover{filter:brightness(1.06)}',
       P + ' .bw-save:disabled{background:var(--bw-sunken);color:var(--bw-faint);',
+      '  box-shadow:none;cursor:default}',
+      // Send is white, Save is the brand coral. They sit on different tabs and
+      // never share a screen, which is exactly why they should not look alike:
+      // one writes your pending edits, the other hands the file to Claude.
+      P + ' .bw-send{background:#fff;color:#171717}',
+      // .bw-save brightens on hover, which does nothing to white — and it has
+      // no :not(:disabled) guard, so it also lit a dead button. Darken, and
+      // only while the button can actually be pressed.
+      P + ' .bw-send:hover:not(:disabled){filter:brightness(.92)}',
+      P + ' .bw-send:disabled{background:var(--bw-sunken);color:var(--bw-faint);',
       '  box-shadow:none;cursor:default}',
       P + ' .bw-status{min-width:0;font:11px/1.35 ' + UI_FONT + ';color:var(--bw-muted);word-break:break-word}',
       P + ' .bw-status:empty{display:none}',
@@ -4641,7 +4664,6 @@
   var promptSession = null;
   var promptBusy = null;
   // How much of the plan's five-hour window is gone, as last reported by a turn.
-  var promptWindow = null;
 
   function setTab(next) {
     if (tab === next) return;
@@ -4733,11 +4755,25 @@
     ui.phint.className = 'bw-phint' + (bad ? ' is-err' : '');
   }
 
+  /**
+   * Send is off until there is something to send.
+   *
+   * Except while a turn is in flight: the same button is Stop then, and
+   * aborting is the one thing that must always be available — the field is
+   * disabled at that point, so keying off its text would lock the only way
+   * out of a running turn.
+   */
+  function syncSend() {
+    if (!ui.psend) return;
+    ui.psend.disabled = !promptBusy && !(ui.pinput && ui.pinput.value.trim());
+  }
+
   function setPromptBusy(on) {
     if (!ui.psend) return;
     ui.psend.textContent = on ? 'Stop' : 'Send';
-    ui.psend.disabled = false;
     ui.pinput.disabled = on;
+    // After the flag and the field, not before: it reads both.
+    syncSend();
   }
 
   function sendPrompt() {
@@ -4789,19 +4825,15 @@
           if (ev.t === 'session') setSession(ev.sessionId);
           else if (ev.t === 'text') logMsg('claude', ev.text.trim());
           else if (ev.t === 'tool') logMsg('tool', ev.name + (ev.detail ? ' ' + ev.detail : ''));
-          else if (ev.t === 'limit') promptWindow = ev.utilization;
           else if (ev.t === 'done') {
             if (ev.sessionId) setSession(ev.sessionId);
             if (ev.error) logMsg('err', ev.error);
-            // Seconds and the plan's five-hour window — not dollars. The turn
-            // runs on the same credentials the CLI already has, so nothing here
-            // is billed per token and a price would be an invention.
-            var parts = [];
-            if (ev.durationMs) parts.push((ev.durationMs / 1000).toFixed(1) + 's');
-            if (promptWindow != null) {
-              parts.push('5h window ' + Math.round(promptWindow * 100) + '%');
-            }
-            promptHint(parts.join(' · '));
+            // Nothing to report on a turn that worked. The seconds it took
+            // and the share of the plan's five-hour window it used are facts
+            // about the machinery, not about the change you asked for, and
+            // they sat under the field until the next thing you typed. The
+            // hint is still where a failure goes.
+            promptHint('');
           }
         });
       })
@@ -4859,31 +4891,38 @@
       e.stopPropagation();
     });
 
-    var row = el('div', 'bw-prow');
+    // Built here, appended to the footer: Send and Save are the same kind of
+    // button doing the same kind of thing at the end of the same panel, so
+    // they stand in the same bar rather than each keeping their own margins.
+    var row = el('div', 'bw-foot-row bw-prow');
+    ui.sendRow = row;
     ui.phint = el('span', 'bw-phint', '');
     // Its own attribute, not data-tw-status: the footer's save status carries
     // that one, nine test sites and verify.js address it bare, and
     // querySelector answers with whichever comes first in the DOM — which is
     // this hint. Sharing the name made every save look like it never landed.
     ui.phint.setAttribute('data-tw-phint', '');
-    ui.psend = el('button', 'bw-save', 'Send');
+    ui.psend = el('button', 'bw-save bw-send', 'Send');
     ui.psend.setAttribute('data-tw-send', '');
     ui.psend.addEventListener('click', sendPrompt);
+    ui.pinput.addEventListener('input', syncSend);
+    syncSend(); // an empty field on the first paint, not a live-looking button
     row.appendChild(ui.phint);
     row.appendChild(ui.psend);
 
     form.appendChild(ui.pinput);
-    form.appendChild(row);
-    // The composer is the first thing under the tabs, and the transcript grows
-    // below it: what you came to this tab to do should not be at the bottom of
-    // a log you have to scroll past.
-    view.appendChild(form);
 
+    // Context, then what has been said, then the box you say the next thing
+    // in — the order every chat is read in. The composer used to sit at the
+    // top with the transcript growing under it, which put the newest reply
+    // furthest from the field that produced it.
     ui.pctx = el('div', 'bw-pctx');
     view.appendChild(ui.pctx);
 
     ui.plog = el('div', 'bw-plog');
     view.appendChild(ui.plog);
+
+    view.appendChild(form);
     return view;
   }
 
@@ -4967,6 +5006,7 @@
     }
 
     var footer = el('div', 'bw-foot');
+    ui.footer = footer;
     var row = el('div', 'bw-foot-row');
     ui.footRow = row;
 
@@ -4995,6 +5035,9 @@
     // 22px down the screen — the exact thing the bottom anchor is for.
     footer.appendChild(ui.status);
     footer.appendChild(row);
+    // The Prompt tab's own row, built with the view it belongs to and parked
+    // here so the two tabs' buttons stand in one place.
+    if (ui.sendRow) footer.appendChild(ui.sendRow);
     panel.appendChild(footer);
     makeDraggable(panel, footer);
 
@@ -5128,6 +5171,10 @@
     var on = !!selected && tab === 'editor';
     if (on) panel.removeAttribute('data-tw-idle');
     else panel.setAttribute('data-tw-idle', '');
+    // Idle is about the editor's controls; empty is about the selection. The
+    // Prompt tab is the one place the two part company.
+    if (selected) panel.removeAttribute('data-tw-empty');
+    else panel.setAttribute('data-tw-empty', '');
     // The header follows the SELECTION, not the tab: it names the element and
     // carries the only way to deselect one, and both of those still apply while
     // you are writing a prompt about it.
@@ -5140,9 +5187,16 @@
     if (ui.body) ui.body.style.display = on ? '' : 'none';
     var prompting = !!selected && tab === 'prompt';
     if (ui.promptView) ui.promptView.style.display = prompting ? 'flex' : 'none';
-    // Save/undo/redo belong to the editor's own pending edits; Claude's writes
-    // go straight to disk and are not part of that ledger.
-    if (ui.footRow) ui.footRow.style.display = prompting && !dirty.size ? 'none' : 'flex';
+    // One bar at the foot of the panel, holding whichever row the tab owns.
+    // Save, undo and redo are the editor's ledger and Claude's writes go
+    // straight to disk without joining it, so they are not on the Prompt tab
+    // at all — pending edits or none. Nothing is stranded by that the way a
+    // background click used to strand them: the Editor tab is one click away
+    // and brings the bar back with its count intact.
+    if (ui.footRow) ui.footRow.style.display = prompting ? 'none' : 'flex';
+    if (ui.status) ui.status.style.display = prompting ? 'none' : '';
+    if (ui.sendRow) ui.sendRow.style.display = prompting ? 'flex' : 'none';
+    if (ui.footer) ui.footer.style.display = 'flex';
     if (prompting) refreshPromptContext();
   }
 

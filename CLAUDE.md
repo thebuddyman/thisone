@@ -193,6 +193,41 @@ as one thing, and a + standing in for a 124px field would be a control wider
 than what it offers. So the four `revealed.family/weight/font/align` keys
 became one `revealed.typography`, and the row offers the section.
 
+**One bar at the foot of the panel, holding whichever row the tab owns.** Send
+and Save are the same kind of button doing the same kind of thing at the end of
+the same panel, so they stand in the same place — 12px from the right edge,
+10px from the bottom, both 40px tall — rather than each keeping their own
+margins inside their own view. Send is built with the Prompt view it belongs to
+and parked in the footer.
+
+**Save, undo and redo are not on the Prompt tab at all**, pending edits or
+none: they are the editor's ledger, and Claude's writes go straight to disk
+without joining it. Nothing is stranded by that the way a background click used
+to strand them — the Editor tab is one click away and brings the bar back with
+its count intact.
+
+**The footer's rule is keyed on the selection, not on `data-tw-idle`.** Idle
+means the editor's controls are folded, which the Prompt tab does too — and
+there the footer has a composer above it to be divided from. `data-tw-empty`
+says the thing the rule actually cares about: with nothing selected the footer
+IS the panel, so there is nothing above it to divide. Its colour is EDGE like
+every other rule, for the reason the row dividers are.
+
+**The Prompt tab reads in the order a chat reads: context, then what has been
+said, then the box you say the next thing in.** The composer used to sit at the
+top with the transcript growing under it, which put the newest reply furthest
+from the field that produced it. 20px of air above the first message and below
+the last, which is why the log's bottom padding is 0 — the composer's own 20px
+is what stands under the transcript, and a padding there would have been added
+to it. Measured 15 above against 34 below before that. The log carries no top
+border either: the tab strip's rule already divides it from the tabs, and with
+an empty context line the two sat on top of each other.
+
+**A turn that worked reports nothing back.** The seconds it took and the share
+of the plan's five-hour window it used are facts about the machinery, not about
+the change you asked for, and they sat under the field until the next thing you
+typed. The hint is still where a failure goes.
+
 **The tab strip has no padding at its top, and 20 at its foot.** The 60px
 header already leaves 19px under the title it centres, so the strip's own 20
 made a 39px void between the title and the tabs where everything else in the
