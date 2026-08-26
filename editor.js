@@ -1432,10 +1432,22 @@
       // the space and the two simply swap. Both end 12px from the edge, so
       // nothing shifts as one replaces the other.
       P + ' .bw-field{position:relative}',
-      P + ' .bw-open,' + P + ' .bw-chev{position:absolute;right:12px;top:50%;margin:0;',
-      '  transform:translateY(-50%);display:flex;align-items:center;width:auto;height:auto}',
+      P + ' .bw-chev{position:absolute;right:12px;top:50%;margin:0;',
+      '  transform:translateY(-50%);display:flex;align-items:center}',
+      // The mark is 8x5, which is a target you have to aim at. The button is
+      // the full height of the field and reaches 36px in from its edge; the
+      // chevron is held at the same 12px by the padding rather than by being
+      // centred, so the hit area grows and nothing moves. The other fields
+      // already open from anywhere on the field, so this is the one that needed
+      // it.
+      P + ' .bw-open{position:absolute;right:0;top:0;height:100%;width:36px;margin:0;',
+      '  padding:0 12px 0 0;display:flex;align-items:center;justify-content:flex-end}',
       P + ' .bw-open svg,' + P + ' .bw-chev svg{display:block}',
       P + ' .bw-field > .bw-snow{margin-right:12px}',
+      // The note sits before the snowflake, so its own 12px is the gap between
+      // the two and the snowflake's is the gap to the edge. With no snowflake
+      // showing, the note inherits that gutter instead.
+      P + ' .bw-field > .bw-unit{margin-right:12px}',
       // The chevron is an affordance, not information: it says "this opens" to
       // a cursor that is already here. Hidden by opacity rather than display so
       // the value never shifts as it comes and goes, and kept for focus and
