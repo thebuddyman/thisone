@@ -225,8 +225,14 @@ function check(name, pass, detail) {
   // A py-* lookup cannot see pt-*/pb-*, so an element written per-side used to
   // show nothing at all in the folded view.
   const h2b = page.locator('[data-eid="9"]');
-  await h2b.evaluate(el => { el.className = 'text-2xl font-bold pt-5 pb-2 pl-6 pr-6'; });
-  await h2b.click({ position: { x: 3, y: 3 } });
+  // Deselect before every re-click: a live selection parks the delete handle on
+  // the element's corner, which is the spot these clicks aim at.
+  const reselect = async (cls) => {
+    await page.keyboard.press('Escape');
+    await h2b.evaluate((el, c) => { el.className = c; }, cls);
+    await h2b.click({ position: { x: 3, y: 3 } });
+  };
+  await reselect('text-2xl font-bold pt-5 pb-2 pl-6 pr-6');
   check('uneven edges open the four-edge view by themselves',
     (await shown()).includes('p-t'), (await shown()).join(','));
 
@@ -237,8 +243,23 @@ function check(name, pass, detail) {
     (await shown()).join(','));
   check('an axis whose edges disagree shows both, comma separated',
     (await read('p-y')) === '20, 8', await read('p-y'));
+  // Two real values are not one inherited value, so they are not italicised.
+  check('a comma pair reads upright, not italic',
+    (await style('p-y')) === 'normal', await style('p-y'));
   check('an axis whose edges agree shows the one value',
     (await read('p-x')) === '24', await read('p-x'));
+
+  // An edge with no class of its own still renders something: ', 8' reads as a
+  // missing number where '0, 8' reads as a zero.
+  await reselect('text-2xl font-bold pt-5');
+  check('one-sided padding unfolds too', (await shown()).includes('p-t'), (await shown()).join(','));
+  await panel.locator('[data-tw-toggle="p"]').click();
+  check('an unset edge in a comma pair reads 0',
+    (await read('p-y')) === '20, 0', await read('p-y'));
+
+  // Put the four-value element back for the checks below.
+  await reselect('text-2xl font-bold pt-5 pb-2 pl-6 pr-6');
+  await panel.locator('[data-tw-toggle="p"]').click();
 
   // The bug: any refresh used to re-run the auto-open rule and snap the view
   // back to the four edges mid-edit.

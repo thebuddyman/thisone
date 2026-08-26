@@ -1000,6 +1000,13 @@
    * correctly and preview as nothing. ensureSpacingRule closes that gap, which
    * is what makes typing a value the field cannot snap to safe.
    */
+  /** One edge of a comma pair: its own value, or what it actually renders. */
+  function edgeText(text, prefix, edge) {
+    if (text !== '') return text;
+    var actual = computedSpacing(selected, prefix, edge);
+    return actual === null ? '\u2014' : String(actual);
+  }
+
   /** What a field would show for a given class tail — the inverse of commit(). */
   function textForSuffix(suffix) {
     if (suffix === null) return '';
@@ -1497,10 +1504,12 @@
       '  0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
 
       /* text mirror */
-      P + ' .bw-text{flex:1 1 100%;min-width:0;min-height:96px;padding:12px 12px;',
+      P + ' .bw-text{flex:1 1 100%;min-width:0;height:96px;padding:12px;display:block;',
       '  background:var(--bw-sunken);border:0;border-radius:8px;font:400 15px/1.4 ' + UI_FONT + ';',
-      '  color:var(--bw-fg);max-height:140px;overflow-y:auto;word-break:break-word}',
-      P + ' .bw-text.is-off{color:var(--bw-faint);font-style:italic}',
+      '  color:var(--bw-fg);resize:none;overflow-y:auto;word-break:break-word}',
+      P + ' .bw-text::placeholder{color:var(--bw-muted)}',
+      P + ' .bw-text.is-off::placeholder{font-style:italic}',
+      P + ' .bw-text:disabled{cursor:default}',
 
       /* footer */
       P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;',
@@ -1684,9 +1693,13 @@
         if (oneText !== twoText) {
           // Both, comma separated. One number here would be a lie about one of
           // the edges — and this is the case the four-edge view exists for.
+          // Upright, not italic: two real values are not one inherited one.
+          // An edge with no class of its own still renders something, and
+          // ', 8' reads as a missing number rather than a zero.
           snow.style.display = one.arbitrary || two.arbitrary ? '' : 'none';
-          readout.value = oneText + ', ' + twoText;
-          readout.className = 'bw-val is-inherited';
+          readout.value = edgeText(oneText, prefix, pair[0]) + ', ' +
+            edgeText(twoText, prefix, pair[1]);
+          readout.className = 'bw-val';
           readout.title = opts.name + ': ' + (one.from || 'not set') + ' and ' +
             (two.from || 'not set') + ' \u2014 typing one value sets both';
           return;
@@ -1841,11 +1854,19 @@
       if (expandedFor[box.prefix] !== selected) {
         expandedFor[box.prefix] = selected;
         // Open on an element that already owns the finer classes, so one
-        // written with pt-6 does not look unset behind a collapsed view. Decided
-        // once, here; after that the toggle is the user's.
-        expanded[box.prefix] = open.some(function (f) {
+        // written with pt-6 does not look unset behind a collapsed view — and
+        // on one whose two edges simply disagree, because a single axis field
+        // cannot state two values without a comma. Decided once, here; after
+        // that the toggle is the user's.
+        var perSide = open.some(function (f) {
           return readSpacing(selected, box.prefix, f.side).source === 'explicit';
         });
+        var uneven = !box.expanded && Object.keys(PAIR).some(function (axis) {
+          var edges = PAIR[axis];
+          return spacingText(readSpacing(selected, box.prefix, edges[0])) !==
+                 spacingText(readSpacing(selected, box.prefix, edges[1]));
+        });
+        expanded[box.prefix] = perSide || uneven;
       }
       render();
     });
@@ -2467,26 +2488,55 @@
     label.style.paddingTop = '6px';
     row.appendChild(label);
 
-    var box = el('div', 'bw-text', '');
+    // A textarea, not a mirror. Typing here writes straight through to the
+    // element, the same as typing on the page does — the DOM stays the one
+    // source of truth and the save path reads it either way.
+    var box = document.createElement('textarea');
+    box.className = 'bw-text';
+    box.setAttribute('data-tw-text', '');
+    box.spellcheck = false;
+    box.autocomplete = 'off';
     row.appendChild(box);
+
+    box.addEventListener('input', function () {
+      if (!selected || !textEditable || box.disabled) return;
+      if (selected.textContent === box.value) return;
+      selected.textContent = box.value;
+      markDirty(selected, 'text');
+    });
+    box.addEventListener('keydown', function (e) {
+      // Escape belongs to the panel here, not to the page: it should leave the
+      // field, not drop the selection out from under it.
+      if (e.key === 'Escape') { e.stopPropagation(); box.blur(); }
+    });
+
+    /** Say why it cannot be typed into, in the field itself. */
+    function refuse(why, detail) {
+      box.disabled = true;
+      box.value = '';
+      box.placeholder = why;
+      box.className = 'bw-text is-off';
+      box.title = detail;
+    }
 
     readouts.push(function () {
       if (!TEXT_ENABLED) {
-        box.textContent = 'text editing is HTML-only for now';
-        box.className = 'bw-text is-off';
-        box.title = 'JSX text is whitespace-significant; not safe to rewrite yet';
-        return;
+        return refuse('text editing is HTML-only for now',
+          'JSX text is whitespace-significant; not safe to rewrite yet');
       }
       if (!textEditable) {
-        box.textContent = 'has child elements — pick one to edit its text';
-        box.className = 'bw-text is-off';
-        box.title = 'only leaf elements can be typed into';
-        return;
+        return refuse('has child elements — pick one to edit its text',
+          'only leaf elements can be typed into');
       }
-      var value = selected.textContent.trim();
-      box.textContent = value || '(empty)';
-      box.className = 'bw-text' + (value ? '' : ' is-off');
-      box.title = 'click the element on the page and type';
+      box.disabled = false;
+      box.className = 'bw-text';
+      box.placeholder = '(empty)';
+      box.title = 'type here, or on the page itself';
+      // Never while it is being typed into, and never for a value that already
+      // matches — assigning would put the caret back at the end.
+      if (document.activeElement !== box && box.value !== selected.textContent) {
+        box.value = selected.textContent;
+      }
     });
 
     return row;
@@ -3392,6 +3442,10 @@
     if (!baseline.has(el)) baseline.set(el, classesOf(el));
     noteTouched(el); // while it is still untouched — see noteTouched
     revealed = {}; // reveals are per-selection, not sticky across elements
+    // So is the folded/unfolded choice. Deciding it again here is what makes
+    // "decided once per selection" true when you click away and back — while
+    // still leaving the toggle alone for every refresh in between.
+    expandedFor = { p: null, m: null, gap: null };
     buildColorModel(); // re-read: a client-routed page can swap its @theme
     if (!isRemoved(selected)) setOutline(selected, SELECT_OUTLINE);
     // Nothing about an element marked for removal is editable, and making it

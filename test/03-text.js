@@ -58,7 +58,11 @@ const selectAllIn = page => page.evaluate(() => {
   await page.locator('[data-tw-mode]').click();
 
   const panel = page.locator('[data-tw-editor="panel"]');
-  const textBox = panel.locator('[data-tw-field="text"] div');
+  // The Text row is a real field now, not a mirror: read its value, and its
+  // placeholder for the cases it refuses.
+  const textBox = panel.locator('[data-tw-text]');
+  const textShows = async () =>
+    (await textBox.isDisabled()) ? (await textBox.getAttribute('placeholder')) : (await textBox.inputValue());
   const saveAndWait = async () => {
     await panel.locator('[data-tw-save]').click();
     await page.waitForFunction(() => {
@@ -75,7 +79,10 @@ const selectAllIn = page => page.evaluate(() => {
   check('the title is just the element, no status glyph',
     !/✎/.test(await panel.locator('strong').first().textContent()),
     await panel.locator('strong').first().textContent());
-  check('panel mirrors current text', (await textBox.textContent()).includes('Edit this page in the browser.'));
+  check('the field holds the element\'s text',
+    (await textShows()).includes('Edit this page in the browser.'), await textShows());
+  check('and it is editable', !(await textBox.isDisabled()));
+
 
   check('a single click focused it — no second click needed',
     await h1.evaluate(el => document.activeElement === el));
@@ -86,9 +93,12 @@ const selectAllIn = page => page.evaluate(() => {
   await selectAllIn(page);
   await page.keyboard.type('Rewritten in the browser');
   check('DOM text updated live', (await h1.textContent()) === 'Rewritten in the browser');
-  check('panel preview follows typing', (await textBox.textContent()).includes('Rewritten in the browser'));
+  check('panel preview follows typing', (await textShows()).includes('Rewritten in the browser'));
   check('class attribute untouched by typing',
     (await h1.getAttribute('class')) === 'text-4xl font-bold', await h1.getAttribute('class'));
+  check('the panel field followed the typing on the page',
+    (await textShows()) === (await h1.textContent()),
+    `${await textShows()} vs ${await h1.textContent()}`);
 
   // Enter must not inject <br>/<div>
   await page.keyboard.press('Enter');
@@ -135,7 +145,8 @@ const selectAllIn = page => page.evaluate(() => {
   const card = page.locator('[data-eid="8"]');
   await card.click({ position: { x: 3, y: 3 } });
   check('container is not contenteditable', !(await card.evaluate(el => el.isContentEditable)));
-  check('panel explains why', (await textBox.textContent()).includes('has child elements'));
+  check('the field refuses it rather than pretending', await textBox.isDisabled());
+  check('panel explains why', (await textShows()).includes('has child elements'));
 
   // container save still works and must not send text
   await step(panel, 'p-x', 'up');
@@ -191,6 +202,26 @@ const selectAllIn = page => page.evaluate(() => {
   check('and the classes are back where they started',
     (await h1b.getAttribute('class')) === beforeAlign,
     `${beforeAlign} → ${await h1b.getAttribute('class')}`);
+
+  // ---- the Text field is a field: typing in it writes through ----
+  //
+  // Deliberately last. Filling it moves focus into the panel, which is exactly
+  // what the page-typing checks above are asserting does not happen by itself.
+  const leaf = page.locator('[data-eid="6"]');
+  await leaf.click();
+  const classesBefore = await leaf.getAttribute('class');
+  await textBox.fill('Typed from the panel');
+  check('panel typing reached the element',
+    (await leaf.textContent()) === 'Typed from the panel', await leaf.textContent());
+  check('and counted as a pending change',
+    (await panel.locator('[data-tw-save]').textContent()).trim() === 'Save 1 change',
+    await panel.locator('[data-tw-save]').textContent());
+  check('the class attribute is untouched by panel typing',
+    (await leaf.getAttribute('class')) === classesBefore, await leaf.getAttribute('class'));
+  status = await saveAndWait();
+  check('panel-typed text reaches disk', status.includes('written') &&
+    />Typed from the panel</.test(disk()),
+    disk().split('\n').find(l => l.includes('<h1')));
 
   await page.locator('[data-eid="6"]').click();
   await page.screenshot({ path: `${__dirname}/text.png`, clip: { x: 0, y: 0, width: 1280, height: 620 } });

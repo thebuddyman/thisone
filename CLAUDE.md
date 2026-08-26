@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-18 commits, working tree clean, `npm test` green.
+19 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -160,9 +160,17 @@ runtime rule for anything off the pre-generated ladder, which is what made
 snapping unnecessary — the old comment was right that an unsnapped `p-13` would
 have previewed as nothing.
 
+**The Text row is a field, not a mirror.** It is a textarea that writes straight
+through to the element, the same as typing on the page does — the DOM stays the
+one source of truth and the save path reads it either way. Where the text cannot
+be rewritten (a container, or JSX that refuses) the field is disabled and the
+reason is its placeholder, said in the field rather than beside it.
+
 **An axis field owns the two edges beneath it — both ways.** A `py-*` lookup
-cannot see `pt-*`, so reading an axis reads its edges: they show comma separated
-when they disagree, because one number there would be a lie about one of them.
+cannot see `pt-*`, so reading an axis reads its edges. Edges that disagree open
+the four-edge view by themselves; folded by hand they show comma separated,
+upright — two real values are not one inherited one — with `0` for an edge that
+owns no class, because `, 8` reads as a missing number.
 Writing has to clear them for the same reason — leaving `pl-6` in place while
 writing `px-8` means the more specific class wins and the field you just typed
 into does nothing.

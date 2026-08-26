@@ -120,10 +120,13 @@ function restore(g) {
   check('panel names the source location',
     (await panel.locator('strong').first().textContent()).includes('page.tsx:5'),
     await panel.locator('strong').first().textContent());
-  // Text editing is enabled for JSX now (a lone static JsxText child); the row
-  // mirrors the element's own text, or explains why it cannot be edited.
-  const textRow = await panel.locator('[data-tw-field="text"] div').textContent();
-  check('Text row reflects the element', textRow.length > 0, JSON.stringify(textRow.slice(0, 60)));
+  // The Text row is an editable field now: it holds the element's own text, or
+  // is disabled with the reason in its placeholder.
+  const textField = panel.locator('[data-tw-text]');
+  const textShows = (await textField.isDisabled())
+    ? await textField.getAttribute('placeholder')
+    : await textField.inputValue();
+  check('Text row reflects the element', textShows.length > 0, JSON.stringify(textShows.slice(0, 60)));
 
   // Compare RESOLVED RGB. The palette emits a literal oklch() while the app's
   // own theme resolves to lab(); they serialise differently and paint the same.
