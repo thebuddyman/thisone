@@ -137,7 +137,28 @@ function check(name, pass, detail) {
   });
   check('hard refresh preserves the per-side look', padAfter === '24px 24px 16px 48px', padAfter);
 
+  // ---- every field icon sits on its field's vertical centre ----
+  //
+  // A 20px icon in a 40px field that stretches its children lands flush at the
+  // top unless it asks for the centre itself. The dropdowns were fine because
+  // their button centres them; the steppers were not.
   await card2.click({ position: { x: 3, y: 3 } });
+  const offCentre = await page.evaluate(() => {
+    const bad = [];
+    document.querySelectorAll('[data-tw-editor="panel"] .bw-field').forEach((f) => {
+      const ico = f.querySelector('.bw-ico');
+      if (!ico) return;
+      const fr = f.getBoundingClientRect(), ir = ico.getBoundingClientRect();
+      if (!fr.height) return; // a row that is folded away
+      const top = ir.top - fr.top, bottom = fr.bottom - ir.bottom;
+      if (Math.abs(top - bottom) > 1) {
+        bad.push(`${f.closest('[data-tw-field]')?.getAttribute('data-tw-field')} ${top}/${bottom}`);
+      }
+    });
+    return bad;
+  });
+  check('every field icon is centred in its field', offCentre.length === 0, offCentre.join(', '));
+
   await page.screenshot({ path: `${__dirname}/sides.png` });
   await browser.close();
 
