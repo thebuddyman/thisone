@@ -71,29 +71,36 @@ function restore(g) {
     const tabs = panel.locator('[data-tw-tab]');
     check('the panel has two tabs', (await tabs.count()) === 2,
       (await tabs.allTextContents()).join(', '));
-    check('Editor is the tab it opens on',
-      (await panel.locator('[data-tw-tab="editor"]').getAttribute('aria-selected')) === 'true');
 
-    // ---- Prompt works with nothing selected ----
-    await panel.locator('[data-tw-tab="prompt"]').click();
-    check('switching tabs unfolds the panel even with nothing selected',
-      await panel.locator('[data-tw-field="prompt"]').isVisible());
-    check('and says the prompt has no element to aim at',
-      (await panel.locator('.bw-pctx').textContent()).includes('Nothing selected'),
-      await panel.locator('.bw-pctx').textContent());
+    // ---- with nothing selected there is nothing to switch between ----
+    // Both tabs are about an element, so the strip folds away with the
+    // selection exactly as the header does, and one line stands where it was.
+    check('the strip is not on screen before anything is selected',
+      !(await panel.locator('.bw-tabs').isVisible()));
+    check('and the panel says what it is waiting for',
+      await panel.locator('[data-tw-idle-msg]').isVisible());
 
-    // ---- selecting an element aims it ----
-    await panel.locator('[data-tw-tab="editor"]').click();
+    // ---- selecting an element brings the strip back, and aims it ----
     const target = page.locator('[data-bw-loc^="src/app/experiments/cora/login/page.tsx:"]').first();
     await target.click({ position: { x: 4, y: 4 } });
+    check('selecting brings the strip back',
+      await panel.locator('.bw-tabs').isVisible());
+    check('Editor is the tab it opens on',
+      (await panel.locator('[data-tw-tab="editor"]').getAttribute('aria-selected')) === 'true');
     // Read the line off the panel's own header rather than off the element we
     // aimed at: the editor selects the innermost stamped element under the
     // point, which is not always the one the locator matched.
     const head = (await panel.locator('.bw-h strong').textContent()).trim();
     await panel.locator('[data-tw-tab="prompt"]').click();
-    const ctx = await panel.locator('.bw-pctx').textContent();
+    // The header sits above both tabs and names the element on either, so the
+    // prompt's own line carries only what the header cannot: how many elements
+    // one source line renders. On a location rendering one, it says nothing.
+    const onPrompt = (await panel.locator('.bw-h strong').textContent()).trim();
     check('the prompt aims at the same element the Editor tab does',
-      ctx.includes(head.replace(/^.*?([\w.]+\.tsx:\d+).*$/, '$1')), `${ctx}  (header: ${head})`);
+      onPrompt === head && /\.tsx:\d+/.test(onPrompt), `${onPrompt}  (editor tab: ${head})`);
+    const ctx = (await panel.locator('.bw-pctx').textContent()).trim();
+    check('and its own line adds the instance count, or stays out of the way',
+      ctx === '' || /renders \d+ elements/.test(ctx), JSON.stringify(ctx));
 
     // ---- a pending edit blocks the turn ----
     // Claude reads these files off disk; a class change living only in the DOM
