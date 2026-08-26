@@ -165,6 +165,12 @@ parent is an anonymous flex item like any other. The rule is the + row's alone
 in both cases — an element already carrying `gap-4` keeps its field however few
 children it has, so a stale class stays removable.
 
+**A row's label lights to the value colour under the cursor.** `#dcdcdc`, which
+is what a value is set in, up from the label's own `#8c8c8c` — the same move the
+tab strip makes, and the only one available here: a label sits on the panel's own
+surface, so it cannot take the `#2b2b2b` fill a tile does. Keyed on `.bw-row`, so
+the whole row is the target, because the whole row is what the cursor is over.
+
 **The reveal row is a button, not a row with a button in it.** A 20px + is a
 small thing to hit for something this coarse, and the row has one meaning end
 to end — so the whole 312px takes the click and the label is part of the target
@@ -210,10 +216,12 @@ became one `revealed.typography`, and the row offers the section.
 
 **One bar at the foot of the panel, holding whichever row the tab owns.** Send
 and Save are the same kind of button doing the same kind of thing at the end of
-the same panel, so they stand in the same place — 12px from the right edge,
-10px from the bottom, both 40px tall — rather than each keeping their own
-margins inside their own view. Send is built with the Prompt view it belongs to
-and parked in the footer.
+the same panel, so they stand in the same place — 12px off every edge of the
+bar, both 40px tall — rather than each keeping their own margins inside their
+own view. 12 all round and not the 10 it started at vertically: the button is
+aligned to the right gutter, so standing closer to the rule above it and to the
+panel's foot than to that edge read as the bar being squeezed. Send is built
+with the Prompt view it belongs to and parked in the footer.
 
 **Save, undo and redo are not on the Prompt tab at all**, pending edits or
 none: they are the editor's ledger, and Claude's writes go straight to disk

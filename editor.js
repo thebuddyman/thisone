@@ -1640,6 +1640,12 @@
       P + ' .bw-row{display:flex;flex-wrap:wrap;align-items:center;row-gap:8px;column-gap:12px}',
       P + ' .bw-row.top{align-items:flex-start}',
       P + ' .bw-lbl{flex:0 0 100%;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
+      // Under the cursor a row's label steps up to the colour its values are
+      // set in — the same move the tab strip makes, and the only one available
+      // here: a label sits on the panel's own surface, so it cannot take the
+      // #2b2b2b fill a tile does. The whole row is the target, because the
+      // whole row is what the cursor is over.
+      P + ' .bw-row:hover .bw-lbl{color:var(--bw-fg)}',
 
       /* segmented stepper */
       P + ' .bw-field{flex:1;min-width:0;display:flex;align-items:stretch;height:40px;',
@@ -1943,7 +1949,10 @@
       P + ' .bw-text:disabled{cursor:default}',
 
       /* footer */
-      P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;',
+      // 12 on every side: the bar's own gutter, the same one it keeps at the
+      // right. 10 top and bottom left the button standing closer to the rule
+      // above it and to the panel's foot than to the edge it is aligned with.
+      P + ' .bw-foot{flex:0 0 auto;display:flex;flex-direction:column;gap:7px;padding:12px;',
       // EDGE, like the row dividers and the tab strip: --bw-hair is the same
       // value as a field's background, so the line disappeared wherever a
       // field ran up against it — which down here is most of its length.
@@ -1976,7 +1985,18 @@
       // + wear, because they are the same kind of thing. Disabled they only
       // step back from it: dimmed far enough that "nothing to undo" reads
       // before the arrow does.
-      P + ' .bw-hbtn:disabled{opacity:.22;cursor:default}',
+      //
+      // Opacity is the only lever here. The stroke is #AAAAAA baked into the
+      // exported file, not currentColor, so `color` on the button does nothing
+      // — and the export is kept verbatim on purpose.
+      //
+      // .22 composited 170 over the card's 23 and landed at 55: a mark two
+      // steps off the background, readable as an artefact rather than as a
+      // control. .38 lands at 79 — the scheme's own #505050 border grey, which
+      // is already what this palette uses for "structural, present, not
+      // active", so the disabled arrows now sit on a value the design has
+      // rather than on an arbitrary fade.
+      P + ' .bw-hbtn:disabled{opacity:.38;cursor:default}',
       P + ' .bw-foot-row .bw-save{margin-left:auto}',
       // The same 40 the buttons beside it stand at, so the row has one height
       // rather than a tall pair and a short one centred against them.
@@ -5002,7 +5022,12 @@
 
     var form = el('div', 'bw-pform');
     ui.pinput = el('textarea', 'bw-pinput');
-    ui.pinput.placeholder = 'Make this the same blue as the header…';
+    // Generic on purpose. The old one was a worked example — "Make this the
+    // same blue as the header…" — which reads as an instruction the first time
+    // and narrows what the box looks like it takes: a colour, on this element,
+    // copied from another. The field takes any change to the selected element,
+    // and the panel already says which element that is on the line above.
+    ui.pinput.placeholder = 'Describe the change you want…';
     ui.pinput.setAttribute('data-tw-field', 'prompt');
     ui.pinput.addEventListener('keydown', function (e) {
       // Enter sends; Shift+Enter is a newline. A prompt is usually one line and
