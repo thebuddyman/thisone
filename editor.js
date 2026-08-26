@@ -122,16 +122,27 @@
   // Vertical first: it is the one people set, and it reads top-then-sides the
   // way the shorthand does.
   var AXES = [
-    { side: 'y', name: 'vertical', icon: 'y' },
-    { side: 'x', name: 'horizontal', icon: 'x' },
+    { side: 'y', name: 'vertical', key: 'Vt' },
+    { side: 'x', name: 'horizontal', key: 'Hz' },
   ];
 
   var SIDES = [
-    { side: 't', name: 'top', icon: 't' },
-    { side: 'r', name: 'right', icon: 'r' },
-    { side: 'b', name: 'bottom', icon: 'b' },
-    { side: 'l', name: 'left', icon: 'l' },
+    { side: 't', name: 'top', key: 'Top' },
+    { side: 'r', name: 'right', key: 'Right' },
+    { side: 'b', name: 'bottom', key: 'Bottom' },
+    { side: 'l', name: 'left', key: 'Left' },
   ];
+
+  /**
+   * Padding and margin ship parallel icon sets — a margin's marks sit outside
+   * its box where a padding's sit inside — so the shape is the shared part and
+   * the set is the box's. gap has neither and keeps its own three.
+   */
+  var ICON_SET = { p: 'pad', m: 'mar' };
+  function boxIcon(prefix, key, fallback) {
+    var name = (ICON_SET[prefix] || '') + key;
+    return ICONS[name] ? name : fallback;
+  }
 
   // Per-box: is the four-edge view showing? Padding and margin toggle apart.
   var expanded = { p: false, m: false, gap: false };
@@ -1200,35 +1211,53 @@
   var ICONS = {
     // Exported from the Figma into assets/ and inlined verbatim. The colours
     // are the design's own — #aaa marks, #505050 boxes, #858585 snowflake — so
-    // they are deliberately NOT swapped for currentColor.
+    // they are deliberately NOT swapped for currentColor. Padding and margin
+    // have parallel sets; the names mirror the filenames so a missing one is
+    // obvious at a glance.
     // assets/ic-x.svg
     close: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M15 5L5 15\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5 5L15 15\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-chevron-down.svg
     chevron: "<svg width=\"8\" height=\"5\" viewBox=\"0 0 8 5\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0.75 0.75L3.75 3.75L6.75 0.75\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
-    // assets/ic-padding-hz.svg
-    x: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_417)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"14.5\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/><rect x=\"4\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_417\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-vt.svg
-    y: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_412)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_412\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-top.svg
-    t: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_162)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_162\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-right.svg
-    r: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_153)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"14.5\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_153\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-bottom.svg
-    b: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_148)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_148\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-left.svg
-    l: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_144)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"4\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_144\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-hzvt.svg
-    combined: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_398)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_398\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
-    // assets/ic-padding-parts.svg
-    individual: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_1_90)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 6.75C14.5 6.33579 14.8358 6 15.25 6C15.6642 6 16 6.33579 16 6.75V13.25C16 13.6642 15.6642 14 15.25 14C14.8358 14 14.5 13.6642 14.5 13.25V6.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 6.75C4 6.33579 4.33579 6 4.75 6C5.16421 6 5.5 6.33579 5.5 6.75V13.25C5.5 13.6642 5.16421 14 4.75 14C4.33579 14 4 13.6642 4 13.25V6.75Z\" fill=\"#AAAAAA\"/><path d=\"M13.25 4C13.6642 4 14 4.33579 14 4.75C14 5.16421 13.6642 5.5 13.25 5.5L6.75 5.5C6.33579 5.5 6 5.16421 6 4.75C6 4.33579 6.33579 4 6.75 4L13.25 4Z\" fill=\"#AAAAAA\"/><path d=\"M13.25 14.5C13.6642 14.5 14 14.8358 14 15.25C14 15.6642 13.6642 16 13.25 16L6.75 16C6.33579 16 6 15.6642 6 15.25C6 14.8358 6.33579 14.5 6.75 14.5L13.25 14.5Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_1_90\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-snowflake.svg
+    snow: "<svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M5 10L4.375 8.75L3 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5 2L4.375 3.25L3 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 10L7.625 8.75L9 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 2L7.625 3.25L9 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 10.5L7 7.5H5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 1.5L7 4.5L7.75 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M1 6H4.25L5 4.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 5L9.25 6L10 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M11 6H7.75L7 7.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M2 5L2.75 6L2 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 10.5L5 7.5L4.25 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 1.5L5 4.5H7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-align-left.svg
     alignLeft: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M12.5 10H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14.1667 15.834H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-align-center.svg
     alignCenter: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14.1673 10H5.83398\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M15.8327 15.834H4.16602\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-align-right.svg
     alignRight: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.5 10H7.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.5007 15.834H5.83398\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
-    // assets/ic-snowflake.svg
-    snow: "<svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M5 10L4.375 8.75L3 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5 2L4.375 3.25L3 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 10L7.625 8.75L9 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 2L7.625 3.25L9 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 10.5L7 7.5H5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 1.5L7 4.5L7.75 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M1 6H4.25L5 4.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 5L9.25 6L10 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M11 6H7.75L7 7.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M2 5L2.75 6L2 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 10.5L5 7.5L4.25 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 1.5L5 4.5H7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    // assets/ic-padding-hz.svg
+    padHz: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_417)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"14.5\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/><rect x=\"4\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_417\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-vt.svg
+    padVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_412)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_412\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-top.svg
+    padTop: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_162)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_162\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-right.svg
+    padRight: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_153)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"14.5\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_153\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-bottom.svg
+    padBottom: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_148)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_148\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-left.svg
+    padLeft: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_2_144)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"4\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_2_144\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-hzvt.svg
+    padHzVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_398)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_398\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-parts.svg
+    padParts: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_1_90)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 6.75C14.5 6.33579 14.8358 6 15.25 6C15.6642 6 16 6.33579 16 6.75V13.25C16 13.6642 15.6642 14 15.25 14C14.8358 14 14.5 13.6642 14.5 13.25V6.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 6.75C4 6.33579 4.33579 6 4.75 6C5.16421 6 5.5 6.33579 5.5 6.75V13.25C5.5 13.6642 5.16421 14 4.75 14C4.33579 14 4 13.6642 4 13.25V6.75Z\" fill=\"#AAAAAA\"/><path d=\"M13.25 4C13.6642 4 14 4.33579 14 4.75C14 5.16421 13.6642 5.5 13.25 5.5L6.75 5.5C6.33579 5.5 6 5.16421 6 4.75C6 4.33579 6.33579 4 6.75 4L13.25 4Z\" fill=\"#AAAAAA\"/><path d=\"M13.25 14.5C13.6642 14.5 14 14.8358 14 15.25C14 15.6642 13.6642 16 13.25 16L6.75 16C6.33579 16 6 15.6642 6 15.25C6 14.8358 6.33579 14.5 6.75 14.5L13.25 14.5Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_1_90\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-margin-hz.svg
+    marHz: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M18 4.75C18 4.33579 18.3358 4 18.75 4C19.1642 4 19.5 4.33579 19.5 4.75V15.25C19.5 15.6642 19.1642 16 18.75 16C18.3358 16 18 15.6642 18 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M0.5 4.75C0.5 4.33579 0.835786 4 1.25 4C1.66421 4 2 4.33579 2 4.75V15.25C2 15.6642 1.66421 16 1.25 16C0.835786 16 0.5 15.6642 0.5 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/></svg>",
+    // assets/ic-margin-vt.svg
+    marVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/><path d=\"M15.25 18C15.6642 18 16 18.3358 16 18.75C16 19.1642 15.6642 19.5 15.25 19.5L4.75 19.5C4.33579 19.5 4 19.1642 4 18.75C4 18.3358 4.33579 18 4.75 18L15.25 18Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 0.5C15.6642 0.5 16 0.835787 16 1.25C16 1.66421 15.6642 2 15.25 2L4.75 2C4.33579 2 4 1.66421 4 1.25C4 0.835786 4.33579 0.5 4.75 0.5L15.25 0.5Z\" fill=\"#AAAAAA\"/></svg>",
+    // assets/ic-margin-top.svg
+    marTop: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/><path d=\"M15.25 0.5C15.6642 0.5 16 0.835787 16 1.25C16 1.66421 15.6642 2 15.25 2L4.75 2C4.33579 2 4 1.66421 4 1.25C4 0.835786 4.33579 0.5 4.75 0.5L15.25 0.5Z\" fill=\"#AAAAAA\"/></svg>",
+    // assets/ic-margin-right.svg
+    marRight: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M18 4.75C18 4.33579 18.3358 4 18.75 4C19.1642 4 19.5 4.33579 19.5 4.75V15.25C19.5 15.6642 19.1642 16 18.75 16C18.3358 16 18 15.6642 18 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/></svg>",
+    // assets/ic-margin-bottom.svg
+    marBottom: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/><path d=\"M15.25 18C15.6642 18 16 18.3358 16 18.75C16 19.1642 15.6642 19.5 15.25 19.5L4.75 19.5C4.33579 19.5 4 19.1642 4 18.75C4 18.3358 4.33579 18 4.75 18L15.25 18Z\" fill=\"#AAAAAA\"/></svg>",
+    // assets/ic-margin-left.svg
+    marLeft: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0.5 4.75C0.5 4.33579 0.835786 4 1.25 4C1.66421 4 2 4.33579 2 4.75V15.25C2 15.6642 1.66421 16 1.25 16C0.835786 16 0.5 15.6642 0.5 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/></svg>",
+    // assets/ic-margin-hzvt.svg
+    marHzVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_4_337)\"><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#AAAAAA\" stroke-width=\"1.5\"/></g><defs><clipPath id=\"clip0_4_337\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-margin-parts.svg
+    marParts: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_4_350)\"><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#505050\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#505050\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#505050\"/><path d=\"M15.25 18C15.6642 18 16 18.3358 16 18.75C16 19.1642 15.6642 19.5 15.25 19.5L4.75 19.5C4.33579 19.5 4 19.1642 4 18.75C4 18.3358 4.33579 18 4.75 18L15.25 18Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 0.5C15.6642 0.5 16 0.835787 16 1.25C16 1.66421 15.6642 2 15.25 2L4.75 2C4.33579 2 4 1.66421 4 1.25C4 0.835786 4.33579 0.5 4.75 0.5L15.25 0.5Z\" fill=\"#AAAAAA\"/><path d=\"M18 4.75C18 4.33579 18.3358 4 18.75 4C19.1642 4 19.5 4.33579 19.5 4.75V15.25C19.5 15.6642 19.1642 16 18.75 16C18.3358 16 18 15.6642 18 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M0.5 4.75C0.5 4.33579 0.835786 4 1.25 4C1.66421 4 2 4.33579 2 4.75V15.25C2 15.6642 1.66421 16 1.25 16C0.835786 16 0.5 15.6642 0.5 15.25V4.75Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_4_350\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
     // Toggle glyphs: a box inside a box is "one padding all round"; adding the
     // two outer rules is "each edge on its own". The button shows the mode it
     // is currently in, so the icon and the fields below it always agree.
@@ -1386,8 +1415,15 @@
       // Not .bw-row.is-open: a spacing field anchors its list to the .bw-input
       // wrapper, not to the row, so tying the ring to the row lit every
       // dropdown except the ones that just grew a chevron.
+      //
+      // An outline, not an inset shadow. The token button fills its field edge
+      // to edge, and a child's background paints OVER a parent's inset shadow —
+      // so the ring was being drawn the whole time and hidden under
+      // .bw-ctoken:hover, which is exactly where the cursor is after a click.
+      // An outline is painted over descendants, and at -1px it lands where the
+      // shadow did and follows the same 8px radius.
       P + ' .bw-field.is-open,',
-      P + ' .is-open .bw-field{box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
+      P + ' .is-open .bw-field{outline:1px solid ' + FOCUS + ';outline-offset:-1px}',
       P + ' .bw-text:focus{outline:none;box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       both(' .bw-search-in') + '{caret-color:' + FOCUS + '}',
       P + ' .bw-open{flex:0 0 auto;align-self:center;display:flex;align-items:center;',
@@ -1462,6 +1498,12 @@
       // Not an icon: this is the face itself, set in the face, which is why it
       // is the one thing in a bare field that comes before the value.
       P + ' .bw-famsample{flex:0 0 auto;font:15px/1 serif;color:var(--bw-fg)}',
+      // A name set in its own face needs a taller line box than the panel's
+      // own 15px/1: overflow:hidden is there for the ellipsis and clips both
+      // axes, so a script face loses its ascenders and descenders to it.
+      // 15px, not the list's 16: this sits beside `400` and `16px`, and the
+      // frame's panel text is 15 throughout. Only the line box grows.
+      P + ' .bw-cname.is-face{line-height:1.6}',
       P + ' .bw-famsample.is-unset{color:var(--bw-faint)}',
       // The chevron: 8x5, 12px in from the right, on every field that opens a list.
       P + ' .bw-chev{flex:0 0 auto;display:flex;align-items:center;margin-left:auto}',
@@ -1479,7 +1521,10 @@
       // instead, which put two auto margins in one row: they split the free
       // space evenly and stranded the note halfway to the chevron.
       P + ' .bw-cname{flex:1;min-width:0;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);',
-      '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      // text-align, because the token is a <button> and a button centres its
+      // text by UA default. Invisible while this span was auto-width; the
+      // moment flex:1 gave it the whole field, the value drifted to the middle.
+      '  text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
       P + ' .bw-alpha{flex:0 0 auto;display:flex;align-items:center;gap:1px;',
       '  padding-left:4px;border-left:1px solid var(--bw-hair)}',
@@ -1546,6 +1591,7 @@
       PP + ' .bw-sizepx{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       PP + ' [data-tw-size]{align-items:baseline}',
       PP + ' [data-tw-radius]{align-items:center}',
+      PP + ' .bw-sizename.is-face{font-size:16px;line-height:1.6}',
       PP + ' .bw-hue{border-radius:8px}',
       PP + ' [aria-current="true"]{background:' + SELECTED + '}',
       P + ' .bw-cname.is-custom{color:' + LITERAL + ';font-style:italic}',
@@ -1656,7 +1702,7 @@
 
     var field = el('div', 'bw-field');
     var mark = el('span', 'bw-ico');
-    mark.innerHTML = ICONS[opts.icon];
+    mark.innerHTML = ICONS[opts.key ? boxIcon(prefix, opts.key, opts.icon) : opts.icon];
     mark.title = opts.name;
 
     var readout = document.createElement('input');
@@ -1860,7 +1906,7 @@
     var stack = el('div', 'bw-stack');
 
     var toggle = el('button', 'bw-toggle');
-    toggle.innerHTML = ICONS.combined;
+    toggle.innerHTML = ICONS[boxIcon(box.prefix, 'HzVt', 'padHzVt')];
     toggle.setAttribute('data-tw-toggle', box.prefix);
     toggle.setAttribute('aria-pressed', 'false');
     toggle.title = 'Edit ' + box.label.toLowerCase() + ' per side';
@@ -1872,6 +1918,9 @@
       var v = el('div', 'bw-pair' + (list.length === 1 ? ' is-single' : '') + (hidden ? ' is-hidden' : ''));
       list.forEach(function (f) {
         v.appendChild(spacingField(box.prefix, f.side, {
+          // `key` is the shape; the box decides which set it comes from. gap
+          // has no set of its own and passes a plain icon name instead.
+          key: f.key,
           icon: f.icon,
           name: f.name === 'gap' ? 'gap' : box.label.toLowerCase() + ' ' + f.name,
         }));
@@ -1892,7 +1941,8 @@
       axisView.className = 'bw-pair' + (open ? ' is-hidden' : '');
       sideView.className = 'bw-pair' + (open ? '' : ' is-hidden');
       toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
-      toggle.innerHTML = open ? ICONS.individual : ICONS.combined;
+      toggle.innerHTML = ICONS[boxIcon(box.prefix, open ? 'Parts' : 'HzVt',
+        open ? 'padParts' : 'padHzVt')];
       toggle.title = open
         ? box.label + ': editing each edge — click for horizontal / vertical'
         : box.label + ': horizontal / vertical — click to edit each edge';
@@ -2701,14 +2751,22 @@
         state.kind === 'token' ? (FAMILIES[state.name] || '') : (state.stack || '');
       sample.className = 'bw-famsample' + (state.kind === 'token' ? '' : ' is-unset');
 
+      // The name is set in the face it names — the specimen and the label are
+      // the same object, which is how every type picker worth using shows a
+      // font. is-face buys the line box some headroom: .bw-cname is 15px/1
+      // with overflow:hidden for the ellipsis, and a face with real ascenders
+      // (Square Peg runs well past them) gets its top and tail shaved off.
+      d.name.style.fontFamily =
+        state.kind === 'token' ? (FAMILIES[state.name] || '') : (state.stack || '');
+
       if (state.kind === 'token') {
         d.name.textContent = familyName(state.name);
-        d.name.className = 'bw-cname';
+        d.name.className = 'bw-cname is-face';
         d.note.textContent = state.name;
         d.token.title = state.cls + ' \u2014 ' + (resolveFamily(state.stack) || state.stack);
       } else {
         d.name.textContent = familyFace(state.stack) || firstFamily(state.stack) || '\u2014';
-        d.name.className = 'bw-cname is-unset';
+        d.name.className = 'bw-cname is-face is-unset';
         d.note.textContent = state.stack ? 'inherited' : '';
         d.token.title = 'not set \u2014 rendering in ' +
           (resolveFamily(state.stack) || 'the browser default');
@@ -3308,7 +3366,9 @@
         var sample = el('span', 'bw-sizesample', 'Ag');
         sample.style.cssText = 'font-size:16px;font-family:' + FAMILIES[t];
         item.appendChild(sample);
-        item.appendChild(el('span', 'bw-sizename', familyName(t)));
+        var label = el('span', 'bw-sizename is-face', familyName(t));
+        label.style.fontFamily = FAMILIES[t];
+        item.appendChild(label);
         item.appendChild(el('span', 'bw-sizepx', t));
         if (currentF.kind === 'token' && currentF.name === t) {
           item.setAttribute('aria-current', 'true');
