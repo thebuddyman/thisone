@@ -163,10 +163,10 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   check('and the bar says exactly the same thing',
     (await cursorOf(foot)) === 'grab', await cursorOf(foot));
   check('buttons on a handle still point, they do not grab',
-    (await cursorOf(panel.locator('.bw-h .bw-x'))) === 'pointer',
-    await cursorOf(panel.locator('.bw-h .bw-x')));
+    (await cursorOf(panel.locator('.bw-x').first())) === 'pointer',
+    await cursorOf(panel.locator('.bw-x').first()));
   // ---- the close button: 40x40, transparent until hovered ----
-  const x = panel.locator('.bw-h .bw-x');
+  const x = panel.locator('.bw-x').first();
   const xBox = await x.boundingBox();
   check('the close button is 40x40',
     Math.round(xBox.width) === 40 && Math.round(xBox.height) === 40,

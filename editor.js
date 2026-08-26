@@ -3696,7 +3696,12 @@
     close.title = 'Deselect (Esc)';
     close.addEventListener('click', deselect);
     header.appendChild(ui.title);
-    header.appendChild(close);
+    // Deselecting is not something the title says, so the × sits on the tab
+    // strip's line where the panel's other chrome is — and falls back to the
+    // header when there is no strip, which is every backend without a prompt
+    // route.
+    if (ui.tabstrip) ui.tabstrip.appendChild(close);
+    else header.appendChild(close);
     panel.appendChild(header);
     makeDraggable(panel, header);
 
