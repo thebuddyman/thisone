@@ -108,6 +108,7 @@ const CANDIDATES = [
   'gap{,-x,-y}-{0,2,4,6,8,12}',
   // Every offered token must be pre-generated, or picking one previews nothing.
   'text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}',
+  'text-{left,center,right}',
   'font-{thin,extralight,light,normal,medium,semibold,bold,extrabold,black}',
   '{bg,text}-{white,black}',
   `{bg,text}-{${HUES.join(',')}}-{${SHADES.join(',')}}`,

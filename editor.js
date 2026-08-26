@@ -66,6 +66,10 @@
     // uiux_experiment, and 180 against 90 in gw-web, where they are the
     // majority. Same two-idiom shape as font size, same rule — writing either
     // form clears the other.
+    // Exact words only: text- is shared with sizes and colours, and text-left
+    // is neither. start/end are stripped though never offered — the export has
+    // icons for three alignments, not five.
+    textAlign: /^text-(?:left|center|right|justify|start|end)$/,
     radiusArb: /^rounded-\[[^\]]+\]$/,
     // The per-corner utilities. Never touched, only noticed: rounded-l-[2px]
     // still wins on the left after rounded-lg is written, and the row says so
@@ -963,22 +967,26 @@
    * rule for the *user's* elements — the panel is excluded from selection, so
    * its classes can never leak into anything written back to source.
    */
-  var TOKENS = {
-    light: {
-      card: '#ffffff', bg: '#fafafa', sunken: '#fafafa', inset: '#f7f7f7',
-      border: '#e3e3e3', hair: '#ededed',
-      fg: '#141414', muted: '#737373', faint: '#a3a3a3',
-      hover: 'rgba(0,0,0,.045)', press: 'rgba(0,0,0,.075)', ring: 'rgba(0,0,0,.08)',
-      shadow: '0 1px 2px rgba(0,0,0,.05), 0 12px 28px -8px rgba(0,0,0,.18)',
-    },
-    dark: {
-      card: '#2b2b2b', bg: '#252525', sunken: '#262626', inset: '#1f1f1f',
-      border: '#3d3d3d', hair: '#343434',
-      fg: '#f5f5f5', muted: '#a6a6a6', faint: '#6f6f6f',
-      hover: 'rgba(255,255,255,.06)', press: 'rgba(255,255,255,.1)', ring: 'rgba(255,255,255,.1)',
-      shadow: '0 1px 2px rgba(0,0,0,.4), 0 12px 32px -8px rgba(0,0,0,.6)',
-    },
+  /**
+   * One scheme, not two.
+   *
+   * The panel used to follow the OS between a light and a dark palette. The
+   * design it now wears is a single dark surface, so both keys carry it: a
+   * light variant would be an invention, and inventing one is how a design
+   * stops matching the file it came from.
+   *
+   * Every value below is lifted from the Figma frame (352x449, node 1:2):
+   * #171717 panel, #232323 fields, #dcdcdc values, #8c8c8c labels,
+   * #505050 borders, #aaa icon marks, #858585 the snowflake grey.
+   */
+  var SCHEME = {
+    card: '#171717', bg: '#171717', sunken: '#232323', inset: '#232323',
+    border: '#505050', hair: '#232323',
+    fg: '#dcdcdc', muted: '#8c8c8c', faint: '#858585', mark: '#aaaaaa',
+    hover: 'rgba(255,255,255,.06)', press: 'rgba(255,255,255,.1)', ring: 'rgba(255,255,255,.12)',
+    shadow: '0 1px 2px rgba(0,0,0,.5), 0 16px 40px -12px rgba(0,0,0,.7)',
   };
+  var TOKENS = { light: SCHEME, dark: SCHEME };
   var BRAND = '#d97959';  // --primary from the template
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
@@ -992,15 +1000,38 @@
       .join(';');
   }
 
-  /** 12px line icons: a faint box plus the edge(s) the control governs. */
+  /**
+   * The few marks the export has no file for — the four individual edges, and
+   * the small chrome arrows. Drawn on a 12 grid but rendered at 20 to sit with
+   * the exported icons, which means 0.9 here lands at the assets' 1.5 stroke.
+   */
   function glyph(inner) {
-    return '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.1" stroke-linecap="round">' + inner + '</svg>';
+    return '<svg width="20" height="20" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
+      'stroke-width="0.9" stroke-linecap="round">' + inner + '</svg>';
   }
   var BOXPATH = '<rect x="1.75" y="1.75" width="8.5" height="8.5" rx="1.75" opacity=".32"/>';
   var ICONS = {
-    x: glyph(BOXPATH + '<path d="M3.7 3.5v5M8.3 3.5v5"/>'),
-    y: glyph(BOXPATH + '<path d="M3.5 3.7h5M3.5 8.3h5"/>'),
+    // Exported from the Figma into assets/ and inlined verbatim. The colours
+    // are the design's own — #aaa marks, #505050 boxes, #858585 snowflake — so
+    // they are deliberately NOT swapped for currentColor.
+    // assets/ic-chevron-down.svg
+    chevron: "<svg width=\"8\" height=\"5\" viewBox=\"0 0 8 5\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0.75 0.75L3.75 3.75L6.75 0.75\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    // assets/ic-padding-hz.svg
+    x: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_417)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><rect x=\"14.5\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/><rect x=\"4\" y=\"4\" width=\"1.5\" height=\"12\" rx=\"0.75\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_417\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-vt.svg
+    y: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_412)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_412\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-hzvt.svg
+    combined: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_398)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 4.75C14.5 4.33579 14.8358 4 15.25 4C15.6642 4 16 4.33579 16 4.75V15.25C16 15.6642 15.6642 16 15.25 16C14.8358 16 14.5 15.6642 14.5 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 4.75C4 4.33579 4.33579 4 4.75 4C5.16421 4 5.5 4.33579 5.5 4.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.33579 16 4 15.6642 4 15.25V4.75Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 14.5C15.6642 14.5 16 14.8358 16 15.25C16 15.6642 15.6642 16 15.25 16L4.75 16C4.33579 16 4 15.6642 4 15.25C4 14.8358 4.33579 14.5 4.75 14.5L15.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M15.25 4C15.6642 4 16 4.33579 16 4.75C16 5.16421 15.6642 5.5 15.25 5.5L4.75 5.5C4.33579 5.5 4 5.16421 4 4.75C4 4.33579 4.33579 4 4.75 4L15.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_398\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-padding-parts.svg
+    individual: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_149_405)\"><rect x=\"1.25\" y=\"1.25\" width=\"17.5\" height=\"17.5\" rx=\"2.75\" stroke=\"#505050\" stroke-width=\"1.5\"/><path d=\"M14.5 7.75C14.5 7.33579 14.8358 7 15.25 7C15.6642 7 16 7.33579 16 7.75V12.25C16 12.6642 15.6642 13 15.25 13C14.8358 13 14.5 12.6642 14.5 12.25V7.75Z\" fill=\"#AAAAAA\"/><path d=\"M4 7.75C4 7.33579 4.33579 7 4.75 7C5.16421 7 5.5 7.33579 5.5 7.75V12.25C5.5 12.6642 5.16421 13 4.75 13C4.33579 13 4 12.6642 4 12.25V7.75Z\" fill=\"#AAAAAA\"/><path d=\"M12.25 14.5C12.6642 14.5 13 14.8358 13 15.25C13 15.6642 12.6642 16 12.25 16L7.75 16C7.33579 16 7 15.6642 7 15.25C7 14.8358 7.33579 14.5 7.75 14.5L12.25 14.5Z\" fill=\"#AAAAAA\"/><path d=\"M12.25 4C12.6642 4 13 4.33579 13 4.75C13 5.16421 12.6642 5.5 12.25 5.5L7.75 5.5C7.33579 5.5 7 5.16421 7 4.75C7 4.33579 7.33579 4 7.75 4L12.25 4Z\" fill=\"#AAAAAA\"/></g><defs><clipPath id=\"clip0_149_405\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
+    // assets/ic-align-left.svg
+    alignLeft: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M12.5 10H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14.1667 15.834H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    // assets/ic-align-center.svg
+    alignCenter: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14.1673 10H5.83398\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M15.8327 15.834H4.16602\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    // assets/ic-align-right.svg
+    alignRight: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M17.5 4.16602H2.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.5 10H7.5\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.5007 15.834H5.83398\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+    // assets/ic-snowflake.svg
+    snow: "<svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M5 10L4.375 8.75L3 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5 2L4.375 3.25L3 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 10L7.625 8.75L9 9\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M7 2L7.625 3.25L9 3\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 10.5L7 7.5H5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8.5 1.5L7 4.5L7.75 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M1 6H4.25L5 4.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 5L9.25 6L10 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M11 6H7.75L7 7.5\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M2 5L2.75 6L2 7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 10.5L5 7.5L4.25 6\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3.5 1.5L5 4.5H7\" stroke=\"#858585\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     t: glyph(BOXPATH + '<path d="M3.5 3.7h5"/>'),
     r: glyph(BOXPATH + '<path d="M8.3 3.5v5"/>'),
     b: glyph(BOXPATH + '<path d="M3.5 8.3h5"/>'),
@@ -1043,14 +1074,6 @@
     detach: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
       'stroke-width="1.1" stroke-linecap="round"><path d="M4.6 7.4 2.9 9.1a1.9 1.9 0 0 1-2.7-2.7l1.7-1.7"/>' +
       '<path d="M7.4 4.6 9.1 2.9a1.9 1.9 0 0 1 2.7 2.7L10.1 7.3"/><path d="M1 1l10 10"/></svg>',
-    combined: glyph('<rect x="1.6" y="1.6" width="8.8" height="8.8" rx="2"/>' +
-      '<rect x="4.3" y="4.3" width="3.4" height="3.4" rx="1"/>'),
-    // Proportions taken off the reference: a portrait box (5:8), an inner mark
-    // ~37% of its width, and outer rules ~62% of the box height sitting close
-    // in — the whole glyph reads wider than tall.
-    individual: glyph('<rect x="3.5" y="2" width="5" height="8" rx="1.6"/>' +
-      '<rect x="5.05" y="4.5" width="1.9" height="3" rx=".7"/>' +
-      '<path d="M1.65 3.5v5M10.35 3.5v5"/>'),
   };
 
   var D = '[data-tw-editor="delete"]';
@@ -1078,24 +1101,24 @@
       // grows upward above it when something is selected. Top-anchored, every
       // selection shoved the Save button down the screen.
       P + '{',
-      '  position:fixed;bottom:58px;right:16px;width:300px;max-height:calc(100vh - 74px);',
+      '  position:fixed;bottom:58px;right:16px;width:352px;max-height:calc(100vh - 74px);',
       '  z-index:2147483647;display:none;flex-direction:column;overflow:hidden;',
-      '  background:var(--bw-card);color:var(--bw-fg);border:1px solid var(--bw-border);',
-      '  border-radius:12px;box-shadow:var(--bw-shadow);font:13px/1.45 ' + UI_FONT + ';',
+      '  background:var(--bw-card);color:var(--bw-fg);',
+      '  border-radius:8px;box-shadow:var(--bw-shadow);font:15px/1.4 ' + UI_FONT + ';',
       '  -webkit-font-smoothing:antialiased;user-select:none;text-align:left}',
       P + ' *{box-sizing:border-box;margin:0}',
       P + ' button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}',
 
       /* header */
       P + ' .bw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;',
-      '  padding:9px 10px 9px 12px;border-bottom:1px solid var(--bw-hair);flex:0 0 auto}',
-      P + ' .bw-h strong{font:600 12px/1.2 ' + UI_FONT + ';letter-spacing:-.01em}',
+      '  padding:16px 16px 0 20px;flex:0 0 auto}',
+      P + ' .bw-h strong{font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
       both(' .bw-x') + '{width:22px;height:22px;border-radius:6px;color:var(--bw-faint);',
       '  font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center}',
       both(' .bw-x:hover') + '{background:var(--bw-hover);color:var(--bw-fg)}',
 
       /* body */
-      P + ' .bw-body{padding:10px 12px;display:flex;flex-direction:column;gap:9px;overflow-y:auto}',
+      P + ' .bw-body{padding:20px;display:flex;flex-direction:column;gap:20px;overflow-y:auto}',
       // Edit mode is off until it is asked for, so the toggle is the only part
       // of the editor a visiting page shows by default.
       T + '{position:fixed;bottom:16px;right:16px;z-index:2147483646;display:flex;',
@@ -1128,23 +1151,28 @@
       // being cut", it is counted to size the blast radius, and it carries the
       // ghost styling — all three of which are wrong for the panel's own body.
       P + ' .bw-body.is-cutting > *:not(.bw-rm){display:none!important}',
-      P + ' .bw-rm{display:flex;align-items:flex-start;gap:9px;padding:11px;border-radius:8px;',
-      '  background:rgba(220,40,40,.09);border:1px solid rgba(220,40,40,.32)}',
-      P + ' .bw-rm-txt{flex:1;font:11px/1.45 ' + UI_FONT + ';color:var(--bw-fg)}',
-      P + ' .bw-rm-txt strong{display:block;font:600 11px/1.5 ' + UI_FONT + ';color:' + DANGER + '}',
-      P + ' .bw-rm-undo{flex:0 0 auto;font:600 11px/1 ' + UI_FONT + ';color:var(--bw-fg);',
-      '  border:1px solid var(--bw-border);border-radius:6px;padding:5px 9px;background:var(--bw-card)}',
+      P + ' .bw-rm{display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:8px;',
+      '  background:rgba(220,40,40,.1);border:1px solid rgba(220,40,40,.3)}',
+      P + ' .bw-rm-txt{flex:1;font:400 13px/1.45 ' + UI_FONT + ';color:var(--bw-muted)}',
+      P + ' .bw-rm-txt strong{display:block;font:400 15px/1.5 ' + UI_FONT + ';color:#e46a6a}',
+      P + ' .bw-rm-undo{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-fg);',
+      '  border:0;border-radius:8px;padding:9px 12px;background:var(--bw-sunken)}',
       P + ' .bw-rm-undo:hover{border-color:var(--bw-fg)}',
-      P + ' .bw-row{display:flex;align-items:center;gap:8px}',
+      // Label above field, as the frame has it — not beside it. The label is
+      // the same 15px as the value it names, only greyer.
+      // Label above field, as the frame has it — not beside it. Wrapping rather
+      // than a nested container: the label claims a full line, so everything
+      // after it falls to the next one and lays out as a row. 8px down to the
+      // controls, 12px between them — both straight off the frame.
+      P + ' .bw-row{display:flex;flex-wrap:wrap;align-items:center;row-gap:8px;column-gap:12px}',
       P + ' .bw-row.top{align-items:flex-start}',
-      P + ' .bw-lbl{flex:0 0 auto;width:58px;font:500 11px/1.3 ' + UI_FONT + ';color:var(--bw-muted);white-space:nowrap}',
-      P + ' .bw-row.top > .bw-lbl{padding-top:8px}',
+      P + ' .bw-lbl{flex:0 0 100%;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
 
       /* segmented stepper */
-      P + ' .bw-field{flex:1;min-width:0;display:flex;align-items:stretch;height:28px;',
-      '  background:var(--bw-sunken);border:1px solid var(--bw-border);border-radius:6px;overflow:hidden}',
+      P + ' .bw-field{flex:1;min-width:0;display:flex;align-items:stretch;height:40px;',
+      '  background:var(--bw-sunken);border:0;border-radius:8px;overflow:hidden}',
       P + ' .bw-val{flex:1;min-width:0;width:100%;padding:0 4px;border:0;background:transparent;',
-      '  font:11px/1 ' + UI_MONO + ';color:var(--bw-fg);text-align:left}',
+      '  font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);text-align:left}',
       P + ' .bw-val:focus{outline:none;color:var(--bw-fg);font-style:normal}',
       P + ' .bw-val::placeholder{color:var(--bw-faint)}',
       P + ' .bw-val.is-text{display:flex;align-items:center;padding-left:8px;',
@@ -1152,43 +1180,58 @@
       P + ' .bw-val::-webkit-outer-spin-button,' + P + ' .bw-val::-webkit-inner-spin-button{',
       '  -webkit-appearance:none;margin:0}',
       /* stacked up/down */
-      P + ' .bw-spin{flex:0 0 17px;display:flex;flex-direction:column;align-self:stretch;',
-      '  border-left:1px solid var(--bw-hair)}',
+      P + ' .bw-spin{flex:0 0 20px;display:flex;flex-direction:column;align-self:stretch;',
+      '  padding-right:8px}',
       P + ' .bw-step{flex:1;display:flex;align-items:center;justify-content:center;',
       '  color:var(--bw-faint);min-height:0}',
-      P + ' .bw-step:first-child{border-bottom:1px solid var(--bw-hair)}',
+      P + ' .bw-step{border-radius:3px}',
       P + ' .bw-step:hover{background:var(--bw-hover);color:var(--bw-fg)}',
       P + ' .bw-step:active{background:var(--bw-press)}',
       P + ' .bw-val.is-inherited{color:var(--bw-faint);font-style:italic}',
       P + ' .bw-val.is-unset{color:var(--bw-faint)}',
 
       /* spacing: label, a 2-up grid of inputs, then the per-side toggle */
-      P + ' .bw-stack{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}',
-      P + ' .bw-toggle{width:24px;height:28px;border-radius:6px;color:var(--bw-faint);',
-      '  display:flex;align-items:center;justify-content:center;flex:0 0 auto}',
-      P + ' .bw-toggle:hover{background:var(--bw-hover);color:var(--bw-fg)}',
-      P + ' .bw-toggle[aria-pressed="true"]{background:var(--bw-press);color:var(--bw-fg)}',
-      P + ' .bw-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}',
+      P + ' .bw-stack{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}',
+      // The frame puts this at the end of the padding row as a 40x40 tile.
+      P + ' .bw-toggle{width:40px;height:40px;border-radius:8px;flex:0 0 auto;',
+      '  background:var(--bw-sunken);display:flex;align-items:center;justify-content:center}',
+      P + ' .bw-toggle:hover{background:#2b2b2b}',
+      P + ' .bw-toggle[aria-pressed="true"]{background:var(--bw-press)}',
+      P + ' .bw-seg{flex:0 0 auto;display:flex;align-items:center;gap:14px;',
+      '  height:40px;padding:0 6px;border-radius:8px;background:var(--bw-sunken)}',
+      P + ' .bw-segbtn{width:28px;height:28px;border-radius:3px;display:flex;',
+      '  align-items:center;justify-content:center}',
+      P + ' .bw-segbtn:hover{background:rgba(255,255,255,.06)}',
+      P + ' .bw-segbtn[aria-pressed="true"]{background:#505050}',
+      P + ' .bw-segbtn svg{display:block}',
+      P + ' .bw-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}',
       P + ' .bw-pair.is-hidden{display:none}',
       P + ' .bw-pair.is-single{grid-template-columns:1fr}',
       P + ' .bw-addstrip{flex:1;display:flex;flex-wrap:wrap;gap:5px}',
-      P + ' .bw-addchip{display:flex;align-items:center;gap:5px;padding:4px 9px 4px 7px;',
-      '  border-radius:999px;font:500 11px/1.2 ' + UI_FONT + ';color:var(--bw-muted);',
-      '  box-shadow:inset 0 0 0 1px var(--bw-border)}',
-      P + ' .bw-addchip:hover{background:var(--bw-hover);color:var(--bw-fg)}',
+      P + ' .bw-addchip{display:flex;align-items:center;gap:6px;padding:0 12px 0 9px;height:32px;',
+      '  border-radius:8px;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-muted);',
+      '  background:var(--bw-sunken)}',
+      P + ' .bw-addchip:hover{background:#2b2b2b;color:var(--bw-fg)}',
+      P + ' .bw-addchip svg{display:block}',
       P + ' .bw-ico{flex:0 0 auto;display:flex;align-items:center;justify-content:center;',
-      '  width:20px;color:var(--bw-faint);padding-left:5px}',
+      '  width:20px;height:20px;color:var(--bw-mark);margin:0 10px 0 10px}',
+      P + ' .bw-ico svg{display:block}',
       P + ' .bw-input{min-width:0}',
 
       /* colour field */
-      P + ' .bw-color{align-items:center;padding-right:3px}',
-      P + ' .bw-ctoken{flex:1;min-width:0;display:flex;align-items:center;gap:7px;',
-      '  height:100%;padding:0 6px;overflow:hidden}',
-      P + ' .bw-ctoken:hover{background:var(--bw-hover)}',
+      P + ' .bw-color{align-items:center}',
+      P + ' .bw-ctoken{flex:1;min-width:0;display:flex;align-items:center;gap:10px;',
+      '  height:100%;padding:0 12px 0 0;overflow:hidden}',
+      P + ' .bw-ctoken:hover{background:#2b2b2b}',
+      // The chevron: 8x5, 12px in from the right, on every field that opens a list.
+      P + ' .bw-chev{flex:0 0 auto;display:flex;align-items:center;margin-left:auto}',
+      P + ' .bw-chev svg{display:block}',
       both(' .bw-chip') + '{flex:0 0 auto;width:14px;height:14px;border-radius:4px;',
       '  box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       P + ' .bw-chip.is-empty{background:repeating-linear-gradient(45deg,var(--bw-hair) 0 3px,transparent 3px 6px)}',
-      P + ' .bw-cname{font:11px/1 ' + UI_MONO + ';color:var(--bw-fg);overflow:hidden;',
+      P + ' .bw-snow{flex:0 0 auto;display:flex;align-items:center}',
+      P + ' .bw-snow svg{display:block}',
+      P + ' .bw-cname{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);overflow:hidden;',
       '  text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
       P + ' .bw-alpha{flex:0 0 auto;display:flex;align-items:center;gap:1px;',
@@ -1196,7 +1239,7 @@
       P + ' .bw-alpha-in{width:24px;border:0;background:transparent;text-align:right;',
       '  font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
       P + ' .bw-alpha-in:focus{outline:none}',
-      P + ' .bw-unit{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint);padding-right:5px}',
+      P + ' .bw-unit{font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint);margin-left:auto}',
       P + ' .bw-pct{font:10px/1 ' + UI_FONT + ';color:var(--bw-faint);padding-right:3px}',
       P + ' .bw-detach{flex:0 0 auto;width:22px;height:22px;border-radius:5px;opacity:0;',
       '  display:flex;align-items:center;justify-content:center;color:var(--bw-faint)}',
@@ -1204,20 +1247,20 @@
       P + ' .bw-detach:hover{background:var(--bw-hover);color:var(--bw-fg)}',
 
       /* colour popover */
-      PP + '{position:fixed;width:200px;max-height:300px;z-index:2147483647;',
+      PP + '{position:fixed;width:232px;max-height:340px;z-index:2147483647;',
       '  display:none;flex-direction:column;overflow:hidden;background:var(--bw-card);',
-      '  color:var(--bw-fg);border:1px solid var(--bw-border);border-radius:10px;',
+      '  color:var(--bw-fg);border:0;border-radius:8px;',
       '  box-shadow:var(--bw-shadow);user-select:none}',
-      PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;padding:7px 6px 7px 10px;',
-      '  border-bottom:1px solid var(--bw-hair)}',
-      PP + ' .bw-pop-h strong{flex:1;font:600 11px/1.2 ' + UI_FONT + ';text-transform:capitalize}',
+      PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;padding:14px 12px 8px 16px}',
+      PP + ' .bw-pop-h strong{flex:1;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted);',
+      '  text-transform:capitalize}',
       PP + ' .bw-pop-back{width:18px;height:18px;border-radius:4px;color:var(--bw-faint);',
       '  display:flex;align-items:center;justify-content:center}',
       PP + ' .bw-pop-back:hover{background:var(--bw-hover);color:var(--bw-fg)}',
-      PP + ' .bw-pop-body{overflow-y:auto;padding:4px}',
+      PP + ' .bw-pop-body{overflow-y:auto;padding:0 8px 8px}',
       PP + ' .bw-pop-group{padding:7px 8px 3px;font:600 9px/1 ' + UI_FONT + ';',
       '  letter-spacing:.07em;text-transform:uppercase;color:var(--bw-faint)}',
-      PP + ' .bw-hue{display:flex;align-items:center;gap:9px;width:100%;padding:5px 7px;',
+      PP + ' .bw-hue{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;',
       '  border-radius:6px;font:12px/1.2 ' + UI_MONO + ';color:var(--bw-fg);text-align:left;',
       '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       PP + ' .bw-hue:hover{background:var(--bw-hover)}',
@@ -1225,11 +1268,11 @@
       PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
       '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
-      PP + ' .bw-pop-search{padding:6px 6px 2px;border-bottom:1px solid var(--bw-hair)}',
-      PP + ' .bw-search-in{width:100%;border:1px solid var(--bw-border);border-radius:6px;',
-      '  background:var(--bw-sunken);color:var(--bw-fg);padding:5px 7px;',
-      '  font:11px/1.2 ' + UI_MONO + '}',
-      PP + ' .bw-search-in:focus{outline:none;border-color:var(--bw-brand)}',
+      PP + ' .bw-pop-search{padding:0 8px 8px}',
+      PP + ' .bw-search-in{width:100%;height:40px;border:0;border-radius:8px;',
+      '  background:var(--bw-sunken);color:var(--bw-fg);padding:0 12px;',
+      '  font:400 15px/1 ' + UI_FONT + '}',
+      PP + ' .bw-search-in:focus{outline:none;box-shadow:inset 0 0 0 1px var(--bw-border)}',
       PP + ' .bw-search-in::placeholder{color:var(--bw-faint)}',
       PP + ' [data-tw-synthetic] .bw-sizepx{color:var(--bw-danger)}',
       PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
@@ -1240,11 +1283,12 @@
       // 26 + 18 keeps the name column aligned with the type list's 44px sample.
       PP + ' .bw-radsample{flex:0 0 26px;height:20px;margin-right:18px;box-sizing:border-box;' +
         'border-top:1.5px solid var(--bw-fg);border-left:1.5px solid var(--bw-fg)}',
-      PP + ' .bw-sizename{flex:1;font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
-      PP + ' .bw-sizepx{font:10px/1 ' + UI_MONO + ';color:var(--bw-faint)}',
+      PP + ' .bw-sizename{flex:1;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
+      PP + ' .bw-sizepx{font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       PP + ' [data-tw-size]{align-items:baseline;min-height:30px}',
       PP + ' [data-tw-radius]{align-items:center;min-height:30px}',
-      PP + ' [aria-current="true"]{background:var(--bw-press)}',
+      PP + ' .bw-hue{border-radius:6px}',
+      PP + ' [aria-current="true"]{background:var(--bw-sunken)}',
       P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
@@ -1257,9 +1301,9 @@
       '  0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
 
       /* text mirror */
-      P + ' .bw-text{flex:1;min-width:0;min-height:28px;padding:6px 8px;background:var(--bw-sunken);',
-      '  border:1px solid var(--bw-border);border-radius:6px;font:12px/1.35 ' + UI_FONT + ';',
-      '  color:var(--bw-fg);max-height:60px;overflow-y:auto;word-break:break-word}',
+      P + ' .bw-text{flex:1 1 100%;min-width:0;min-height:96px;padding:12px 12px;',
+      '  background:var(--bw-sunken);border:0;border-radius:8px;font:400 15px/1.4 ' + UI_FONT + ';',
+      '  color:var(--bw-fg);max-height:140px;overflow-y:auto;word-break:break-word}',
       P + ' .bw-text.is-off{color:var(--bw-faint);font-style:italic}',
 
       /* footer */
@@ -1570,6 +1614,10 @@
           readFontWeight(selected).kind !== 'token') {
         missing.push({ key: 'weight', label: 'Weight' });
       }
+      if (selected && !hasOwnText(selected) && !revealed.align &&
+          readAlign(selected).kind !== 'token') {
+        missing.push({ key: 'align', label: 'Align' });
+      }
       // Radius hides where nothing would show it, but an element about to get
       // a background should not have to get one first to round its corners.
       if (selected && !revealed.radius && !showsCorners(selected) &&
@@ -1612,8 +1660,9 @@
     var note = el('span', 'bw-unit', '');
     token.appendChild(mark);
     token.appendChild(name);
+    token.appendChild(note);
+    token.appendChild(chevron());
     field.appendChild(token);
-    field.appendChild(note);
     row.appendChild(field);
 
     token.addEventListener('click', function () { openSizePopover(row); });
@@ -1636,7 +1685,8 @@
         name.textContent = state.px + state.unit;
         name.className = 'bw-cname is-custom';
         var near = nearestToken(state.px);
-        note.textContent = near && near.d > 0 ? 'near ' + near.name : 'custom';
+        note.textContent = near && near.d > 0 ? 'near ' + near.name : '';
+        note.appendChild(snowflake());
         token.title = state.cls + ' \u2014 not a scale token' +
           (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
       } else {
@@ -1941,8 +1991,9 @@
     var note = el('span', 'bw-unit', '');
     token.appendChild(mark);
     token.appendChild(name);
+    token.appendChild(note);
+    token.appendChild(chevron());
     field.appendChild(token);
-    field.appendChild(note);
     row.appendChild(field);
 
     token.addEventListener('click', function () {
@@ -1977,6 +2028,25 @@
     return row;
   }
 
+  /**
+   * The exported chevron, on the right edge of anything that opens a list.
+   * One helper rather than four copies — the four dropdown fields in this
+   * panel have drifted apart before.
+   */
+  function chevron() {
+    var c = el('span', 'bw-chev');
+    c.innerHTML = ICONS.chevron;
+    return c;
+  }
+
+  /** The snowflake marks a value that is a literal, not a token on the scale. */
+  function snowflake() {
+    var f = el('span', 'bw-snow');
+    f.innerHTML = ICONS.snow;
+    f.title = 'an arbitrary value, not a token on the scale';
+    return f;
+  }
+
   function radiusRow() {
     var row = el('div', 'bw-row');
     row.setAttribute('data-tw-field', 'radius');
@@ -1992,8 +2062,9 @@
     var note = el('span', 'bw-unit', '');
     token.appendChild(mark);
     token.appendChild(name);
+    token.appendChild(note);
+    token.appendChild(chevron());
     field.appendChild(token);
-    field.appendChild(note);
     row.appendChild(field);
 
     token.addEventListener('click', function () {
@@ -2026,6 +2097,7 @@
           : state.kind === 'legacy'
             ? Math.round(measureRadius(liveRadii().DEFAULT || '0.25rem')) + 'px'
             : '';
+        if (state.kind === 'arbitrary') note.appendChild(snowflake());
         token.title = state.cls + (state.kind === 'legacy'
           ? ' \u2014 the v3 alias for rounded-sm' : '');
       }
@@ -2037,6 +2109,75 @@
           '+' + state.corners.length;
         token.title += ' \u2014 also ' + state.corners.join(' ') + ', left as written';
       }
+    });
+
+    return row;
+  }
+
+  // text-left is neither a size nor a colour, so it is matched by membership in
+  // this exact set — the same rule that keeps font-sans safe from font-medium.
+  var ALIGNS = [
+    { name: 'left', icon: 'alignLeft' },
+    { name: 'center', icon: 'alignCenter' },
+    { name: 'right', icon: 'alignRight' },
+  ];
+
+  function readAlign(el) {
+    if (!el) return { kind: 'none', name: '' };
+    var classes = classesOf(el);
+    for (var i = classes.length - 1; i >= 0; i--) {
+      if (FAMILY.textAlign.test(classes[i])) {
+        return { kind: 'token', name: classes[i].slice(5), cls: classes[i] };
+      }
+    }
+    return { kind: 'none', name: getComputedStyle(el).textAlign };
+  }
+
+  function setAlign(el, name) {
+    var current = readAlign(el);
+    stripFamily(el, FAMILY.textAlign);
+    // Pressing the one already set turns it off, which is the only way back to
+    // whatever the element inherited.
+    if (!(current.kind === 'token' && current.name === name)) {
+      el.classList.add('text-' + name);
+    }
+    markDirty(el, 'classes');
+    refresh();
+  }
+
+  function alignRow() {
+    var row = el('div', 'bw-row');
+    row.setAttribute('data-tw-field', 'align');
+    row.setAttribute('data-tw-optional', 'align');
+    row.appendChild(el('span', 'bw-lbl', 'Align'));
+
+    var seg = el('div', 'bw-seg');
+    var buttons = ALIGNS.map(function (a) {
+      var b = el('button', 'bw-segbtn');
+      b.setAttribute('data-tw-align', a.name);
+      b.innerHTML = ICONS[a.icon];
+      b.title = 'Align ' + a.name;
+      b.addEventListener('click', function () { setAlign(selected, a.name); });
+      seg.appendChild(b);
+      return { name: a.name, node: b };
+    });
+    row.appendChild(seg);
+
+    readouts.push(function () {
+      var state = readAlign(selected);
+      var show = hasOwnText(selected) || revealed.align || state.kind === 'token';
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
+      buttons.forEach(function (b) {
+        // Pressed means the class is on THIS element. An alignment the element
+        // merely inherits is named in the tooltip instead of being claimed.
+        var on = state.kind === 'token' && state.name === b.name;
+        b.node.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.node.title = on
+          ? state.cls + ' \u2014 click to clear'
+          : 'Align ' + b.name +
+            (state.kind === 'none' && state.name ? ' (inheriting ' + state.name + ')' : '');
+      });
     });
 
     return row;
@@ -2680,6 +2821,7 @@
     detach.setAttribute('data-tw-detach', prefix);
     detach.title = 'Detach from the Tailwind token';
 
+    token.appendChild(chevron());
     field.appendChild(token);
     field.appendChild(alphaBox);
     field.appendChild(detach);
@@ -2757,6 +2899,7 @@
     body.appendChild(addRow());
     body.appendChild(fontRow());
     body.appendChild(weightRow());
+    body.appendChild(alignRow());
     body.appendChild(radiusRow());
     body.appendChild(colorRow('bg', 'Background'));
     body.appendChild(colorRow('text', 'Text color'));

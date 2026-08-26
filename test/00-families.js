@@ -7,6 +7,9 @@ const FAMILY = {
   // rounded- covers two families. The all-corner rungs are matched by
   // membership in the ladder, never by prefix, or rounded-t-lg would be
   // stripped as if it were one of them.
+  // text- is shared three ways: a size, a colour, and an alignment. Exact
+  // words are the only safe test.
+  textAlign: /^text-(?:left|center|right|justify|start|end)$/,
   radiusArb: /^rounded-\[[^\]]+\]$/,
   radiusSide: /^rounded-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee)(?:-|$)/,
 };
@@ -29,6 +32,10 @@ const cases = [
   ['rounded-t-lg','radius',0],['rounded-tl-xl','radius',0],['rounded-s','radius',0],['rounded-l-[2px]','radius',0],['rounded-e-full','radius',0],
   ['rounded-t-lg','radiusSide',1],['rounded-l-[2px]','radiusSide',1],['rounded-s','radiusSide',1],['rounded-br-md','radiusSide',1],
   ['rounded-sm','radiusSide',0],['rounded-2xl','radiusSide',0],['rounded','radiusSide',0],['rounded-[3px]','radiusSide',0],
+  ['text-left','textAlign',1],['text-center','textAlign',1],['text-right','textAlign',1],['text-justify','textAlign',1],
+  // The three families that share the prefix must not see each other.
+  ['text-lg','textAlign',0],['text-2xl','textAlign',0],['text-clay','textAlign',0],['text-slate-500','textAlign',0],['text-[13px]','textAlign',0],['text-[#fffdf9]','textAlign',0],
+  ['text-center','fontSize',0],['text-center','textColor',0],
   ['rounded-[3px]','radiusArb',1],['rounded-[42px]','radiusArb',1],['rounded-l-[2px]','radiusArb',0],['rounded-xl','radiusArb',0],
 ];
 let bad = 0;

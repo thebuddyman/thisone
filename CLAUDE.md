@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-15 commits, working tree clean, `npm test` green.
+16 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -43,6 +43,7 @@ node next/verify.js --root ../uiux_experiment   # 55 live checks against the rea
 | `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights/radii |
 | `next/server.js` | the editor server for a Next project |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
+| `assets/` | the panel's icons, exported from Figma and inlined verbatim |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
 | `test/` | 10 suites; `run.mjs` orchestrates |
 
@@ -100,6 +101,9 @@ change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
 `text-clay` a colour. `gap-` needs a lookahead because `gap-x-4` starts with it.
 `rounded-` is the same trap twice over: `rounded-sm` is a rung, `rounded-s` is
 the two start corners, and `rounded-t-lg` is neither.
+`text-` is the trap three ways over once alignment exists: `text-lg` is a size,
+`text-clay` a colour, `text-center` an alignment. Each is matched by an exact
+set, so setting one leaves the other two alone.
 
 **Undo/redo is by snapshot, not by command.** Every control already writes
 straight to the DOM and to `dirty`, so recording the state after each mutation
@@ -135,6 +139,21 @@ be nudged into view by up to its own size — which is what an element sitting
 flush against an edge needs — and past that it hides. The two candidate
 positions are the element's top corners only; the second exists to dodge the
 panel, not to follow the scroll.
+
+**The panel wears one scheme, and it is not invented.** Colours, radii, field
+heights and type sizes come from a Figma frame (file `gYjihaL4o8QTceS1REp3fY`,
+node 1:2, 352x449): `#171717` panel, `#232323` fields, `#dcdcdc` values,
+`#8c8c8c` labels, `#505050` borders, `#aaa` icon marks, 8px radii, 40px fields,
+15px text, 20px gutter, 12px between controls, 8px under a label. It replaced a
+light/dark pair — a light variant of a dark design would be an invention, so
+both theme keys carry the same scheme.
+
+**Icons are the exported files, inlined byte-for-byte — never redrawn.** They
+live in `assets/` and are pasted into `ICONS` exactly as exported, keeping their
+own `#aaa` / `#505050` / `#858585` fills rather than being switched to
+`currentColor`, because the design's colours are the point. The four marks with
+no file (the individual edges) stay hand-drawn on a 12 grid, rendered at 20 with
+a 0.9 stroke so they land on the assets' 1.5.
 
 **Edit mode is off until it is asked for.** While it is on, every click is
 swallowed in the capture phase so the app's own links and buttons cannot fire —

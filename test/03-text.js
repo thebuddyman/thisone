@@ -142,6 +142,41 @@ const selectAllIn = page => page.evaluate(() => {
   check('escape cleaned contenteditable off the page',
     (await page.locator('[contenteditable]').count()) === 0);
 
+  // ---- alignment: the third family sharing the text- prefix ----
+  const h1b = page.locator('[data-eid="6"]');
+  await h1b.click();
+  const align = (n) => panel.locator(`[data-tw-align="${n}"]`);
+  check('the align control shows on an element with text', await align('center').isVisible());
+  check('nothing is pressed while it is unset',
+    (await align('center').getAttribute('aria-pressed')) === 'false');
+
+  const beforeAlign = await h1b.getAttribute('class');
+  await align('center').click();
+  const afterAlign = await h1b.getAttribute('class');
+  check('picking centre writes text-center', /(^| )text-center( |$)/.test(afterAlign), afterAlign);
+  check('and marks itself pressed',
+    (await align('center').getAttribute('aria-pressed')) === 'true');
+  check('the size and colour classes it shares a prefix with are untouched',
+    beforeAlign.split(' ').every((c) => afterAlign.includes(c)),
+    `${beforeAlign} → ${afterAlign}`);
+  check('it actually renders centred',
+    (await h1b.evaluate(el => getComputedStyle(el).textAlign)) === 'center',
+    await h1b.evaluate(el => getComputedStyle(el).textAlign));
+
+  await align('right').click();
+  check('switching replaces rather than stacks',
+    /text-right/.test(await h1b.getAttribute('class')) &&
+    !/text-center/.test(await h1b.getAttribute('class')),
+    await h1b.getAttribute('class'));
+
+  await align('right').click();
+  check('pressing the set one clears it',
+    !/text-(left|center|right)/.test(await h1b.getAttribute('class')),
+    await h1b.getAttribute('class'));
+  check('and the classes are back where they started',
+    (await h1b.getAttribute('class')) === beforeAlign,
+    `${beforeAlign} → ${await h1b.getAttribute('class')}`);
+
   await page.locator('[data-eid="6"]').click();
   await page.screenshot({ path: `${__dirname}/text.png`, clip: { x: 0, y: 0, width: 1280, height: 620 } });
   await browser.close();
