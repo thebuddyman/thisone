@@ -627,9 +627,17 @@
     modeToggle.setAttribute('aria-pressed', editing ? 'true' : 'false');
     modeToggle.querySelector('.bw-label').textContent = editing ? 'Editing' : 'Edit';
 
+    // The badge stays in the row and collapses sideways instead of leaving it.
+    //
+    // Its 10px/1.5 line box is what makes the pill 33px tall; take the badge
+    // out with display:none and the pill drops to 28 and the toggle changes
+    // height as you work. Leave it in at full width and its empty slot reads
+    // as a hole on the right. is-empty keeps the height and gives up the
+    // width, so the pill hugs what you can actually see.
     var count = modeToggle.querySelector('.bw-count');
     count.textContent = dirty.size ? String(dirty.size) : '';
-    count.style.display = dirty.size ? '' : 'none';
+    count.className = 'bw-count' + (dirty.size ? '' : ' is-empty');
+    count.style.display = '';
 
     modeToggle.title = dirty.size
       ? dirty.size + ' unsaved change' + (dirty.size === 1 ? '' : 's') +
@@ -1545,16 +1553,57 @@
       P + ' .bw-body > .has-rule:not(.bw-reveal)::before{top:-20px}',
       // Edit mode is off until it is asked for, so the toggle is the only part
       // of the editor a visiting page shows by default.
+      // box-sizing explicitly, because this one lives on the HOST page rather
+      // than inside the panel: a project with a preflight makes it border-box
+      // and one without leaves it content-box, and the width measured below
+      // would then be 23px out on half the pages it lands on.
+      //
       T + '{position:fixed;bottom:16px;right:16px;z-index:2147483646;display:flex;',
+      '  box-sizing:border-box;',
       '  align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;',
       '  font:600 12px/1 ' + UI_FONT + ';cursor:pointer;border:1px solid var(--bw-border);',
       '  background:var(--bw-card);color:var(--bw-fg);box-shadow:0 2px 10px rgba(0,0,0,.16)}',
       T + '[aria-pressed="true"]{background:' + BRAND + ';border-color:' + BRAND + ';color:#fff}',
       T + ' .bw-dot{width:7px;height:7px;border-radius:999px;background:var(--bw-faint)}',
       T + '[aria-pressed="true"] .bw-dot{background:#fff}',
-      T + ' .bw-count{padding:1px 6px;border-radius:999px;font:600 10px/1.5 ' + UI_MONO + ';',
+      // min-width holds one digit's worth of room even while the badge is
+      // empty, which is the slot the toggle's width is reserved against.
+      //
+      // 1ch IS that digit: the face is monospace, so a character's advance is
+      // the measurement rather than a number guessed off a screenshot. The
+      // +12px is the padding, which has to be in the total because the host
+      // page's preflight puts box-sizing:border-box on everything — a bare
+      // min-width under 12px is simply ignored, which is how the first attempt
+      // at this changed nothing at all. 1 to 9 changes never move it; ten
+      // would, and no session here has come close.
+      // box-sizing and min-height together are what hold the pill at ONE
+      // height. The badge's line box is the tallest thing in the row, so its
+      // presence is the difference between 33px and 28px — and an empty
+      // element has no line box to contribute. Asking for the height here
+      // covers both states from one rule: the filled badge already stands at
+      // exactly this, and the empty one is brought up to it.
+      //
+      // The +2px is the padding, and box-sizing is declared rather than
+      // inherited because this button lives on the host page: min-height means
+      // the border box under a preflight and the content box without one, and
+      // the difference is the 2px that left it 31px instead of 33px.
+      T + ' .bw-count{box-sizing:border-box;min-height:calc(1.5em + 2px);',
+      '  display:flex;align-items:center;justify-content:center;',
+      '  min-width:calc(1ch + 12px);text-align:center;padding:1px 6px;',
+      '  border-radius:999px;font:600 10px/1.5 ' + UI_MONO + ';',
       '  background:' + BRAND + ';color:#fff}',
       T + '[aria-pressed="true"] .bw-count{background:rgba(255,255,255,.28)}',
+      // Nothing to say: no width, no side padding, and a negative margin
+      // cancelling the row's 7px gap exactly — `gap` cannot be waived per item.
+      //
+      // min-height is what keeps the pill one height. The badge's line box is
+      // what makes it 33px tall rather than 28, and an EMPTY element has no
+      // line box at all — there is no text in it to generate one — so the
+      // height has to be asked for outright. 1.5em is that line box: the same
+      // 1.5 the font shorthand above sets, against the same 10px, so it tracks
+      // the badge instead of being a number copied off a screenshot.
+      T + ' .bw-count.is-empty{width:0;min-width:0;padding:1px 0;margin-left:-7px;',
+      '  overflow:hidden;background:transparent}',
       // A ring around the viewport while edit mode is on: the page's own links
       // and buttons are being swallowed, which is worth saying out loud.
       '[data-tw-editor="ring"]{position:fixed;inset:0;z-index:2147483645;pointer-events:none;',
