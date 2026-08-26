@@ -780,7 +780,11 @@
   }
 
   function scaleValue(classes, token) {
-    var re = new RegExp('^' + token + '-(\\d+)$');
+    // Half steps count: py-2.5, mt-0.5 and friends are 97 of the 802 spacing
+    // classes in uiux_experiment, and an integers-only pattern read every one
+    // of them as unset. Stepping from one lands on the nearest rung, which is
+    // what nearestIndex already does for a hand-written p-5.
+    var re = new RegExp('^' + token + '-(\\d+(?:\\.\\d+)?)$');
     // Last match wins, mirroring how a duplicated class would land in the DOM.
     for (var i = classes.length - 1; i >= 0; i--) {
       var m = re.exec(classes[i]);
@@ -795,6 +799,46 @@
    * Explicit pt-4 wins, then the axis utility py-4, then the all-sides p-4.
    * Tailwind emits them in that order, so this mirrors what the browser paints.
    */
+  /**
+   * What the page actually renders for this edge, in px — or null when the
+   * edges under one field disagree, in which case there is no single answer to
+   * show.
+   *
+   * Padding and margin are not inherited properties, and Tailwind's preflight
+   * zeroes the ones browsers ship a default for, so "no class" almost always
+   * means zero. Almost: a project stylesheet can still put padding on an
+   * element, and claiming 0 there would be a lie the panel cannot back up.
+   */
+  var COMPUTED_SIDES = {
+    '': ['Top', 'Right', 'Bottom', 'Left'],
+    x: ['Left', 'Right'], y: ['Top', 'Bottom'],
+    t: ['Top'], r: ['Right'], b: ['Bottom'], l: ['Left'],
+  };
+
+  function computedSpacing(el, prefix, side) {
+    if (!el) return null;
+    var cs = getComputedStyle(el);
+
+    if (prefix === 'gap') {
+      // `normal` is what a flex container reports for an unset gap, and it
+      // lays out as zero.
+      var pick = side === '-x' ? ['columnGap'] : side === '-y' ? ['rowGap'] : ['columnGap', 'rowGap'];
+      var g = pick.map(function (k) { return cs[k] === 'normal' ? 0 : Math.round(parseFloat(cs[k]) || 0); });
+      return g.every(function (v) { return v === g[0]; }) ? g[0] : null;
+    }
+
+    var edges = COMPUTED_SIDES[side || ''];
+    if (!edges) return null;
+    var prop = prefix === 'm' ? 'margin' : 'padding';
+    var seen = null;
+    for (var i = 0; i < edges.length; i++) {
+      var v = Math.round(parseFloat(cs[prop + edges[i]]) || 0);
+      if (seen === null) seen = v;
+      else if (seen !== v) return null;
+    }
+    return seen;
+  }
+
   function readSpacing(el, prefix, side) {
     var classes = classesOf(el);
 
@@ -987,6 +1031,8 @@
     shadow: '0 1px 2px rgba(0,0,0,.5), 0 16px 40px -12px rgba(0,0,0,.7)',
   };
   var TOKENS = { light: SCHEME, dark: SCHEME };
+  var RULE = '#212121';   // the hairline under a header
+  var RAISED = '#2b2b2b'; // a list row under the cursor, or the live one
   var BRAND = '#d97959';  // --primary from the template
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
@@ -1013,6 +1059,8 @@
     // Exported from the Figma into assets/ and inlined verbatim. The colours
     // are the design's own — #aaa marks, #505050 boxes, #858585 snowflake — so
     // they are deliberately NOT swapped for currentColor.
+    // assets/ic-x.svg
+    close: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M15 5L5 15\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5 5L15 15\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-chevron-down.svg
     chevron: "<svg width=\"8\" height=\"5\" viewBox=\"0 0 8 5\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0.75 0.75L3.75 3.75L6.75 0.75\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
     // assets/ic-padding-hz.svg
@@ -1107,18 +1155,22 @@
       '  position:fixed;bottom:58px;right:16px;width:352px;max-height:calc(100vh - 74px);',
       '  z-index:2147483647;display:none;flex-direction:column;overflow:hidden;',
       '  background:var(--bw-card);color:var(--bw-fg);',
-      '  border-radius:8px;box-shadow:var(--bw-shadow);font:15px/1.4 ' + UI_FONT + ';',
+      '  border-radius:12px;box-shadow:var(--bw-shadow);font:15px/1.4 ' + UI_FONT + ';',
       '  -webkit-font-smoothing:antialiased;user-select:none;text-align:left}',
       P + ' *{box-sizing:border-box;margin:0}',
       P + ' button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}',
 
       /* header */
       P + ' .bw-h{display:flex;align-items:center;justify-content:space-between;gap:8px;',
-      '  padding:16px 16px 0 20px;flex:0 0 auto}',
+      '  height:60px;padding:0 10px 0 20px;flex:0 0 auto;',
+      '  border-bottom:1px solid ' + RULE + '}',
       P + ' .bw-h strong{font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
-      both(' .bw-x') + '{width:22px;height:22px;border-radius:6px;color:var(--bw-faint);',
-      '  font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center}',
-      both(' .bw-x:hover') + '{background:var(--bw-hover);color:var(--bw-fg)}',
+      // 40x40 with an 8px radius, transparent by default and #232323 on hover
+      // — the two states the design ships, and the ic-x asset inside them.
+      both(' .bw-x') + '{width:40px;height:40px;border-radius:8px;flex:0 0 auto;',
+      '  background:transparent;display:flex;align-items:center;justify-content:center}',
+      both(' .bw-x:hover') + '{background:var(--bw-sunken)}',
+      both(' .bw-x svg') + '{display:block}',
 
       /* body */
       P + ' .bw-body{padding:20px;display:flex;flex-direction:column;gap:20px;overflow-y:auto}',
@@ -1253,28 +1305,29 @@
       P + ' .bw-detach:hover{background:var(--bw-hover);color:var(--bw-fg)}',
 
       /* colour popover */
-      PP + '{position:fixed;width:232px;max-height:340px;z-index:2147483647;',
+      PP + '{position:fixed;width:220px;max-height:340px;z-index:2147483647;',
       '  display:none;flex-direction:column;overflow:hidden;background:var(--bw-card);',
-      '  color:var(--bw-fg);border:0;border-radius:8px;',
+      '  color:var(--bw-fg);border:0;border-radius:12px;',
       '  box-shadow:var(--bw-shadow);user-select:none}',
-      PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;padding:14px 12px 8px 16px}',
+      PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;height:60px;',
+      '  padding:0 10px 0 20px;flex:0 0 auto;border-bottom:1px solid ' + RULE + '}',
       PP + ' .bw-pop-h strong{flex:1;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted);',
       '  text-transform:capitalize}',
       PP + ' .bw-pop-back{width:18px;height:18px;border-radius:4px;color:var(--bw-faint);',
       '  display:flex;align-items:center;justify-content:center}',
       PP + ' .bw-pop-back:hover{background:var(--bw-hover);color:var(--bw-fg)}',
-      PP + ' .bw-pop-body{overflow-y:auto;padding:0 8px 8px}',
+      PP + ' .bw-pop-body{overflow-y:auto;padding:8px}',
       PP + ' .bw-pop-group{padding:7px 8px 3px;font:600 9px/1 ' + UI_FONT + ';',
       '  letter-spacing:.07em;text-transform:uppercase;color:var(--bw-faint)}',
-      PP + ' .bw-hue{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;',
+      PP + ' .bw-hue{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 12px;',
       '  border-radius:6px;font:12px/1.2 ' + UI_MONO + ';color:var(--bw-fg);text-align:left;',
       '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      PP + ' .bw-hue:hover{background:var(--bw-hover)}',
+      PP + ' .bw-hue:hover{background:' + RAISED + '}',
       PP + ' .bw-shades{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:2px}',
       PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
       '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
-      PP + ' .bw-pop-search{padding:0 8px 8px}',
+      PP + ' .bw-pop-search{padding:8px 8px 0}',
       PP + ' .bw-search-in{width:100%;height:40px;border:0;border-radius:8px;',
       '  background:var(--bw-sunken);color:var(--bw-fg);padding:0 12px;',
       '  font:400 15px/1 ' + UI_FONT + '}',
@@ -1291,10 +1344,10 @@
         'border-top:1.5px solid var(--bw-fg);border-left:1.5px solid var(--bw-fg)}',
       PP + ' .bw-sizename{flex:1;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
       PP + ' .bw-sizepx{font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
-      PP + ' [data-tw-size]{align-items:baseline;min-height:30px}',
-      PP + ' [data-tw-radius]{align-items:center;min-height:30px}',
-      PP + ' .bw-hue{border-radius:6px}',
-      PP + ' [aria-current="true"]{background:var(--bw-sunken)}',
+      PP + ' [data-tw-size]{align-items:baseline}',
+      PP + ' [data-tw-radius]{align-items:center}',
+      PP + ' .bw-hue{border-radius:8px}',
+      PP + ' [aria-current="true"]{background:' + RAISED + '}',
       P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
@@ -1452,11 +1505,22 @@
       if (document.activeElement === readout) return; // don't fight the typist
       var state = readSpacing(selected, prefix, side);
       if (state.value === null) {
-        readout.value = '';
+        // Nothing in the class list. Where the element genuinely renders zero,
+        // say 0 — an empty box and a dash both read as "unknown" when the
+        // answer is not in doubt. Where the page's own CSS has put something
+        // there, show THAT instead, greyed, rather than a zero that is false.
+        var actual = computedSpacing(selected, prefix, side);
+        readout.value = actual === 0 ? '0' : '';
+        readout.placeholder = actual === 0 || actual === null ? '\u2014' : actual + 'px';
         readout.className = 'bw-val is-unset';
-        readout.title = opts.name + ': not set';
+        readout.title = actual === 0
+          ? opts.name + ': not set, and renders 0'
+          : actual === null
+            ? opts.name + ': not set'
+            : opts.name + ': not set here \u2014 the page renders ' + actual + 'px';
         return;
       }
+      readout.placeholder = '\u2014';
       // Explicit values read at full contrast; values merely inherited from a
       // broader class (p-* under px-*, px-* under pl-*) are dimmed and italic,
       // so it is obvious which classes this element actually owns.
@@ -2652,7 +2716,8 @@
         : popState.prefix === 'weight' ? 'Weight'
         : popState.prefix === 'radius' ? 'Radius'
         : (popState.hue || 'Colour')));
-    var shut = el('button', 'bw-x', '×');
+    var shut = el('button', 'bw-x');
+    shut.innerHTML = ICONS.close;
     shut.addEventListener('click', closePopover);
     head.appendChild(shut);
     popover.appendChild(head);
@@ -2889,7 +2954,8 @@
     var header = el('div', 'bw-h');
     ui.header = header;
     ui.title = el('strong', null, 'nothing selected');
-    var close = el('button', 'bw-x', '×');
+    var close = el('button', 'bw-x');
+    close.innerHTML = ICONS.close;
     close.title = 'Deselect (Esc)';
     close.addEventListener('click', deselect);
     header.appendChild(ui.title);
@@ -3004,8 +3070,7 @@
 
   function refresh() {
     if (!selected) return;
-    ui.title.textContent = '<' + selected.tagName.toLowerCase() + '>  ' +
-      shortId(selected) + (textEditable ? '  ✎' : '');
+    ui.title.textContent = '<' + selected.tagName.toLowerCase() + '>  ' + shortId(selected);
     readouts.forEach(function (update) { update(); });
     updateDeleteHandle();
     updateFooter();

@@ -151,6 +151,23 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   check('buttons on a handle still point, they do not grab',
     (await cursorOf(panel.locator('.bw-h .bw-x'))) === 'pointer',
     await cursorOf(panel.locator('.bw-h .bw-x')));
+  // ---- the close button: 40x40, transparent until hovered ----
+  const x = panel.locator('.bw-h .bw-x');
+  const xBox = await x.boundingBox();
+  check('the close button is 40x40',
+    Math.round(xBox.width) === 40 && Math.round(xBox.height) === 40,
+    `${Math.round(xBox.width)}x${Math.round(xBox.height)}`);
+  check('it carries the exported mark, not a text glyph',
+    (await x.locator('svg').count()) === 1 && (await x.textContent()).trim() === '',
+    JSON.stringify(await x.textContent()));
+  const bgOf = (loc) => loc.evaluate(el => getComputedStyle(el).backgroundColor);
+  check('transparent at rest', /rgba\(0, 0, 0, 0\)|transparent/.test(await bgOf(x)), await bgOf(x));
+  await x.hover();
+  await page.waitForTimeout(80);
+  check('and #232323 under the cursor',
+    (await bgOf(x)) === 'rgb(35, 35, 35)', await bgOf(x));
+  await page.mouse.move(5, 5);
+
   check('a disabled one offers nothing',
     (await cursorOf(save)) === 'default', await cursorOf(save));
 

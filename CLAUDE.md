@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-16 commits, working tree clean, `npm test` green.
+17 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -142,11 +142,22 @@ panel, not to follow the scroll.
 
 **The panel wears one scheme, and it is not invented.** Colours, radii, field
 heights and type sizes come from a Figma frame (file `gYjihaL4o8QTceS1REp3fY`,
-node 1:2, 352x449): `#171717` panel, `#232323` fields, `#dcdcdc` values,
-`#8c8c8c` labels, `#505050` borders, `#aaa` icon marks, 8px radii, 40px fields,
-15px text, 20px gutter, 12px between controls, 8px under a label. It replaced a
+node 1:2 for the panel, 2:202 for the dropdown, 2:188/2:194 for the close
+button): `#171717` surfaces, `#232323` fields, `#dcdcdc` values, `#8c8c8c`
+labels, `#505050` borders, `#aaa` icon marks, `#212121` hairlines, `#2b2b2b` a
+row under the cursor. 12px on a container and 8px on a field, 40px fields and
+rows, a 60px header, 15px text, 20px gutter, 12px between controls, 8px under a
+label. The close button is 40x40 and transparent until hovered. It replaced a
 light/dark pair — a light variant of a dark design would be an invention, so
 both theme keys carry the same scheme.
+
+**A field that is not set still knows its answer.** Padding and margin are not
+inherited, and preflight zeroes the defaults browsers ship, so no class means
+zero — the field shows `0`, greyed, rather than an empty box. Where the page's
+own CSS has put something there, it shows that instead, because a `0` the panel
+cannot back up is a lie. Half steps count too: `py-2.5` and friends are 97 of
+the 802 spacing classes in `uiux_experiment`, and an integers-only pattern read
+every one of them as unset.
 
 **Icons are the exported files, inlined byte-for-byte — never redrawn.** They
 live in `assets/` and are pasted into `ICONS` exactly as exported, keeping their

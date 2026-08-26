@@ -58,7 +58,9 @@ const selectAllIn = page => page.evaluate(() => {
   const h1 = page.locator('[data-eid="6"]');
   await h1.click();
   check('leaf selection is contenteditable', await h1.evaluate(el => el.isContentEditable));
-  check('panel title shows the pencil', (await panel.locator('strong').first().textContent()).includes('✎'));
+  check('the title is just the element, no status glyph',
+    !/✎/.test(await panel.locator('strong').first().textContent()),
+    await panel.locator('strong').first().textContent());
   check('panel mirrors current text', (await textBox.textContent()).includes('Edit this page in the browser.'));
 
   check('a single click focused it — no second click needed',
@@ -120,7 +122,6 @@ const selectAllIn = page => page.evaluate(() => {
   await card.click({ position: { x: 3, y: 3 } });
   check('container is not contenteditable', !(await card.evaluate(el => el.isContentEditable)));
   check('panel explains why', (await textBox.textContent()).includes('has child elements'));
-  check('no pencil for containers', !(await panel.locator('strong').first().textContent()).includes('✎'));
 
   // container save still works and must not send text
   await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();

@@ -159,6 +159,38 @@ function check(name, pass, detail) {
   });
   check('every field icon is centred in its field', offCentre.length === 0, offCentre.join(', '));
 
+  // ---- an unset side reads 0, not a dash ----
+  //
+  // On a fresh element: by this point the card has had every side set by hand.
+  await page.locator('[data-eid="6"]').click();
+
+  //
+  // Padding and margin are not inherited and preflight zeroes the browser's
+  // defaults, so "no class" renders zero — and a field that knows the answer
+  // should say it rather than showing an empty box.
+  const zeros = await page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('[data-tw-editor="panel"] [data-tw-field]').forEach((r) => {
+      const i = r.querySelector('input.bw-val');
+      if (!i || !r.getBoundingClientRect().height) return;
+      out.push({ field: r.getAttribute('data-tw-field'), value: i.value,
+                 unset: i.className.includes('is-unset'), title: i.title });
+    });
+    return out;
+  });
+  const unset = zeros.filter((z) => z.unset);
+  check('there is an unset side to look at', unset.length > 0, `${unset.length} of ${zeros.length}`);
+  check('every unset side that renders zero shows 0',
+    unset.every((z) => (/renders 0/.test(z.title) ? z.value === '0' : true)),
+    unset.map((z) => `${z.field}=${JSON.stringify(z.value)}`).join(' '));
+  check('and shows it greyed, so it still reads as unset',
+    unset.every((z) => z.unset));
+  check('a side that IS set is not greyed',
+    zeros.filter((z) => !z.unset).every((z) => z.value !== ''),
+    zeros.filter((z) => !z.unset).map((z) => `${z.field}=${z.value}`).join(' '));
+
+  await card2.click({ position: { x: 3, y: 3 } });
+
   await page.screenshot({ path: `${__dirname}/sides.png` });
   await browser.close();
 
