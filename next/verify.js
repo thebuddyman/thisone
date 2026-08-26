@@ -234,8 +234,8 @@ function restore(g) {
   // Tailwind's half steps are 12% of this project's spacing classes, and an
   // integers-only pattern read every one of them as unset.
   const pyField = panel.locator('[data-tw-field="p-y"] input');
-  check('a half-step padding class reads as its own value',
-    (await pyField.inputValue()) === '3.5' && !(await pyField.getAttribute('class')).includes('is-unset'),
+  check('a half-step padding class reads as the 14px it renders',
+    (await pyField.inputValue()) === '14' && !(await pyField.getAttribute('class')).includes('is-unset'),
     `${await pyField.inputValue()}  (${await pyField.getAttribute('title')})`);
   const pxField = panel.locator('[data-tw-field="p-x"] input');
   check('a side with nothing on it reads 0, not a dash',

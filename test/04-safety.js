@@ -6,6 +6,20 @@
  */
 const { chromium } = require('playwright');
 const fs = require('fs');
+
+/**
+ * Nudge a spacing field by one rung.
+ *
+ * The stepper buttons are gone — the field takes a typed value and a chevron
+ * opens the token list — but the arrow keys still step, which is what these
+ * checks are really about.
+ */
+async function step(panel, field, dir) {
+  const input = panel.locator(`[data-tw-field="${field}"] input`);
+  await input.focus();
+  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.blur();
+}
 /** Pick a Tailwind colour through the popover: open → hue → shade. */
 async function pickColor(panel, prefix, hue, shade) {
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
@@ -42,7 +56,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   const panel = page.locator('[data-tw-editor="panel"]');
   const saveBtn = panel.locator('[data-tw-save]');
   const status = () => panel.locator('[data-tw-status]').textContent();
-  const padPlus = panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]');
+  const padPlus = { click: () => step(panel, 'p-x', 'up') };
 
   // ---------- 2. the horizontal input owns px-* outright ----------
   await page.locator('[data-eid="9"]').evaluate(el => { el.className = 'text-2xl font-bold px-6'; });
@@ -51,17 +65,20 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
     (await h2.evaluate(el => getComputedStyle(el).paddingLeft)) === '24px');
 
   await h2.click({ position: { x: 3, y: 3 } });
+  // The field is in pixels: px-6 renders 24, so 24 is what it says.
   check('horizontal input reads px-6 as its own, not inherited',
-    (await panel.locator('[data-tw-field="p-x"] input').inputValue()) === '6' &&
-    (await panel.locator('[data-tw-field="p-x"] input').evaluate(e => getComputedStyle(e).fontStyle)) === 'normal');
+    (await panel.locator('[data-tw-field="p-x"] input').inputValue()) === '24' &&
+    (await panel.locator('[data-tw-field="p-x"] input').evaluate(e => getComputedStyle(e).fontStyle)) === 'normal',
+    await panel.locator('[data-tw-field="p-x"] input').inputValue());
 
   await padPlus.click();
+  const stepped = await panel.locator('[data-tw-field="p-x"] input').inputValue();
   check('px-6 replaced, not duplicated',
     (await h2.getAttribute('class')).split(' ').filter(c => /^px-/.test(c)).length === 1 &&
-    /\bpx-8\b/.test(await h2.getAttribute('class')),
+    !/\bpx-6\b/.test(await h2.getAttribute('class')),
     await h2.getAttribute('class'));
   check('horizontal padding actually changed',
-    (await h2.evaluate(el => getComputedStyle(el).paddingLeft)) === '32px',
+    (await h2.evaluate(el => getComputedStyle(el).paddingLeft)) === `${stepped}px`,
     await h2.evaluate(el => getComputedStyle(el).paddingLeft));
 
   // ---------- 1. dirty tracking ----------

@@ -1,5 +1,19 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
+
+/**
+ * Nudge a spacing field by one rung.
+ *
+ * The stepper buttons are gone — the field takes a typed value and a chevron
+ * opens the token list — but the arrow keys still step, which is what these
+ * checks are really about.
+ */
+async function step(panel, field, dir) {
+  const input = panel.locator(`[data-tw-field="${field}"] input`);
+  await input.focus();
+  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.blur();
+}
 /**
  * Resolve any CSS colour to plain RGB by painting it. Comparing serialised
  * strings is a trap: the same colour arrives as rgb(), oklch() or lab()
@@ -77,21 +91,26 @@ function check(name, pass, detail) {
 
   // The panel is collapsed by default, so the horizontal axis is what is on
   // screen; it inherits its starting value from the card's p-4.
-  const padPlus = panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]');
+  const padPlus = { click: () => step(panel, 'p-x', 'up') };
   const padReadout = panel.locator('[data-tw-field="p-x"] input');
-  check('horizontal padding inherits 4 from p-4', (await padReadout.inputValue()) === '4');
+  // The field is in pixels, so p-4 reads as the 16 it renders.
+  const v0 = await padReadout.inputValue();
+  check('horizontal padding reads the 16px that p-4 renders', v0 === '16', v0);
 
-  // bump horizontal twice: inherited 4 -> px-6 -> px-8
+  // bump horizontal twice; the ladder decides where it lands, not this test
   await padPlus.click();
-  check('stepped to 6', (await padReadout.inputValue()) === '6');
+  const v1 = await padReadout.inputValue();
+  check('stepped up a rung', Number(v1) > Number(v0), `${v0} → ${v1}`);
   await padPlus.click();
-  check('stepped to 8', (await padReadout.inputValue()) === '8');
+  const v2 = await padReadout.inputValue();
+  check('stepped up another', Number(v2) > Number(v1), `${v1} → ${v2}`);
 
   const padPx = await card.evaluate(el => {
     const c = getComputedStyle(el);
     return c.paddingLeft + '/' + c.paddingTop;
   });
-  check('instant preview: horizontal grew, vertical untouched', padPx === '32px/16px', padPx);
+  check('instant preview: horizontal grew, vertical untouched',
+    padPx === `${v2}px/16px`, padPx);
 
   // emerald swatch on the Background row
   await pickColor(panel, 'bg', 'emerald', '500');
@@ -100,7 +119,7 @@ function check(name, pass, detail) {
 
   const live = await card.getAttribute('class');
   check('old bg-white stripped, no duplicates',
-    !live.includes('bg-white') && live.includes('bg-emerald-500') && live.includes('px-8'), live);
+    !live.includes('bg-white') && live.includes('bg-emerald-500') && /(?:^| )px-[\d.]+(?: |$)/.test(live), live);
   check('unrelated classes preserved',
     live.includes('rounded-xl') && live.includes('shadow') && live.includes('m-12') && live.includes('p-4'), live);
 
@@ -116,7 +135,7 @@ function check(name, pass, detail) {
   const disk = fs.readFileSync(INDEX, 'utf8');
   const diskCard = disk.split('\n').find(l => l.includes('rounded-xl'));
   check('index.html on disk has new classes',
-    diskCard.includes('bg-emerald-500') && diskCard.includes('px-8'), diskCard.trim());
+    diskCard.includes('bg-emerald-500') && /px-[\d.]+/.test(diskCard), diskCard.trim());
   check('no data-eid written to disk', !disk.includes('data-eid'));
   check('no editor script written to disk', !disk.includes('/editor.js'));
 
@@ -141,7 +160,7 @@ function check(name, pass, detail) {
   const reloaded = await rgb(page, '[data-eid="8"]');
   check('after hard refresh: bg persists', reloaded.bg === reloaded.emerald,
     `${reloaded.bg} vs emerald ${reloaded.emerald}`);
-  check('after hard refresh: padding persists', padReload === '32px', padReload);
+  check('after hard refresh: padding persists', padReload === `${v2}px`, padReload);
 
   await page.screenshot({ path: `${__dirname}/after.png`, fullPage: true });
   await browser.close();

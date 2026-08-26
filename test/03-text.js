@@ -1,5 +1,19 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
+
+/**
+ * Nudge a spacing field by one rung.
+ *
+ * The stepper buttons are gone — the field takes a typed value and a chevron
+ * opens the token list — but the arrow keys still step, which is what these
+ * checks are really about.
+ */
+async function step(panel, field, dir) {
+  const input = panel.locator(`[data-tw-field="${field}"] input`);
+  await input.focus();
+  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.blur();
+}
 /** Pick a Tailwind colour through the popover: open → hue → shade. */
 async function pickColor(panel, prefix, hue, shade) {
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
@@ -124,7 +138,7 @@ const selectAllIn = page => page.evaluate(() => {
   check('panel explains why', (await textBox.textContent()).includes('has child elements'));
 
   // container save still works and must not send text
-  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await step(panel, 'p-x', 'up');
   status = await saveAndWait();
   check('container class-only save succeeded', status.includes('written'), status);
   check('container children survived the save',

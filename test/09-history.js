@@ -8,6 +8,20 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 
+/**
+ * Nudge a spacing field by one rung.
+ *
+ * The stepper buttons are gone — the field takes a typed value and a chevron
+ * opens the token list — but the arrow keys still step, which is what these
+ * checks are really about.
+ */
+async function step(panel, field, dir) {
+  const input = panel.locator(`[data-tw-field="${field}"] input`);
+  await input.focus();
+  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.blur();
+}
+
 const INDEX = process.env.TW_EDITOR_FILE;
 const BASE = process.env.TW_EDITOR_URL || 'http://localhost:3000';
 if (!INDEX) { console.error('TW_EDITOR_FILE not set - run via `npm test`'); process.exit(2); }
@@ -58,7 +72,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
 
   // ---- one edit, back, forward ----
   const original = await classOf(card);
-  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await step(panel, 'p-x', 'up');
   const edited = await classOf(card);
   check('the edit landed', edited !== original, `${original} → ${edited}`);
   check('undo woke up', !(await undo.isDisabled()));
@@ -78,7 +92,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
 
   // ---- a new edit abandons the redo branch ----
   await undo.click();
-  await panel.locator('[data-tw-field="p-y"] [data-tw-step="up"]').click();
+  await step(panel, 'p-y', 'up');
   check('editing after an undo drops what was ahead', await redo.isDisabled());
 
   // ---- the bar works with nothing selected ----
@@ -109,7 +123,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
 
   // ---- the keyboard does the same thing ----
   await card.click();
-  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await step(panel, 'p-x', 'up');
   const viaMouse = await classOf(card);
   await page.keyboard.press('Control+z');
   check('ctrl+z undoes', (await classOf(card)) === original, await classOf(card));
@@ -198,7 +212,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
     `${Math.round(barMoved.y)} → ${Math.round(barMovedOpen.y)}`);
 
   // ---- pressing a control is not a drag ----
-  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await step(panel, 'p-x', 'up');
   await page.keyboard.press('Escape');
   const parked = await panel.boundingBox();
   const sb = await save.boundingBox();

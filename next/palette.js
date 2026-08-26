@@ -104,8 +104,10 @@ const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '9
 // Every colour the picker can offer must exist in the preview sheet, or
 // choosing it would change nothing until the file is saved and Tailwind reruns.
 const CANDIDATES = [
-  '{p,m}{,x,y,t,r,b,l}-{0,2,4,6,8,12}',
-  'gap{,-x,-y}-{0,2,4,6,8,12}',
+  // Must stay in step with SPACING in editor.js: every rung the dropdown
+  // offers has to be renderable, or picking one previews nothing.
+  '{p,m}{,x,y,t,r,b,l}-{0,0.5,1,1.5,2,2.5,3,3.5,4,5,6,8,10,12,16,20,24}',
+  'gap{,-x,-y}-{0,0.5,1,1.5,2,2.5,3,3.5,4,5,6,8,10,12,16,20,24}',
   // Every offered token must be pre-generated, or picking one previews nothing.
   'text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}',
   'text-{left,center,right}',

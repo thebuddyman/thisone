@@ -8,6 +8,20 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 
+/**
+ * Nudge a spacing field by one rung.
+ *
+ * The stepper buttons are gone — the field takes a typed value and a chevron
+ * opens the token list — but the arrow keys still step, which is what these
+ * checks are really about.
+ */
+async function step(panel, field, dir) {
+  const input = panel.locator(`[data-tw-field="${field}"] input`);
+  await input.focus();
+  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.blur();
+}
+
 const INDEX = process.env.TW_EDITOR_FILE;
 const BASE = process.env.TW_EDITOR_URL || 'http://localhost:3000';
 if (!INDEX) { console.error('TW_EDITOR_FILE not set - run via `npm test`'); process.exit(2); }
@@ -87,7 +101,7 @@ const hits = (page) => page.evaluate(() => window.__hits);
   await toggle.click();
   await card.click();
   const diskBefore = disk();
-  await panel.locator('[data-tw-field="p-x"] [data-tw-step="up"]').click();
+  await step(panel, 'p-x', 'up');
   check('an edit is pending',
     (await panel.locator('[data-tw-save]').textContent()).trim() === 'Save 1 change');
 

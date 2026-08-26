@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-17 commits, working tree clean, `npm test` green.
+18 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -150,6 +150,33 @@ rows, a 60px header, 15px text, 20px gutter, 12px between controls, 8px under a
 label. The close button is 40x40 and transparent until hovered. It replaced a
 light/dark pair — a light variant of a dark design would be an invention, so
 both theme keys carry the same scheme.
+
+**Spacing is spoken in pixels, and written in Tailwind.** The fields show and
+take a pixel count — 16, not 4 — because nobody should have to multiply by four
+to use a panel. The class written is still the rung where one lands (`p-4`), and
+only a length with no rung behind it becomes `p-[13px]`, which is what the
+snowflake marks. Typed values are no longer snapped: `ensureSpacingRule` emits a
+runtime rule for anything off the pre-generated ladder, which is what made
+snapping unnecessary — the old comment was right that an unsnapped `p-13` would
+have previewed as nothing.
+
+**An axis field owns the two edges beneath it — both ways.** A `py-*` lookup
+cannot see `pt-*`, so reading an axis reads its edges: they show comma separated
+when they disagree, because one number there would be a lie about one of them.
+Writing has to clear them for the same reason — leaving `pl-6` in place while
+writing `px-8` means the more specific class wins and the field you just typed
+into does nothing.
+
+**The four-edge view opens once per selection, not once per refresh.** The rule
+that opens it for an element already carrying `pt-*` used to re-run on every
+readout, so collapsing such an element lasted until the next keystroke and typing
+into a folded axis snapped the view back mid-edit. It is now decided when the
+element is selected and the toggle owns it after that.
+
+**Committing what a field already shows is not an edit.** Blur fires on every
+field you tab through. Without that guard each one marked the element dirty and
+pushed a history step that undid to itself — and worse, stepping below zero drops
+the class, so the blur that followed wrote the inherited value straight back.
 
 **A field that is not set still knows its answer.** Padding and margin are not
 inherited, and preflight zeroes the defaults browsers ship, so no class means

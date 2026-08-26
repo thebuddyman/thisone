@@ -78,7 +78,24 @@
   };
 
   // Shared spacing scale for every padding/margin field.
-  var SPACING = [0, 2, 4, 6, 8, 12];
+  // The rungs the dropdown offers. Wider than the six it used to hold, and it
+  // carries the half steps deliberately: py-2.5 and friends are 97 of the 802
+  // spacing classes in uiux_experiment. Anything off this ladder is still
+  // typeable — it just becomes an arbitrary value and says so.
+  var SPACING = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 12, 16, 20, 24];
+
+  // An axis field is really the two edges beneath it: a py-* lookup cannot see
+  // pt-*/pb-*, and a py-* write has to clear them or they outrank it.
+  var PAIR = { x: ['l', 'r'], y: ['t', 'b'] };
+
+  /** Which CSS properties one spacing class actually sets. */
+  var SPACING_PROPS = {
+    p: { '': ['padding'], x: ['padding-left', 'padding-right'], y: ['padding-top', 'padding-bottom'],
+      t: ['padding-top'], r: ['padding-right'], b: ['padding-bottom'], l: ['padding-left'] },
+    m: { '': ['margin'], x: ['margin-left', 'margin-right'], y: ['margin-top', 'margin-bottom'],
+      t: ['margin-top'], r: ['margin-right'], b: ['margin-bottom'], l: ['margin-left'] },
+    gap: { '': ['gap'], '-x': ['column-gap'], '-y': ['row-gap'] },
+  };
 
   var GAP_ONE = [{ side: '', name: 'gap', icon: 'gapAll' }];
   var GAP_AXES = [
@@ -102,9 +119,11 @@
   // Figma's model: two axis inputs by default (px-*/py-*), swapped for the four
   // edges (pt/pr/pb/pl) behind a toggle. Every `side` here is the exact token
   // the Tailwind class uses.
+  // Vertical first: it is the one people set, and it reads top-then-sides the
+  // way the shorthand does.
   var AXES = [
-    { side: 'x', name: 'horizontal', icon: 'x' },
     { side: 'y', name: 'vertical', icon: 'y' },
+    { side: 'x', name: 'horizontal', icon: 'x' },
   ];
 
   var SIDES = [
@@ -116,6 +135,11 @@
 
   // Per-box: is the four-edge view showing? Padding and margin toggle apart.
   var expanded = { p: false, m: false, gap: false };
+  // Which element that choice was made for. Without this the rule below ran on
+  // every refresh and overrode the toggle: collapsing an element that owns
+  // per-side classes lasted until the next keystroke, and typing into the axis
+  // field snapped the view back to the four edges mid-edit.
+  var expandedFor = { p: null, m: null, gap: null };
   // Rows the user asked to see on this selection though nothing is set yet.
   var revealed = {};
 
@@ -784,11 +808,14 @@
     // classes in uiux_experiment, and an integers-only pattern read every one
     // of them as unset. Stepping from one lands on the nearest rung, which is
     // what nearestIndex already does for a hand-written p-5.
-    var re = new RegExp('^' + token + '-(\\d+(?:\\.\\d+)?)$');
+    var rung = new RegExp('^' + token + '-(\\d+(?:\\.\\d+)?)$');
+    var arbitrary = new RegExp('^' + token + '-\\[([^\\]]+)\\]$');
     // Last match wins, mirroring how a duplicated class would land in the DOM.
     for (var i = classes.length - 1; i >= 0; i--) {
-      var m = re.exec(classes[i]);
-      if (m) return { value: Number(m[1]), from: classes[i] };
+      var m = rung.exec(classes[i]);
+      if (m) return { value: Number(m[1]), from: classes[i], arbitrary: false };
+      var a = arbitrary.exec(classes[i]);
+      if (a) return { value: a[1], from: classes[i], arbitrary: true };
     }
     return null;
   }
@@ -843,18 +870,18 @@
     var classes = classesOf(el);
 
     var direct = scaleValue(classes, prefix + side);
-    if (direct) return { value: direct.value, from: direct.from, source: 'explicit' };
+    if (direct) return { value: direct.value, from: direct.from, arbitrary: direct.arbitrary, source: 'explicit' };
 
     if (side) {
       if (AXIS[side]) {
         var axis = scaleValue(classes, prefix + AXIS[side]);
-        if (axis) return { value: axis.value, from: axis.from, source: 'inherited' };
+        if (axis) return { value: axis.value, from: axis.from, arbitrary: axis.arbitrary, source: 'inherited' };
       }
       var all = scaleValue(classes, prefix);
-      if (all) return { value: all.value, from: all.from, source: 'inherited' };
+      if (all) return { value: all.value, from: all.from, arbitrary: all.arbitrary, source: 'inherited' };
     }
 
-    return { value: null, from: null, source: 'none' };
+    return { value: null, from: null, arbitrary: false, source: 'none' };
   }
 
   /**
@@ -931,7 +958,11 @@
     if (!selected) return;
     var state = readSpacing(selected, prefix, side);
     var pattern = familyRe(prefix, side);
-    var index = state.value === null ? -1 : nearestIndex(state.value);
+    // An arbitrary value steps from wherever it actually sits on the ladder.
+    var from = state.value === null ? null
+      : state.arbitrary ? parseFloat(state.value) / (pxOfSpacing(1) || 4)
+      : state.value;
+    var index = from === null ? -1 : nearestIndex(from);
     var next;
 
     if (state.source === 'explicit') {
@@ -949,7 +980,7 @@
     }
 
     next = Math.max(0, Math.min(SPACING.length - 1, next));
-    applyClass(selected, prefix + side + '-' + SPACING[next], pattern);
+    setSpacing(prefix, side, String(SPACING[next]));
   }
 
   /**
@@ -959,38 +990,131 @@
    * appears in no source file, and the dev palette only pre-renders this scale.
    * An unsnapped p-5 would write correctly but preview as nothing.
    */
-  function setSpacing(prefix, side, value) {
+  /**
+   * `suffix` is the class's own tail: a rung ('4', '3.5') or an arbitrary value
+   * in brackets ('[13px]'). It is written as given.
+   *
+   * This used to snap to the nearest rung, and the reason was sound at the
+   * time: Tailwind v4 generates no CSS for a class in no source file, and the
+   * palette pre-renders only the ladder, so an unsnapped p-13 would write
+   * correctly and preview as nothing. ensureSpacingRule closes that gap, which
+   * is what makes typing a value the field cannot snap to safe.
+   */
+  /** What a field would show for a given class tail — the inverse of commit(). */
+  function textForSuffix(suffix) {
+    if (suffix === null) return '';
+    var px = /^\[([\d.]+)px\]$/.exec(suffix);
+    if (px) return px[1];
+    if (suffix.charAt(0) === '[') return suffix.slice(1, -1);
+    return String(pxOfSpacing(suffix));
+  }
+
+  /** The class tail for a pixel length: a rung where one lands, else arbitrary. */
+  function suffixForPx(px) {
+    return rungForPx(px) || '[' + px + 'px]';
+  }
+
+  function setSpacing(prefix, side, suffix) {
     if (!selected) return;
     var pattern = familyRe(prefix, side);
-    if (value === null) {
+    if (suffix === null) {
       stripFamily(selected, pattern);
       markDirty(selected, 'classes');
       refresh();
       return;
     }
-    applyClass(selected, prefix + side + '-' + SPACING[nearestIndex(value)], pattern);
+    // An axis owns the two edges beneath it, the same way the all-sides field
+    // owns the axes. Leave pl-* in place while writing px-* and the more
+    // specific class wins, so the field the user just typed into does nothing.
+    var under = PAIR[side];
+    if (under) {
+      stripFamily(selected, familyRe(prefix, under[0]));
+      stripFamily(selected, familyRe(prefix, under[1]));
+    }
+    var cls = prefix + side + '-' + suffix;
+    ensureSpacingRule(cls, prefix, side, suffix);
+    applyClass(selected, cls, pattern);
+  }
+
+  /**
+   * A rung off the pre-generated ladder, or an arbitrary value, exists in no
+   * source file — so Tailwind has generated nothing for it and the preview
+   * would be a no-op. Same gap arbitrary colours, sizes and radii have.
+   *
+   * `--spacing` is read rather than assumed: it is a theme token a project can
+   * and does move, and calc() against it is exactly what Tailwind emits.
+   */
+  function ensureSpacingRule(cls, prefix, side, suffix) {
+    if (!cls || dynSeen[cls]) return;
+    var props = (SPACING_PROPS[prefix] || {})[side || ''];
+    if (!props) return;
+
+    var value = null;
+    var arb = /^\[([^\]]+)\]$/.exec(suffix);
+    if (arb) value = arb[1];
+    else if (/^\d+(?:\.\d+)?$/.test(suffix) && SPACING.indexOf(Number(suffix)) === -1) {
+      value = 'calc(var(--spacing, 0.25rem) * ' + suffix + ')';
+    }
+    if (value === null) return; // on the ladder: the palette already has it
+
+    dynSeen[cls] = true;
+    if (!dynStyle) {
+      dynStyle = document.createElement('style');
+      dynStyle.setAttribute('data-tw-editor', 'dynamic');
+      document.head.appendChild(dynStyle);
+    }
+    var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
+    var body = props.map(function (k) { return k + ':' + value; }).join(';');
+    try {
+      dynStyle.sheet.insertRule(sel + '{' + body + '}', dynStyle.sheet.cssRules.length);
+    } catch (e) {
+      dynSeen[cls] = false;
+    }
+  }
+
+  /**
+   * Spacing is shown, typed and picked in PIXELS.
+   *
+   * The class written is still the Tailwind rung when one matches — p-4, not
+   * p-[16px] — but nobody has to know that 4 means 16 to use the panel. Only
+   * a value with no rung behind it becomes arbitrary, and that is what the
+   * snowflake marks.
+   */
+  function rungForPx(px) {
+    for (var i = 0; i < SPACING.length; i++) {
+      if (pxOfSpacing(SPACING[i]) === px) return String(SPACING[i]);
+    }
+    return null;
+  }
+
+  /**
+   * What a field shows: the pixel count, bare.
+   *
+   * No unit on the panel — every spacing field is in pixels, so printing it on
+   * each one is noise. The dropdown still spells it out, once, where the values
+   * are being compared against each other.
+   */
+  function spacingText(state) {
+    if (!state || state.value === null) return '';
+    if (!state.arbitrary) return String(pxOfSpacing(state.value));
+    // A literal in some other unit has to keep it, or it says nothing.
+    var px = /^([\d.]+)px$/.exec(String(state.value));
+    return px ? px[1] : String(state.value);
+  }
+
+  /** What one rung renders as here, measured against the page's own --spacing. */
+  function pxOfSpacing(rung) {
+    var host = (selected && selected.parentElement) || document.body;
+    var probe = document.createElement('span');
+    probe.style.cssText =
+      'position:fixed;left:-9999px;width:calc(var(--spacing, 0.25rem) * ' + rung + ')';
+    host.appendChild(probe);
+    var px = Math.round(parseFloat(getComputedStyle(probe).width) || 0);
+    probe.remove();
+    return px;
   }
 
   // ------------------------------------------------------------------- panel
-
-  /**
-   * Apply an explicit value, snapping to the nearest step on the scale.
-   *
-   * Snapping is not tidiness: Tailwind v4 generates no CSS for a class that
-   * appears in no source file, and the dev palette only pre-renders this scale.
-   * An unsnapped p-5 would write correctly but preview as nothing.
-   */
-  function setSpacing(prefix, side, value) {
-    if (!selected) return;
-    var pattern = familyRe(prefix, side);
-    if (value === null) {
-      stripFamily(selected, pattern);
-      markDirty(selected, 'classes');
-      refresh();
-      return;
-    }
-    applyClass(selected, prefix + side + '-' + SPACING[nearestIndex(value)], pattern);
-  }
 
   // ------------------------------------------------------------------- panel
 
@@ -1032,7 +1156,9 @@
   };
   var TOKENS = { light: SCHEME, dark: SCHEME };
   var RULE = '#212121';   // the hairline under a header
-  var RAISED = '#2b2b2b'; // a list row under the cursor, or the live one
+  var RAISED = '#2b2b2b';   // a list row under the cursor
+  var SELECTED = '#353535'; // the one that is actually set
+  var FOCUS = '#df7e46';    // the field you are working in
   var BRAND = '#d97959';  // --primary from the template
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
@@ -1235,6 +1361,16 @@
       P + ' .bw-val::-webkit-outer-spin-button,' + P + ' .bw-val::-webkit-inner-spin-button{',
       '  -webkit-appearance:none;margin:0}',
       /* stacked up/down */
+      // What you are working in says so — a field being typed into, and a field
+      // whose list is open, which is focus even though the caret has moved into
+      // the popover.
+      P + ' .bw-field:focus-within,' + P + ' .bw-seg:focus-within,',
+      P + ' .bw-row.is-open .bw-field{box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
+      P + ' .bw-text:focus{outline:none;box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
+      both(' .bw-search-in') + '{caret-color:' + FOCUS + '}',
+      P + ' .bw-open{flex:0 0 auto;align-self:center;display:flex;align-items:center;',
+      '  justify-content:center;width:20px;height:100%;margin-right:12px;border-radius:4px}',
+      P + ' .bw-open svg{display:block}',
       P + ' .bw-spin{flex:0 0 20px;display:flex;flex-direction:column;align-self:stretch;',
       '  padding-right:8px}',
       P + ' .bw-step{flex:1;display:flex;align-items:center;justify-content:center;',
@@ -1249,9 +1385,9 @@
       P + ' .bw-stack{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}',
       // The frame puts this at the end of the padding row as a 40x40 tile.
       P + ' .bw-toggle{width:40px;height:40px;border-radius:8px;flex:0 0 auto;',
-      '  background:var(--bw-sunken);display:flex;align-items:center;justify-content:center}',
-      P + ' .bw-toggle:hover{background:#2b2b2b}',
-      P + ' .bw-toggle[aria-pressed="true"]{background:var(--bw-press)}',
+      '  background:transparent;display:flex;align-items:center;justify-content:center}',
+      P + ' .bw-toggle:hover,' + P + ' .bw-toggle[aria-pressed="true"]',
+      '  {background:var(--bw-sunken)}',
       P + ' .bw-seg{flex:0 0 auto;display:flex;align-items:center;gap:14px;',
       '  height:40px;padding:0 6px;border-radius:8px;background:var(--bw-sunken)}',
       P + ' .bw-segbtn{width:28px;height:28px;border-radius:3px;display:flex;',
@@ -1287,8 +1423,9 @@
       both(' .bw-chip') + '{flex:0 0 auto;width:14px;height:14px;border-radius:4px;',
       '  box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       P + ' .bw-chip.is-empty{background:repeating-linear-gradient(45deg,var(--bw-hair) 0 3px,transparent 3px 6px)}',
-      P + ' .bw-snow{flex:0 0 auto;display:flex;align-items:center}',
-      P + ' .bw-snow svg{display:block}',
+      both(' .bw-snow') + '{flex:0 0 auto;display:flex;align-items:center}',
+      both(' .bw-snow svg') + '{display:block}',
+      PP + ' .bw-customtag{display:flex;align-items:center;gap:6px}',
       P + ' .bw-cname{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);overflow:hidden;',
       '  text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
@@ -1327,11 +1464,10 @@
       PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
       '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
-      PP + ' .bw-pop-search{padding:8px 8px 0}',
-      PP + ' .bw-search-in{width:100%;height:40px;border:0;border-radius:8px;',
-      '  background:var(--bw-sunken);color:var(--bw-fg);padding:0 12px;',
-      '  font:400 15px/1 ' + UI_FONT + '}',
-      PP + ' .bw-search-in:focus{outline:none;box-shadow:inset 0 0 0 1px var(--bw-border)}',
+      PP + ' .bw-search-in{flex:1;min-width:0;height:100%;border:0;background:transparent;',
+      '  color:var(--bw-fg);padding:0;font:400 15px/1.4 ' + UI_FONT + '}',
+      PP + ' .bw-search-in:focus{outline:none}',
+      PP + ' .bw-search-in::placeholder{color:var(--bw-muted)}',
       PP + ' .bw-search-in::placeholder{color:var(--bw-faint)}',
       PP + ' [data-tw-synthetic] .bw-sizepx{color:var(--bw-danger)}',
       PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
@@ -1340,6 +1476,7 @@
       // One corner, drawn at true scale in the same 44px column the type
       // samples use, so the two lists line up.
       // 26 + 18 keeps the name column aligned with the type list's 44px sample.
+      PP + ' .bw-nosample{display:none}',
       PP + ' .bw-radsample{flex:0 0 26px;height:20px;margin-right:18px;box-sizing:border-box;' +
         'border-top:1.5px solid var(--bw-fg);border-left:1.5px solid var(--bw-fg)}',
       PP + ' .bw-sizename{flex:1;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
@@ -1347,7 +1484,7 @@
       PP + ' [data-tw-size]{align-items:baseline}',
       PP + ' [data-tw-radius]{align-items:center}',
       PP + ' .bw-hue{border-radius:8px}',
-      PP + ' [aria-current="true"]{background:' + RAISED + '}',
+      PP + ' [aria-current="true"]{background:' + SELECTED + '}',
       P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
@@ -1465,53 +1602,108 @@
     readout.spellcheck = false;
     readout.placeholder = '—';
 
-    var spin = el('div', 'bw-spin');
-    var up = el('button', 'bw-step');
-    var down = el('button', 'bw-step');
-    up.innerHTML = ICONS.up;
-    down.innerHTML = ICONS.down;
-    up.setAttribute('data-tw-step', 'up');
-    down.setAttribute('data-tw-step', 'down');
-    up.title = 'increase ' + opts.name;
-    down.title = 'decrease ' + opts.name + ' — below 0 removes the class';
-    up.addEventListener('click', function () { stepSpacing(prefix, side, 1); });
-    down.addEventListener('click', function () { stepSpacing(prefix, side, -1); });
-    spin.appendChild(up);
-    spin.appendChild(down);
+    // The snowflake only shows for a value that is not a rung, exactly as it
+    // does on font size and radius.
+    var snow = snowflake();
+    snow.style.display = 'none';
 
-    // Typing commits on Enter or blur; empty clears the class outright.
+    var open = el('button', 'bw-open');
+    open.setAttribute('data-tw-spacing-open', prefix + '-' + (side || 'all'));
+    open.innerHTML = ICONS.chevron;
+    open.title = opts.name + ' \u2014 pick a token';
+    open.addEventListener('click', function () {
+      openSpacingPopover(prefix, side, opts.name, row);
+    });
+
+    /**
+     * What was typed is a length in pixels.
+     *
+     *   16 / 16px   16 pixels — written as p-4 if a rung lands there, else
+     *               p-[16px], which is what the snowflake marks
+     *   1.5rem      any other unit is taken at its word, arbitrary
+     *
+     * Empty clears the class. Anything unparseable restores what was there
+     * rather than guessing at an intent.
+     */
     function commit() {
-      var raw = readout.value.trim();
-      if (raw === '' || raw === '—') return setSpacing(prefix, side, null);
-      var n = parseFloat(raw);
-      if (isNaN(n) || n < 0) return refresh(); // reject, restore what was there
-      setSpacing(prefix, side, n);
+      var raw = readout.value.trim().replace(/\s+/g, '');
+      var target;
+      if (raw === '' || raw === '\u2014') {
+        target = null;
+      } else {
+        var px = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(raw);
+        if (px) target = suffixForPx(Number(px[1]));
+        // A length in some other unit is taken as written.
+        else if (/^-?[\d.]+(rem|em|%|vh|vw|ch)$/.test(raw)) target = '[' + raw + ']';
+        else if (/^\[[^\]]+\]$/.test(raw)) target = raw;
+        else return refresh(); // not something we can write; put the old value back
+      }
+
+      // Committing the value the field already shows is not an edit. Blur fires
+      // on every field you merely tab through; without this each one marked the
+      // element dirty and pushed a history step that undid to itself. It also
+      // covers the nastier case: stepping below zero drops the class, and the
+      // blur that followed wrote the inherited value straight back as explicit.
+      if (textForSuffix(target) === spacingText(readSpacing(selected, prefix, side))) {
+        return refresh();
+      }
+
+      setSpacing(prefix, side, target);
     }
     readout.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); commit(); readout.blur(); }
       else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); stepSpacing(prefix, side, 1); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); stepSpacing(prefix, side, -1); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        stepSpacing(prefix, side, e.key === 'ArrowUp' ? 1 : -1);
+        // refresh() leaves a focused input alone so it never fights the typist.
+        // Stepping IS the panel changing the value, so it has to put the new
+        // one in by hand — otherwise the blur that follows commits the stale
+        // text back and the step silently undoes itself.
+        readout.value = spacingText(readSpacing(selected, prefix, side));
+      }
     });
     readout.addEventListener('blur', commit);
     readout.addEventListener('focus', function () { readout.select(); });
 
     field.appendChild(mark);
     field.appendChild(readout);
-    field.appendChild(spin);
+    field.appendChild(snow);
+    field.appendChild(open);
     row.appendChild(field);
 
     readouts.push(function () {
       if (document.activeElement === readout) return; // don't fight the typist
       var state = readSpacing(selected, prefix, side);
+
+      var pair = PAIR[side];
+      if (pair && selected) {
+        var one = readSpacing(selected, prefix, pair[0]);
+        var two = readSpacing(selected, prefix, pair[1]);
+        var oneText = spacingText(one), twoText = spacingText(two);
+        if (oneText !== twoText) {
+          // Both, comma separated. One number here would be a lie about one of
+          // the edges — and this is the case the four-edge view exists for.
+          snow.style.display = one.arbitrary || two.arbitrary ? '' : 'none';
+          readout.value = oneText + ', ' + twoText;
+          readout.className = 'bw-val is-inherited';
+          readout.title = opts.name + ': ' + (one.from || 'not set') + ' and ' +
+            (two.from || 'not set') + ' \u2014 typing one value sets both';
+          return;
+        }
+        // The edges agree but the axis itself owns nothing: show what they say.
+        if (state.value === null && oneText !== '') state = one;
+      }
+
       if (state.value === null) {
         // Nothing in the class list. Where the element genuinely renders zero,
         // say 0 — an empty box and a dash both read as "unknown" when the
         // answer is not in doubt. Where the page's own CSS has put something
         // there, show THAT instead, greyed, rather than a zero that is false.
         var actual = computedSpacing(selected, prefix, side);
+        snow.style.display = 'none';
         readout.value = actual === 0 ? '0' : '';
-        readout.placeholder = actual === 0 || actual === null ? '\u2014' : actual + 'px';
+        readout.placeholder = actual === 0 || actual === null ? '\u2014' : String(actual);
         readout.className = 'bw-val is-unset';
         readout.title = actual === 0
           ? opts.name + ': not set, and renders 0'
@@ -1524,7 +1716,8 @@
       // Explicit values read at full contrast; values merely inherited from a
       // broader class (p-* under px-*, px-* under pl-*) are dimmed and italic,
       // so it is obvious which classes this element actually owns.
-      readout.value = String(state.value);
+      snow.style.display = state.arbitrary ? '' : 'none';
+      readout.value = spacingText(state);
       readout.className = 'bw-val' + (state.source === 'explicit' ? '' : ' is-inherited');
       readout.title = state.source === 'explicit'
         ? opts.name + ': ' + state.from
@@ -1645,11 +1838,14 @@
       var show = boxVisible(selected, box);
       wrap.style.display = show ? '' : 'none';
       if (!show) return;
-      if (!expanded[box.prefix]) {
-        var finer = open.some(function (f) {
+      if (expandedFor[box.prefix] !== selected) {
+        expandedFor[box.prefix] = selected;
+        // Open on an element that already owns the finer classes, so one
+        // written with pt-6 does not look unset behind a collapsed view. Decided
+        // once, here; after that the toggle is the user's.
+        expanded[box.prefix] = open.some(function (f) {
           return readSpacing(selected, box.prefix, f.side).source === 'explicit';
         });
-        if (finer) expanded[box.prefix] = true;
       }
       render();
     });
@@ -2034,6 +2230,17 @@
     var px = Math.round(parseFloat(getComputedStyle(probe).fontSize));
     probe.remove();
     return px ? px + 'px' : '';
+  }
+
+  /** Which spacing field the open list belongs to. */
+  function openSpacingPopover(prefix, side, name, anchor) {
+    popState.prefix = 'spacing';
+    popState.hue = null;
+    popState.spacing = { prefix: prefix, side: side, name: name };
+    popState.anchor = anchor;
+    renderPopover();
+    popover.style.display = 'flex';
+    placePopover(anchor);
   }
 
   function openSizePopover(anchor) {
@@ -2561,12 +2768,21 @@
   // ---------------------------------------------------------- colour popover
 
   var popover = null;
-  var popState = { prefix: null, hue: null, anchor: null };
+  var popState = { prefix: null, hue: null, anchor: null, spacing: null };
 
   function closePopover() {
     if (popover) popover.style.display = 'none';
     popState.prefix = null;
     popState.anchor = null;
+    markOpenAnchor();
+  }
+
+  /** Exactly one row can own the open list, so exactly one wears the ring. */
+  function markOpenAnchor() {
+    if (!panel) return;
+    var lit = panel.querySelectorAll('.is-open');
+    for (var i = 0; i < lit.length; i++) lit[i].classList.remove('is-open');
+    if (popState.anchor && popState.anchor.classList) popState.anchor.classList.add('is-open');
   }
 
   function popoverOpen() { return !!popState.prefix; }
@@ -2612,7 +2828,9 @@
    * the list, so the input never loses focus or caret position mid-type.
    */
   function tokenList(body, opt) {
-    var search = el('div', 'bw-pop-search');
+    // The header is the search field — that is what the frame shows, a line of
+    // type at the top with the close button beside it and a rule underneath.
+    // It takes the title's place rather than adding a second row.
     var query = document.createElement('input');
     query.className = 'bw-search-in';
     query.type = 'text';
@@ -2620,8 +2838,11 @@
     query.setAttribute(opt.attrs.filter, '');
     query.autocomplete = 'off';
     query.spellcheck = false;
-    search.appendChild(query);
-    popover.appendChild(search);
+
+    var head = popover.querySelector('.bw-pop-h');
+    var title = head && head.querySelector('strong');
+    if (title) head.replaceChild(query, title);
+    else popover.insertBefore(query, popover.firstChild);
 
     var rows = opt.tokens.map(function (t) {
       var item = el('button', 'bw-hue');
@@ -2629,12 +2850,16 @@
       var sample = el('span');
       opt.sample(sample, t);
       item.appendChild(sample);
-      item.appendChild(el('span', 'bw-sizename', t));
+      // A row can be labelled differently from the token it writes — spacing
+      // shows 16px and writes p-4 — so the filter searches the label, which is
+      // the only thing the reader can actually see.
+      var shown = opt.label ? opt.label(t) : t;
+      item.appendChild(el('span', 'bw-sizename', shown));
       item.appendChild(el('span', 'bw-sizepx', opt.meta(t)));
       if (opt.isCurrent(t)) item.setAttribute('aria-current', 'true');
       item.addEventListener('click', function () { opt.pick(t); closePopover(); });
       body.appendChild(item);
-      return { token: t, node: item };
+      return { token: t, label: shown, node: item };
     });
 
     // The escape hatch: a numeric query offers an arbitrary value, always
@@ -2646,7 +2871,10 @@
     var customName = el('span', 'bw-sizename', '');
     custom.appendChild(customSample);
     custom.appendChild(customName);
-    custom.appendChild(el('span', 'bw-sizepx', 'custom'));
+    var customTag = el('span', 'bw-sizepx bw-customtag');
+    customTag.appendChild(snowflake());
+    customTag.appendChild(el('span', null, 'custom'));
+    custom.appendChild(customTag);
     custom.style.display = 'none';
     body.appendChild(custom);
 
@@ -2666,11 +2894,16 @@
       var n = parseFloat(q);
       var visible = 0;
       rows.forEach(function (r) {
-        var hit = !q || r.token.indexOf(q) !== -1;
+        var hit = !q || String(r.label).indexOf(q) !== -1 || r.token.indexOf(q) !== -1;
         r.node.style.display = hit ? '' : 'none';
         if (hit) visible++;
       });
       pending = isFinite(n) && n > 0 && /^[\d.]+(px)?$/.test(q) ? n : null;
+      // Offering a "custom 40px" beside a 40px rung is offering the same thing
+      // twice, and the arbitrary one is the worse of the two.
+      if (pending !== null && rows.some(function (r) {
+        return String(r.label) === String(pending) + 'px' || String(r.label) === String(pending);
+      })) pending = null;
       if (pending == null) {
         custom.style.display = 'none';
       } else {
@@ -2701,6 +2934,7 @@
   }
 
   function renderPopover() {
+    markOpenAnchor();
     popover.innerHTML = '';
     var head = el('div', 'bw-pop-h');
 
@@ -2715,6 +2949,7 @@
       popState.prefix === 'font' ? 'Font size'
         : popState.prefix === 'weight' ? 'Weight'
         : popState.prefix === 'radius' ? 'Radius'
+        : popState.prefix === 'spacing' ? popState.spacing.name
         : (popState.hue || 'Colour')));
     var shut = el('button', 'bw-x');
     shut.innerHTML = ICONS.close;
@@ -2768,7 +3003,7 @@
       var current = readFontSize(selected);
       tokenList(body, {
         tokens: FONT_TOKENS,
-        placeholder: 'filter, or type a size',
+        placeholder: 'Search',
         attrs: { item: 'data-tw-size', filter: 'data-tw-size-filter', custom: 'data-tw-size-custom' },
         // Each sample is set at its own size so the list reads as a type ramp,
         // but capped: 9xl is 128px and would swallow the row whole. The px
@@ -2787,11 +3022,35 @@
       return;
     }
 
+    if (popState.prefix === 'spacing') {
+      var sp = popState.spacing;
+      var live = readSpacing(selected, sp.prefix, sp.side);
+      tokenList(body, {
+        tokens: SPACING.map(String),
+        placeholder: 'Search',
+        attrs: { item: 'data-tw-spacing', filter: 'data-tw-spacing-filter',
+          custom: 'data-tw-spacing-custom' },
+        // The row is the length and nothing else: no rule beside it, and no
+        // scale number to translate in your head.
+        label: function (t) { return pxOfSpacing(t) + 'px'; },
+        sample: function (node) { node.className = 'bw-nosample'; },
+        meta: function () { return ''; },
+        isCurrent: function (t) {
+          return live.source === 'explicit' && !live.arbitrary && String(live.value) === t;
+        },
+        pick: function (t) { setSpacing(sp.prefix, sp.side, t); },
+        previewCustom: function () {},
+        // Typed into the filter, a number is pixels too.
+        pickCustom: function (v) { setSpacing(sp.prefix, sp.side, suffixForPx(v)); },
+      });
+      return;
+    }
+
     if (popState.prefix === 'radius') {
       var currentR = readRadius(selected);
       tokenList(body, {
         tokens: RADIUS_TOKENS,
-        placeholder: 'filter, or type a radius',
+        placeholder: 'Search',
         attrs: { item: 'data-tw-radius', filter: 'data-tw-radius-filter', custom: 'data-tw-radius-custom' },
         sample: function (node, t) {
           node.className = 'bw-radsample';
