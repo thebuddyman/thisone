@@ -535,6 +535,43 @@ function check(name, pass, detail) {
   check('…and is, on a flex one',
     await panel.locator('[data-tw-reveal="gap"]').isVisible());
 
+  // ---- gap shows the gap the element is using, and no switch ----
+  //
+  // gap-4, gap-x-4 and gap-y-4 are three different statements about a
+  // container. A container saying one of them is saying nothing about the
+  // other axis, so a field for it is a control for a decision nobody took.
+  const gapShows = async (cls) => {
+    // Move the selection away first: re-clicking the selected element is a
+    // no-op, so the panel would still describe the old classes.
+    await card.click({ position: { x: 200, y: 6 } });
+    await page.locator('[data-eid="9"]').evaluate((e, c) => { e.className = c; }, cls);
+    const box = await page.locator('[data-eid="9"]').boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    return page.evaluate(() => Array.from(
+      document.querySelectorAll('[data-tw-editor="panel"] [data-tw-field^="gap"]'))
+      .filter((n) => n.offsetParent)
+      .map((n) => n.getAttribute('data-tw-field').replace('gap-', ''))
+      .join(' + ') || '(none)');
+  };
+  const gapCases = [
+    ['flex p-4 gap-4', 'all'],
+    ['flex p-4 gap-x-6', '-x'],
+    ['flex p-4 gap-y-8', '-y'],
+    ['flex p-4 gap-x-6 gap-y-8', '-x + -y'],
+  ];
+  for (const [cls, want] of gapCases) {
+    const got = await gapShows(cls);
+    check(`${cls.replace('flex p-4 ', '')} shows ${want}`, got === want, got);
+  }
+  check('and there is no switch between one gap and two',
+    (await panel.locator('[data-tw-toggle="gap"]').count()) === 0);
+
+  // Put it back the way the margin check below expects to find it.
+  await card.click({ position: { x: 200, y: 6 } });
+  await page.locator('[data-eid="9"]').evaluate((e) => { e.className = 'p-4 flex'; });
+  const back = await page.locator('[data-eid="9"]').boundingBox();
+  await page.mouse.click(back.x + back.width / 2, back.y + back.height / 2);
+
   // Clicked at the label end, which is the half of the row that used to do
   // nothing at all.
   const target = await panel.locator('[data-tw-reveal="m"]').boundingBox();

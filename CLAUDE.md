@@ -130,6 +130,17 @@ rather than at a fixed index, so it stays put as rows come and go. Gap follows
 it, which is the one oddity: the BOXES loop puts gap last, and gap shows on
 flex and grid containers only, so most selections never see the seam.
 
+**gap shows the gap the element is using, and offers no switch.** `gap-4`,
+`gap-x-4` and `gap-y-4` are three different statements about a container, and
+the panel shows the one being made: one field for `gap-4`, one for whichever
+axis is set, two when both are. A container saying `gap-x-4` is saying nothing
+about its rows, so a row-gap field there is a control for a decision nobody
+took — and a toggle between "one gap" and "two gaps" is a question about the
+class list rather than about the page. Nothing set yet is the one gap, which is
+what `gap-4` means and what the + row reveals into. Padding and margin keep
+their toggle: `px-*` and `pt-*` really are two views of the same four edges,
+where these three are three different classes.
+
 **A property that is not set keeps its row, with a + in it.** Frame 4:407 draws
 Margin that way — a 40px line, the label on the left, a + in the same 40x40
 tile a section's toggle occupies — sitting in Margin's own slot between Padding

@@ -120,8 +120,10 @@
   var BOXES = [
     { key: 'padding', label: 'Padding', prefix: 'p', always: true },
     { key: 'margin', label: 'Margin', prefix: 'm' },
-    { key: 'gap', label: 'Gap', prefix: 'gap', collapsed: GAP_ONE, expanded: GAP_AXES,
-      applies: supportsGap },
+    // gap has no toggle: which fields it shows is decided by what the element
+    // is wearing, not by a switch. See gapFields.
+    { key: 'gap', label: 'Gap', prefix: 'gap', fields: GAP_ONE.concat(GAP_AXES),
+      choose: gapFields, applies: supportsGap },
   ];
 
   // Figma's model: two axis inputs by default (px-*/py-*), swapped for the four
@@ -2113,6 +2115,7 @@
 
   /** Every side token a box can write, including its all-sides class. */
   function boxSides(box) {
+    if (box.fields) return box.fields.map(function (f) { return f.side; });
     return [''].concat(
       (box.collapsed || AXES).map(function (f) { return f.side; }),
       (box.expanded || SIDES).map(function (f) { return f.side; })
@@ -2157,6 +2160,63 @@
    */
   function supportsGap(el) {
     return !!el && /^(inline-)?(flex|grid)$/.test(getComputedStyle(el).display);
+  }
+
+  /**
+   * Which gap fields to show: the ones the element is actually using.
+   *
+   * `gap-4`, `gap-x-4` and `gap-y-4` are three different statements about a
+   * container, and the panel shows the one being made rather than offering all
+   * three and a switch. A container with `gap-x-4` is saying something about
+   * its columns and nothing about its rows — so a row-gap field there is a
+   * control for a decision nobody took, and a toggle between "one gap" and
+   * "two gaps" is a question about the class list rather than about the page.
+   *
+   * Nothing set yet is the one gap, which is what `gap-4` means and what the +
+   * row reveals into.
+   */
+  function gapFields(el) {
+    var axes = GAP_AXES.filter(function (f) {
+      return readSpacing(el, 'gap', f.side).source === 'explicit';
+    }).map(function (f) { return f.side; });
+    return axes.length ? axes : [''];
+  }
+
+  /**
+   * A box whose fields are chosen by what the element wears, not by a toggle.
+   */
+  function chosenSection(box) {
+    var wrap = el('div', 'bw-row top');
+    wrap.setAttribute('data-tw-section', box.prefix);
+    wrap.appendChild(el('span', 'bw-lbl', box.label));
+
+    var pair = el('div', 'bw-pair');
+    var fields = {};
+    box.fields.forEach(function (f) {
+      // The names are already whole here — 'gap', 'column gap', 'row gap' —
+      // so they are used as written rather than prefixed with the box's label.
+      var node = spacingField(box.prefix, f.side, { icon: f.icon, name: f.name });
+      fields[f.side] = node;
+      pair.appendChild(node);
+    });
+
+    var stack = el('div', 'bw-stack');
+    stack.appendChild(pair);
+    wrap.appendChild(stack);
+
+    readouts.push(function () {
+      var show = boxVisible(selected, box);
+      shown[box.prefix] = show;
+      wrap.style.display = show ? '' : 'none';
+      if (!show) return;
+      var want = box.choose(selected);
+      box.fields.forEach(function (f) {
+        fields[f.side].style.display = want.indexOf(f.side) === -1 ? 'none' : '';
+      });
+      pair.className = 'bw-pair' + (want.length === 1 ? ' is-single' : '');
+    });
+
+    return wrap;
   }
 
   /**
@@ -4883,7 +4943,7 @@
     // Every optional section is followed by the row that stands in for it, so
     // each property occupies one slot in the panel whether it is set or not.
     BOXES.forEach(function (box) {
-      body.appendChild(boxSection(box));
+      body.appendChild(box.choose ? chosenSection(box) : boxSection(box));
       if (REVEALS[box.prefix]) body.appendChild(revealRow(REVEALS[box.prefix]));
       // Radius belongs with the box controls, not down among the type ones: it
       // is a property of the same box padding and margin describe.
