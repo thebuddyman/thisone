@@ -1473,9 +1473,12 @@
       both(' .bw-snow svg') + '{display:block}',
       PP + ' .bw-customtag{display:flex;align-items:center;gap:6px}',
       PP + ' .bw-custom .bw-sizename{font-style:italic;color:' + LITERAL + '}',
-      // min-width:0, or overflow:hidden has no width to work against and
-      // "Euclid Circular B" pushes the token straight out of the field.
-      P + ' .bw-cname{min-width:0;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);',
+      // flex:1 so the NAME takes the slack, min-width:0 so it ellipsizes when
+      // there is none — "Euclid Circular B" used to push the token out of the
+      // field entirely. The note used to claim the slack with margin-left:auto
+      // instead, which put two auto margins in one row: they split the free
+      // space evenly and stranded the note halfway to the chevron.
+      P + ' .bw-cname{flex:1;min-width:0;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);',
       '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
       P + ' .bw-alpha{flex:0 0 auto;display:flex;align-items:center;gap:1px;',
@@ -1483,7 +1486,8 @@
       P + ' .bw-alpha-in{width:24px;border:0;background:transparent;text-align:right;',
       '  font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
       P + ' .bw-alpha-in:focus{outline:none}',
-      P + ' .bw-unit{font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint);margin-left:auto}',
+      // Sits against the chevron: the name above is what absorbs the width.
+      P + ' .bw-unit{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       P + ' .bw-pct{font:10px/1 ' + UI_FONT + ';color:var(--bw-faint);padding-right:3px}',
       P + ' .bw-detach{flex:0 0 auto;width:22px;height:22px;border-radius:5px;opacity:0;',
       '  display:flex;align-items:center;justify-content:center;color:var(--bw-faint)}',
@@ -1523,7 +1527,10 @@
       PP + ' .bw-search-in::placeholder{color:var(--bw-muted)}',
       PP + ' .bw-search-in::placeholder{color:var(--bw-faint)}',
       PP + ' [data-tw-synthetic] .bw-sizepx{color:var(--bw-danger)}',
-      PP + ' .bw-pop-empty{padding:10px 8px;font:11px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
+      // Same box as a row, so an empty list does not change shape: 40px tall,
+      // the same 12px inset, the same 15px type.
+      PP + ' .bw-pop-empty{display:flex;align-items:center;min-height:40px;padding:0 12px;',
+      '  border-radius:8px;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted)}',
       PP + ' .bw-custom{border-top:1px solid var(--bw-hair);margin-top:3px;padding-top:6px}',
       PP + ' .bw-sizesample{flex:0 0 44px;line-height:1.05;color:var(--bw-fg);overflow:hidden}',
       // One corner, drawn at true scale in the same 44px column the type
@@ -2191,7 +2198,8 @@
    * Only the FIRST entry counts. The rest are fallbacks the page reaches for
    * when the first is missing, so on `ui-monospace, "Cascadia Code"` the face
    * in use is the platform's, and naming Cascadia Code would be naming the
-   * understudy.
+   * understudy. Used where there is a second thing to say instead — an unset
+   * field, which has a computed stack but no token to fall back on.
    */
   function familyFace(stack) {
     var first = firstFamily(resolveFamily(stack));
@@ -2199,13 +2207,17 @@
   }
 
   /**
-   * What a token is called on screen: its typeface where it has one — on this
-   * project `font-sans` is Aspekta, and Aspekta is the answer to "what is
-   * this" — and its own name where it does not.
+   * What a token is called on screen: the typeface, named. `font-sans` is
+   * Inter or Aspekta or Euclid Circular B depending on the project, and that
+   * name — not `sans` — is the answer to "what is this". Which slot it came
+   * from is real information too, so it is shown alongside rather than
+   * instead: the face on the left, the token on the right.
+   *
+   * A stack that names no face at all falls back to the token, because there
+   * is nothing else true to say.
    */
   function familyName(token) {
-    return familyFace(FAMILIES[token]) ||
-      token.charAt(0).toUpperCase() + token.slice(1);
+    return firstFamily(resolveFamily(FAMILIES[token])) || token;
   }
 
   /**
@@ -2690,12 +2702,9 @@
       sample.className = 'bw-famsample' + (state.kind === 'token' ? '' : ' is-unset');
 
       if (state.kind === 'token') {
-        var shown = familyName(state.name);
-        d.name.textContent = shown;
+        d.name.textContent = familyName(state.name);
         d.name.className = 'bw-cname';
-        // The token, unless it is already what the value says — a field
-        // reading "Sans  sans" says one thing twice.
-        d.note.textContent = shown.toLowerCase() === state.name ? '' : state.name;
+        d.note.textContent = state.name;
         d.token.title = state.cls + ' \u2014 ' + (resolveFamily(state.stack) || state.stack);
       } else {
         d.name.textContent = familyFace(state.stack) || firstFamily(state.stack) || '\u2014';
@@ -3299,9 +3308,8 @@
         var sample = el('span', 'bw-sizesample', 'Ag');
         sample.style.cssText = 'font-size:16px;font-family:' + FAMILIES[t];
         item.appendChild(sample);
-        var label = familyName(t);
-        item.appendChild(el('span', 'bw-sizename', label));
-        item.appendChild(el('span', 'bw-sizepx', label.toLowerCase() === t ? '' : t));
+        item.appendChild(el('span', 'bw-sizename', familyName(t)));
+        item.appendChild(el('span', 'bw-sizepx', t));
         if (currentF.kind === 'token' && currentF.name === t) {
           item.setAttribute('aria-current', 'true');
         }
