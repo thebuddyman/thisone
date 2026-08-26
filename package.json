@@ -4,6 +4,10 @@
   "private": true,
   "description": "Proof of concept: visual Tailwind editor with write-back to source",
   "main": "server.js",
+  "exports": {
+    "./loader": "./next/loader.cjs",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node test/run.mjs",

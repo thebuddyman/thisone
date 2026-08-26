@@ -658,6 +658,42 @@ its next reconcile throw `removeChild` on something it no longer owns. The
 backend says which world it is in (`hmr: true`), and only the HTML one — where
 nothing re-renders — has its DOM updated by hand.
 
+**Three things about wiring only go wrong once the editor is installed rather
+than sitting next to the project, so nothing in a sibling checkout can catch
+them.**
+
+*Backups go in the project, at `.bw-edit/backups/`.* They used to live beside
+this code, which is fine for a checkout and fatal for a dependency: `__dirname`
+is then inside `node_modules`, the one directory `npm ci` deletes and a fresh
+clone never has — so the only copy of the user's own `next.config.ts` and
+`layout.tsx` would sit exactly where a reinstall wipes it, and `--unwire` reads
+from there. They are named after the path inside the project and not the
+basename, which is the collision the trap below already warns about. The
+directory carries a self-ignoring `.gitignore` so it stays out of the project's
+history without editing the project's own.
+
+*The loader shim is resolved by package name.* It writes `tools/bw-loader.cjs`
+into the user's repo, under `tools/`, where they will commit it — so an
+absolute path in it is one machine's path that breaks for every teammate and
+every CI checkout the moment it is pushed. `require('<pkg>/loader')` needs the
+subpath in `exports`, which is why package.json has one. Where the package does
+*not* resolve from the project — this checkout run against a sibling, which is
+how it is developed — it falls back to its own path and says `NOT PORTABLE` in
+the file, rather than looking committable.
+
+*The port is read when the page renders, not written in when it is wired.*
+`overlayTags` used to bake the number into the layout. Wire once at the
+default, later run `--port 3600`, and the overlay is fetched from the old port
+and simply never loads: no error, no missing file, a page with no editor on it
+and nothing saying why. It reads `NEXT_PUBLIC_BW_PORT ?? 3500` instead, and the
+CLI prints the export line whenever the port is not the default.
+
+The turbopack rule gained `:start`/`:end` markers to go with that, because both
+snippets now change between versions and `--unwire` matched the rule by exact
+string — a `replace` that does not match fails silently, reporting success
+while the project still carries the block. It matches by marker and names any
+file it could not take the block out of.
+
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
@@ -779,8 +815,10 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
 4. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
    and only refuses at save. The panel should say so up front. On Cora only
    25.7% of elements have writable text; 59.6% are `mixed-content`.
-5. **Packaging** — not installable by anyone else. Largest remaining chunk, and
-   only worth it if other people will use it.
+5. **Packaging** — the three things that only bite once it is a *dependency*
+   are done (see below); what is left is a `files` allowlist, dropping
+   `private: true`, `engines`, a README, and one install test against a fresh
+   `create-next-app`. Still only worth finishing if other people will use it.
 6. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
    is 608 arbitrary colours, so "detached" is the norm there.
 7. **Logical radius utilities are read but never written.** `rounded-s-lg`,

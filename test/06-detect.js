@@ -133,6 +133,8 @@ const layoutWired = fs.readFileSync(layoutPath, 'utf8');
 check('--wire added the turbopack rule', /turbopack/.test(configWired) && /bw-editor/.test(configWired));
 check('--wire added the overlay to the layout', /overlay\.js/.test(layoutWired));
 check('--wire created the loader shim', fs.existsSync(path.join(root, 'tools/bw-loader.cjs')));
+// Read now, asserted below: --unwire deletes it before those checks run.
+const shimUninstalled = fs.readFileSync(path.join(root, 'tools/bw-loader.cjs'), 'utf8');
 check('the loader rule is dev+non-foreign gated',
   /not.*foreign/.test(configWired) && /development/.test(configWired));
 check('overlay is guarded by NODE_ENV', /NODE_ENV === "development"/.test(layoutWired));
@@ -148,6 +150,70 @@ check('--unwire restored next.config byte-exactly',
 check('--unwire restored the layout byte-exactly',
   fs.readFileSync(layoutPath, 'utf8') === layoutBefore);
 check('--unwire removed the shim', !fs.existsSync(path.join(root, 'tools/bw-loader.cjs')));
+
+// ------------------------------------------ what makes it safe to install
+//
+// Three things only bite once the editor is a dependency rather than a sibling
+// checkout, so nothing above can catch them.
+
+// 1. The originals go in the PROJECT. Installed, `__dirname` is inside
+//    node_modules — which `npm ci` deletes — so backups kept beside the code
+//    are backups that vanish exactly when someone reinstalls.
+const backups = path.join(root, '.bw-edit/backups');
+check('backups are kept in the project, not beside the tool',
+  fs.existsSync(backups) && fs.readdirSync(backups).length >= 2,
+  fs.existsSync(backups) ? fs.readdirSync(backups).join(', ') : '(no .bw-edit/backups)');
+check('...named after the path, so two page.tsx cannot collide',
+  fs.readdirSync(backups).some((f) => f.startsWith('src__app__layout.tsx')),
+  fs.readdirSync(backups).join(', '));
+check('...and kept out of the project history by their own .gitignore',
+  fs.readFileSync(path.join(root, '.bw-edit/.gitignore'), 'utf8').trim() === '*');
+
+// 2. The port is read when the page renders, not written in when it is wired.
+//    Baked in, wiring at the default and later running on another port leaves
+//    a page with no editor on it and nothing saying why.
+check('the layout carries no hardcoded port',
+  !/127\.0\.0\.1:\d+/.test(layoutWired), (layoutWired.match(/127\.0\.0\.1:[^/]*/) || [])[0]);
+check('...it reads NEXT_PUBLIC_BW_PORT instead, with a default',
+  /NEXT_PUBLIC_BW_PORT \?\? 3500/.test(layoutWired));
+
+// 3. The shim is committed with the user's repo, so it must not name a path
+//    that exists on one machine. By name where the package resolves from the
+//    project; where it does not, it says so rather than looking portable.
+check('an uninstalled project gets the fallback, marked NOT PORTABLE',
+  /NOT PORTABLE/.test(shimUninstalled) && shimUninstalled.includes(path.join(__dirname, '..')),
+  shimUninstalled.split('\n')[1]);
+
+const PKG = require('../package.json').name;
+const linked = fixture('installed-here', {
+  deps: { next: '16.2.4' }, tailwind: '4.2.4',
+  files: { 'next.config.ts': NEXT_CONFIG, 'src/app/layout.tsx': LAYOUT },
+});
+fs.symlinkSync(path.join(__dirname, '..'), path.join(linked, 'node_modules', PKG), 'dir');
+run(['--root', linked, '--wire']);
+const shimInstalled = fs.readFileSync(path.join(linked, 'tools/bw-loader.cjs'), 'utf8');
+check('an installed project gets the shim by package name',
+  shimInstalled.includes(`require("${PKG}/loader")`) && !shimInstalled.includes(__dirname),
+  shimInstalled.trim().split('\n').pop());
+// The claim the shim makes, actually exercised: `exports` has to expose the
+// subpath or this throws, and a shim that cannot load is worse than a path.
+check('...and that name really loads the loader from inside the project',
+  typeof require(path.join(linked, 'tools/bw-loader.cjs')) === 'function');
+
+// A block this version cannot match must be named, not silently skipped. An
+// older release wrote a different snippet, and a replace that does not match
+// fails quietly — reporting success while the project still carries the block.
+const legacy = fixture('legacy-block', {
+  deps: { next: '16.2.4' }, tailwind: '4.2.4',
+  files: {
+    'next.config.ts': NEXT_CONFIG.replace('reactStrictMode: true,',
+      '// bw-editor: block from an older release\n  turbopack: { rules: {} },'),
+    'src/app/layout.tsx': LAYOUT,
+  },
+});
+out = run(['--root', legacy, '--unwire']);
+check('an unrecognised block is reported, not silently left behind',
+  /Left in place: next\.config\.ts/.test(out), out.trim().split('\n').pop());
 
 // a config that already defines turbopack must be left alone, not merged blindly
 const busy = fixture('busy-config', {
