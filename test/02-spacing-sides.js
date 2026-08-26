@@ -316,6 +316,24 @@ function check(name, pass, detail) {
     await h2b.evaluate(el => getComputedStyle(el).paddingLeft + '/' + getComputedStyle(el).paddingRight));
   await page.keyboard.press('Escape');
 
+  // ---- folded and unfolded must never contradict each other ----
+  //
+  // An axis used to report its own class while the edges reported theirs, so
+  // mx-[100px] alongside ml-3 mr-3 read 100 folded and 12 / 12 unfolded.
+  await reselect('text-2xl font-bold mx-[100px] ml-3 mr-3');
+  const mView = () => page.evaluate(() =>
+    [...document.querySelectorAll('[data-tw-editor="panel"] [data-tw-field]')]
+      .filter((e) => e.offsetParent !== null && /^m-/.test(e.getAttribute('data-tw-field')))
+      .map((e) => e.getAttribute('data-tw-field')).join(','));
+  if ((await mView()).includes('m-l')) await panel.locator('[data-tw-toggle="m"]').click();
+  const foldedHz = await read('m-x');
+  await panel.locator('[data-tw-toggle="m"]').click();
+  const openL = await read('m-l');
+  const openR = await read('m-r');
+  check('the folded axis says what the two edges say',
+    foldedHz === openL && openL === openR,
+    `folded ${foldedHz}  unfolded ${openL} / ${openR}`);
+
   // ---- a snowflake and italic mean the same thing, and never disagree ----
   await reselect('text-2xl font-bold py-[13px] px-4');
   const marked = await page.evaluate(() => {

@@ -1429,6 +1429,16 @@
       P + ' .bw-open{flex:0 0 auto;align-self:center;display:flex;align-items:center;',
       '  justify-content:center;width:20px;height:100%;margin-right:12px;border-radius:4px}',
       P + ' .bw-open svg{display:block}',
+      // The chevron is an affordance, not information: it says "this opens" to
+      // a cursor that is already here. Hidden by opacity rather than display so
+      // the value never shifts as it comes and goes, and kept for focus and
+      // while the list is open — otherwise it would vanish from under the
+      // keyboard, and from under the click that just opened it.
+      P + ' .bw-chev,' + P + ' .bw-open{opacity:0}',
+      P + ' .bw-field:hover .bw-chev,' + P + ' .bw-field:hover .bw-open,',
+      P + ' .bw-field:focus-within .bw-chev,' + P + ' .bw-field:focus-within .bw-open,',
+      P + ' .bw-field.is-open .bw-chev,' + P + ' .bw-field.is-open .bw-open,',
+      P + ' .is-open .bw-chev,' + P + ' .is-open .bw-open{opacity:1}',
       P + ' .bw-spin{flex:0 0 20px;display:flex;flex-direction:column;align-self:stretch;',
       '  padding-right:8px}',
       P + ' .bw-step{flex:1;display:flex;align-items:center;justify-content:center;',
@@ -1807,8 +1817,11 @@
             (two.from || 'not set') + ' \u2014 typing one value sets both';
           return;
         }
-        // The edges agree but the axis itself owns nothing: show what they say.
-        if (state.value === null && oneText !== '') state = one;
+        // The edges agree — and they are what the four-edge view shows, so the
+        // folded field shows the same thing. Reading the axis's own class here
+        // let the two views contradict each other: mx-[100px] alongside
+        // ml-3 mr-3 read 100 folded and 12 / 12 unfolded.
+        state = one;
       }
 
       if (state.value === null) {
