@@ -68,8 +68,12 @@ const CORNERS = ['tl', 'tr', 'bl', 'br'];
 
   const open = await row.boundingBox();
   const one = await panel.locator('[data-tw-field="radius-tl"]').boundingBox();
-  check('open, the grid is two 124px columns under the field',
-    open.height === 173 && Math.round(one.width) === 124,
+  // Two columns of whatever the field above them is, halved: the field shares
+  // its line with the 40px toggle, and the toggle pulls 10 of that back with
+  // the negative margin that stands its mark on the gutter — so 270 across,
+  // less the 12 between them, is 129 each.
+  check('open, the grid is two 129px columns under the field',
+    open.height === 173 && Math.round(one.width) === 129,
     `${open.width}x${open.height}, column ${Math.round(one.width)}`);
 
   const inherited = await Promise.all(CORNERS.map(read));

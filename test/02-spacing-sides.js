@@ -69,12 +69,12 @@ function check(name, pass, detail) {
   });
   const ringOpen = await ringOf();
   check('the field lights up while its list is open',
-    ringOpen.includes('rgb(223, 126, 70)'), ringOpen);
+    ringOpen.includes('rgb(254, 80, 0)'), ringOpen);
 
   await page.locator('[data-tw-pop] .bw-x').click();
   const ringShut = await ringOf();
   check('and goes dark again when it closes',
-    !ringShut.includes('rgb(223, 126, 70)'), ringShut);
+    !ringShut.includes('rgb(254, 80, 0)'), ringShut);
   // Deselect before the suite's own first click: a live selection puts the
   // delete handle on the card's corner, and it dodges the tall panel onto
   // exactly the spot the click below aims at.
@@ -414,7 +414,7 @@ function check(name, pass, detail) {
 
   const labels = await order();
   check('every property has a row, set or not',
-    labels.join(' > ') === 'Text > Padding > Margin > Radius > Typography > Background > Text color',
+    labels.join(' > ') === 'Text > Padding > Margin > Radius > Stroke > Typography > Text color > Background color',
     labels.join(' > '));
   check('and no Add strip at the end to go looking in',
     (await panel.locator('[data-tw-add-row]').count()) === 0);
@@ -547,7 +547,7 @@ function check(name, pass, detail) {
   const gapOrder = await order();
   check('offered in the slot gap reads in, after Radius',
     gapOrder.join(' > ') ===
-      'Padding > Margin > Radius > Gap > Typography > Background > Text color',
+      'Padding > Margin > Radius > Stroke > Gap > Typography > Text color > Background color',
     gapOrder.join(' > '));
 
   // ---- gap shows the gap the element is using, and no switch ----
@@ -636,7 +636,7 @@ function check(name, pass, detail) {
   const after = await order();
   check('and the panel still reads in the same order',
     after.join(' > ') ===
-      'Padding > Margin > Radius > Gap > Typography > Background > Text color',
+      'Padding > Margin > Radius > Stroke > Gap > Typography > Text color > Background color',
     after.join(' > '));
 
   await page.screenshot({ path: `${__dirname}/sides.png` });

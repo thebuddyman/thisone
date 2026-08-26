@@ -37,13 +37,13 @@
   var COLORS = null;
   // prefix → { tokenName: renderedValue } for classes the page can already
   // render, so preview rules are emitted only where they are actually missing.
-  var renderable = { bg: {}, text: {} };
+  var renderable = { bg: {}, text: {}, border: {} };
 
-  var HOVER_OUTLINE = '1px dashed rgba(217, 121, 89, .75)';
-  var SELECT_OUTLINE = '2px solid #d97959';
+  var HOVER_OUTLINE = '1px dashed rgba(254, 80, 0, .75)';
+  var SELECT_OUTLINE = '2px solid #fe5000';
   // Amber marks an element changed but not yet written, so unsaved work stays
   // visible after you move on to another element.
-  var DIRTY_OUTLINE = '2px dashed rgba(217, 121, 89, .95)';
+  var DIRTY_OUTLINE = '2px dashed rgba(254, 80, 0, .95)';
   // A pending removal is not a pending edit: it reads red, not amber, and the
   // element is ghosted rather than hidden so it stays clickable and undoable.
   var REMOVE_OUTLINE = '2px dashed rgba(220, 40, 40, .9)';
@@ -440,6 +440,12 @@
   var pristine = new Map();// each one as it was before anything was done to it
   var restoring = false;   // guards pushHistory while a state is being applied
   var lastPush = null;     // for coalescing a run of keystrokes into one step
+  // A drag is one step in the ledger too, however many frames the pointer took
+  // over it. Text coalesces on a timer, which works because keystrokes are
+  // discrete and a pause between them is a real boundary; a drag has a
+  // beginning and an end it can simply state, so it states them. Set after the
+  // drag's *first* write, so that write opens the step the rest fold into.
+  var dragRun = false;
   var HISTORY_CAP = 100;
 
   /** One element's complete editable state. */
@@ -474,9 +480,9 @@
     if (restoring) return;
     var now = Date.now();
     // A run of keystrokes is one step, not one per character.
-    var coalesce = kind === 'text' && lastPush && lastPush.kind === 'text' &&
-      lastPush.el === selected && now - lastPush.at < 700 &&
-      historyAt === history.length - 1 && historyAt > 0;
+    var coalesce = lastPush && lastPush.el === selected &&
+      historyAt === history.length - 1 && historyAt > 0 &&
+      (dragRun || (kind === 'text' && lastPush.kind === 'text' && now - lastPush.at < 700));
 
     history = history.slice(0, historyAt + 1);
     if (coalesce) {
@@ -764,7 +770,7 @@
     deleteHandle.type = 'button';
     deleteHandle.setAttribute('data-tw-editor', 'delete');
     deleteHandle.setAttribute('data-tw-delete', '');
-    deleteHandle.innerHTML = ICONS.cross;
+    deleteHandle.innerHTML = ICONS.close;
     deleteHandle.title = 'Remove this element \u2014 undoable until you save';
     deleteHandle.addEventListener('click', function (e) {
       e.preventDefault();
@@ -1257,12 +1263,15 @@
   var RAISED = '#2b2b2b';   // a list row under the cursor
   var SELECTED = '#353535'; // the one that is actually set
   var SEGHOVER = '#2a2a2a'; // a segment under the cursor, one step under it
-  var FOCUS = '#df7e46';    // the field you are working in
+  var FOCUS = '#fe5000';  // the field you are working in — BRAND, worn as a ring
   // A literal value reads a shade back from a token: still legible, but not
   // claiming the same standing as something on the scale.
   var LITERAL = '#b4b4b4';
   var EDGE = '#333333';     // the hairline around a dropdown, from the frame
-  var BRAND = '#d97959';  // --primary from the template
+  // The accent, and the only saturated colour the panel owns: the selection
+  // outline on the page and a pressed control in the panel. FOCUS is the same
+  // value under another name because the two are the same signal in two places.
+  var BRAND = '#fe5000';
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
   var UI_FONT = "Figtree, Figtree_400Regular, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -1360,10 +1369,6 @@
     font: glyph('<path d="M2 3.2V2.1h8v1.1M6 2.4v7.5M4.3 9.9h3.4"/>'),
     // assets/ic-plus.svg
     plus: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g id=\"Frame\"><path id=\"Vector\" d=\"M4.16667 10H15.8333\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_2\" d=\"M10 4.16667V15.8333\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g></svg>",
-    // The delete handle's mark. Heavier than the panel's dismiss ×, because
-    // this one removes source rather than closing a window.
-    cross: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
     // The export's own files, inlined verbatim like every other icon here: 20
     // on the frame's grid, #AAAAAA at 1.5, which is the dismiss ×'s hand. The
     // 13px currentColor pair they replaced was drawn back when assets/ had no
@@ -1378,11 +1383,15 @@
     // the horizontal mark stands for both without ever being ambiguous.
     gapHz: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M2.5 2H3.5C4.32843 2 5 2.67157 5 3.5V16.5C5 17.3284 4.32843 18 3.5 18H2.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M17.5 2H16.5C15.6716 2 15 2.67157 15 3.5V16.5C15 17.3284 15.6716 18 16.5 18H17.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M9 4.75C9 4.33579 9.33579 4 9.75 4C10.1642 4 10.5 4.33579 10.5 4.75V15.25C10.5 15.6642 10.1642 16 9.75 16C9.33579 16 9 15.6642 9 15.25V4.75Z\" fill=\"#AAAAAA\"/></svg>",
     gapVt: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M18 2.5L18 3.5C18 4.32843 17.3284 5 16.5 5L3.5 5C2.67157 5 2 4.32843 2 3.5L2 2.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M18 17.5L18 16.5C18 15.6716 17.3284 15 16.5 15L3.5 15C2.67157 15 2 15.6716 2 16.5L2 17.5\" stroke=\"#505050\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><path d=\"M15.25 9C15.6642 9 16 9.33579 16 9.75C16 10.1642 15.6642 10.5 15.25 10.5L4.75 10.5C4.33579 10.5 4 10.1642 4 9.75C4 9.33579 4.33579 9 4.75 9L15.25 9Z\" fill=\"#AAAAAA\"/></svg>",
-    back: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 1.8 3 5l3.2 3.2"/></svg>',
-    detach: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.1" stroke-linecap="round"><path d="M4.6 7.4 2.9 9.1a1.9 1.9 0 0 1-2.7-2.7l1.7-1.7"/>' +
-      '<path d="M7.4 4.6 9.1 2.9a1.9 1.9 0 0 1 2.7 2.7L10.1 7.3"/><path d="M1 1l10 10"/></svg>',
+    // assets/ic-minus.svg — the + with its upright taken off, which is what
+    // the export draws: the same 20 grid, the same #AAAAAA at 1.5, the same
+    // `M4.16667 10H15.8333` the plus leads with. The two share a tile and a
+    // column, so they had to share a hand as well.
+    minus: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g id=\"Frame\"><path id=\"Vector\" d=\"M4.16667 10H15.8333\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g></svg>",
+    // assets/ic-unlink.svg. Frame 7:620 puts the real file in the colour field
+    // at 20 on the frame's grid; the 12px currentColor glyph it replaced was
+    // drawn back when the export had no file for it.
+    unlink: "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g id=\"Frame\" clip-path=\"url(#clip0_0_4)\"><path id=\"Vector\" d=\"M15.7 10.2083L17.1333 8.78333H17.1167C17.8839 7.98837 18.3042 6.92144 18.2855 5.81681C18.2667 4.71218 17.8104 3.66014 17.0167 2.89167C16.2391 2.14183 15.201 1.72282 14.1208 1.72282C13.0406 1.72282 12.0025 2.14183 11.225 2.89167L9.79167 4.31667\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_2\" d=\"M4.30833 9.79167L2.88333 11.2167C2.11614 12.0116 1.69577 13.0786 1.71452 14.1832C1.73327 15.2878 2.1896 16.3399 2.98333 17.1083C3.76088 17.8582 4.79897 18.2772 5.87917 18.2772C6.95937 18.2772 7.99746 17.8582 8.775 17.1083L10.2 15.6833\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_3\" d=\"M6.66667 1.66667V4.16667\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_4\" d=\"M1.66667 6.66667H4.16667\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_5\" d=\"M13.3333 15.8333V18.3333\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path id=\"Vector_6\" d=\"M15.8333 13.3333H18.3333\" stroke=\"#AAAAAA\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g><defs><clipPath id=\"clip0_0_4\"><rect width=\"20\" height=\"20\" fill=\"white\"/></clipPath></defs></svg>",
   };
 
   var D = '[data-tw-editor="delete"]';
@@ -1476,13 +1485,31 @@
       P + ' .bw-plog{flex:1 1 auto;min-height:0;max-height:280px;overflow-y:auto;',
       '  padding:20px 20px 0;display:flex;flex-direction:column;gap:12px;user-select:text}',
       P + ' .bw-plog:empty{display:none}',
-      P + ' .bw-pmsg{font:400 13px/1.45 ' + UI_FONT + ';word-break:break-word;white-space:pre-wrap}',
-      P + ' .bw-pmsg.is-me{color:var(--bw-fg);padding-left:10px;',
-      '  box-shadow:inset 2px 0 0 var(--bw-border)}',
-      P + ' .bw-pmsg.is-claude{color:var(--bw-fg)}',
+      P + ' .bw-pmsg{font:400 13px/1.45 ' + UI_FONT + ';color:var(--bw-fg);',
+      '  word-break:break-word;white-space:pre-wrap}',
+      // A turn is read the way the terminal reads it: what you said is a box,
+      // and what came back is a timeline beside it. Two shapes rather than two
+      // colours, because the transcript is one column of the same 13px text
+      // and a label on each line would cost more room than either says.
+      //
+      // The box is the composer's own — 8px and its 10/12 padding, so a sent
+      // message stands where it was typed — but bordered rather than filled:
+      // #232323 is what a field wears, and this one can no longer be typed in.
+      P + ' .bw-pmsg.is-me{padding:10px 12px;border:1px solid ' + EDGE + ';border-radius:8px}',
+      // Everything that comes back is a rail entry: a dot at the gutter and
+      // the text 20px in, which is the panel's own gutter measured again.
+      P + ' .bw-pmsg.is-rail{position:relative;padding-left:20px}',
+      P + ' .bw-pmsg.is-rail::before{content:"";position:absolute;left:0;top:7px;',
+      '  width:5px;height:5px;border-radius:50%;background:var(--bw-muted)}',
+      // The line joins one dot to the next and stops there — it is drawn by
+      // the entry above, running from under its own dot to 12px below itself,
+      // which is exactly the log's gap. EDGE like every other hairline here.
+      P + ' .bw-pmsg.is-run::after{content:"";position:absolute;left:2px;top:14px;',
+      '  bottom:-12px;width:1px;background:' + EDGE + '}',
       // Tool calls are named, not narrated: enough to show a long turn is alive.
       P + ' .bw-pmsg.is-tool{color:var(--bw-muted);font-size:12px;font-style:italic}',
       P + ' .bw-pmsg.is-err{color:var(--bw-danger)}',
+      P + ' .bw-pmsg.is-err::before{background:var(--bw-danger)}',
       // 20 all round, the panel's own gutter. The composer is the whole of it
       // now — Send stands in the footer bar with Save — so the gap below is
       // what separates the field from that bar.
@@ -1607,16 +1634,38 @@
       // A ring around the viewport while edit mode is on: the page's own links
       // and buttons are being swallowed, which is worth saying out loud.
       '[data-tw-editor="ring"]{position:fixed;inset:0;z-index:2147483645;pointer-events:none;',
-      '  display:none;box-shadow:inset 0 0 0 2px rgba(217,121,89,.55)}',
+      '  display:none;box-shadow:inset 0 0 0 2px rgba(254,80,0,.55)}',
       // The floating delete handle and the ghost it leaves behind. Both live on
       // page elements rather than an editor surface, so they carry their own
       // colours instead of the panel's tokens, and both shout — !important —
       // because whatever the page styles that element with has to lose.
+      //
+      // The handle wears the selection's own colour, because it belongs to the
+      // selection: it is drawn on the outline BRAND paints and nowhere else, so
+      // a second hue there read as a second thing on screen rather than as this
+      // element's own control. Red said "danger" at rest, and the pending
+      // removal it leads to already says that — in REMOVE_OUTLINE, on the
+      // ghost, and in the panel's notice, all of them after the click.
+      //
+      // No white ring either. It was there to hold the disc off whatever it
+      // was floating over; against a border it is now the same colour as, it
+      // drew a gap where the two should meet. The shadow alone lifts it.
       D + '{position:fixed;z-index:2147483646;width:20px;height:20px;display:none;',
       '  align-items:center;justify-content:center;padding:0;border:0;border-radius:999px;',
-      '  background:' + DANGER + ';color:#fff;cursor:pointer;',
-      '  box-shadow:0 1px 4px rgba(0,0,0,.35),0 0 0 2px rgba(255,255,255,.9)}',
-      D + ':hover{background:#b81f1f}',
+      '  background:' + BRAND + ';color:#fff;cursor:pointer;',
+      '  box-shadow:0 1px 4px rgba(0,0,0,.35)}',
+      D + ':hover{background:#d84400}',
+      // The export's × — the same file the panel's dismiss wears, inlined
+      // verbatim like every other icon. Its #AAA is the one thing overridden,
+      // and only here: that grey is drawn for the panel's #171717 surface and
+      // goes muddy on the brand fill, where white is what reads.
+      //
+      // Drawn at 14 rather than its own 20. The dismiss × has a 40px tile to
+      // sit in and the disc here is 20, so the mark at full size ran corner to
+      // corner and left no field around it — the file is scaled, not redrawn,
+      // so the stroke thins with it and the cross keeps the asset's shape.
+      D + ' svg{display:block;width:14px;height:14px}',
+      D + ' svg path{stroke:#fff}',
       '[data-tw-removed]{opacity:.3!important;filter:grayscale(.7)!important}',
       // The panel has nothing to offer an element that is on its way out, so
       // every control folds away and leaves only the notice and its undo.
@@ -1628,9 +1677,15 @@
       '  background:rgba(220,40,40,.1);border:1px solid rgba(220,40,40,.3)}',
       P + ' .bw-rm-txt{flex:1;font:400 13px/1.45 ' + UI_FONT + ';color:var(--bw-muted)}',
       P + ' .bw-rm-txt strong{display:block;font:400 15px/1.5 ' + UI_FONT + ';color:#e46a6a}',
-      P + ' .bw-rm-undo{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-fg);',
-      '  border:0;border-radius:8px;padding:9px 12px;background:var(--bw-sunken)}',
-      P + ' .bw-rm-undo:hover{border-color:var(--bw-fg)}',
+      // Bare, like the close button: the notice is already a box, and a second
+      // filled box inside it reads as a second thing to look at. It lights from
+      // label grey to value white under the cursor, the move every row makes.
+      // 5px above and below puts its 13px line on the same centre as the 15px
+      // heading beside it, and no padding at the sides keeps it flush to the
+      // notice's own 14px gutter.
+      P + ' .bw-rm-undo{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-muted);',
+      '  border:0;border-radius:8px;padding:5px 0;background:none;cursor:pointer}',
+      P + ' .bw-rm-undo:hover{color:var(--bw-fg)}',
       // Label above field, as the frame has it — not beside it. The label is
       // the same 15px as the value it names, only greyer.
       // Label above field, as the frame has it — not beside it. Wrapping rather
@@ -1737,7 +1792,18 @@
       /* spacing: label, a 2-up grid of inputs, then the per-side toggle */
       P + ' .bw-stack{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}',
       // The frame puts this at the end of the padding row as a 40x40 tile.
+      //
+      // It hangs 10px into the panel's gutter, which is where the close button
+      // already sits: a 20px mark centred in a 40px tile standing 10px off the
+      // edge puts the MARK on the 20px gutter every field and label is set to,
+      // and the tile's own hover fill 10px outside it. Flush with the gutter
+      // instead — which is how this was first written — the tile lines up with
+      // the fields and the mark inside it sits 10px short of everything else on
+      // the right, so the + column and the x above it read as two columns.
+      // The negative margin is what keeps the 12px beside it: the flex line
+      // gains the 10px back, so the field grows into it rather than the gap.
       P + ' .bw-toggle{width:40px;height:40px;border-radius:8px;flex:0 0 auto;',
+      '  margin-right:-10px;',
       '  background:transparent;display:flex;align-items:center;justify-content:center}',
       P + ' .bw-toggle:hover,' + P + ' .bw-toggle[aria-pressed="true"]',
       '  {background:var(--bw-sunken)}',
@@ -1770,6 +1836,15 @@
       // ring, and it goes round the 28px button that actually has focus rather
       // than the whole 124px strip, which is the more useful of the two.
       P + ' .bw-segbtn:focus-visible{outline:1px solid ' + FOCUS + ';outline-offset:-1px}',
+      // The colour and its opacity, as one line inside a stack. The stack is
+      // a column and these two are side by side, so they need a row of their
+      // own — and its 12px is the same 12 the pair below it uses, because it
+      // is the same gutter measured twice.
+      P + ' .bw-cline{display:flex;align-items:center;column-gap:12px}',
+      // A field with no mark and no list: the value sits at the frame's own
+      // 12px gutter instead of behind a 20px icon. The snowflake keeps the
+      // right-hand slot it has everywhere else.
+      P + ' .bw-field.is-plain .bw-val{padding-left:12px}',
       P + ' .bw-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}',
       P + ' .bw-pair.is-hidden{display:none}',
       P + ' .bw-pair.is-single{grid-template-columns:1fr}',
@@ -1799,7 +1874,19 @@
       // starts, behind its 20px mark. The swatch is sized here rather than on
       // .bw-chip because the same class draws the ones in the dropdown list,
       // which the frame keeps small.
-      P + ' .bw-color .bw-ctoken{padding-left:12px;gap:8px}',
+      // Frame 4:551 still: the 20x20 swatch on the 12px gutter with the value
+      // 8px after it, so the value starts at 40 — the same place a spacing
+      // field's does behind its 20px mark. The button is the gutter plus the
+      // swatch plus that 8, which is the 40 exactly: a 20px target grown to
+      // the field's full height without moving anything.
+      P + ' .bw-cswatch{flex:0 0 auto;height:100%;display:flex;align-items:center;',
+      '  padding:0 8px 0 12px}',
+      // It is a button now, so it says so under the cursor — the ring the
+      // swatches in the list already wear when hovered.
+      P + ' .bw-cswatch:hover .bw-chip{box-shadow:inset 0 0 0 1px var(--bw-ring),',
+      '  0 0 0 2px var(--bw-sunken),0 0 0 3.5px var(--bw-brand)}',
+      P + ' .bw-cswatch:disabled{cursor:default}',
+      P + ' .bw-cswatch:disabled:hover .bw-chip{box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       P + ' .bw-color .bw-chip{width:20px;height:20px;border-radius:3px}',
       P + ' .bw-ctoken{flex:1;min-width:0;display:flex;align-items:center;gap:10px;',
       '  height:100%;padding:0 12px 0 0;overflow:hidden}',
@@ -1828,6 +1915,15 @@
       P + ' .bw-chip.is-empty{background:repeating-linear-gradient(45deg,var(--bw-hair) 0 3px,transparent 3px 6px)}',
       both(' .bw-snow') + '{flex:0 0 auto;display:flex;align-items:center}',
       both(' .bw-snow svg') + '{display:block}',
+      // The stroke list's specimen: the style itself, drawn as a 2px rule at
+      // the right of the row where every other list puts its number. A style
+      // is the one value here whose name says least about it, which is the
+      // same exemption the family list's face has.
+      // 3px, not 2: `double` is two lines with a gap between them, and below
+      // three there is no room for the gap — it draws as one solid line, which
+      // is the one row in the list that would then be showing the wrong thing.
+      PP + ' .bw-strokebar{flex:0 0 56px;height:0;border-top-width:3px;',
+      '  border-top-color:var(--bw-fg)}',
       PP + ' .bw-customtag{display:flex;align-items:center;gap:6px}',
       PP + ' .bw-custom .bw-sizename{font-style:italic;color:' + LITERAL + '}',
       // flex:1 so the NAME takes the slack, min-width:0 so it ellipsizes when
@@ -1840,25 +1936,60 @@
       // text by UA default. Invisible while this span was auto-width; the
       // moment flex:1 gave it the whole field, the value drifted to the middle.
       '  text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      // It is an <input> on a colour field and a <span> everywhere else, so it
+      // carries what an input needs to stop looking like one. The typist is
+      // the reason: a hex is a value people arrive holding.
+      P + ' .bw-cname{border:0;background:transparent;padding:0}',
+      P + ' .bw-cname:focus{outline:none}',
+      P + ' .bw-cname:disabled{cursor:default}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
-      P + ' .bw-alpha{flex:0 0 auto;display:flex;align-items:center;gap:1px;',
-      '  padding-left:4px;border-left:1px solid var(--bw-hair)}',
-      P + ' .bw-alpha-in{width:24px;border:0;background:transparent;text-align:right;',
-      '  font:11px/1 ' + UI_MONO + ';color:var(--bw-fg)}',
+      // Frame 7:622: opacity is a field of its own, not a corner of the colour
+      // one. Its 57 and the 12 beside it come out of the colour field and out
+      // of nothing else, so the two states stand on the same line and the tile
+      // after them never moves. The 12 is the row's own column-gap — this is a
+      // sibling field now, so it is spaced like one.
+      P + ' .bw-alpha{flex:0 0 57px;align-items:center;padding-left:10px}',
+      // 15px in the value colour, the same as the name in the field beside it:
+      // the frame sets "100%" in the panel's own type, where this was an 11px
+      // monospace number with a 10px grey % after it. The width is set from the
+      // value in ch, so the % sits against the digits at any length instead of
+      // after a fixed box the short ones do not fill.
+      P + ' .bw-alpha-in{width:3ch;border:0;background:transparent;text-align:left;',
+      '  font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);padding:0}',
       P + ' .bw-alpha-in:focus{outline:none}',
+      // The measure the field is sized from. A `ch` is the width of a zero and
+      // these digits are not all a zero wide, so 3ch for "100" left a visible
+      // space before the %, which reads as "100 %" rather than as one value.
+      // The same font on the same surface, so what it measures is what the
+      // input will draw.
+      P + ' .bw-alpha-sz{position:absolute;visibility:hidden;white-space:pre;',
+      '  font:400 15px/1 ' + UI_FONT + '}',
+      // The unlink, in the right-hand slot the chevron otherwise owns — 20 on
+      // the frame's grid, ending 10px in from the field's edge, in a 40px-tall
+      // target because a 20px mark is a small thing to aim at. It shows on a
+      // token colour and the chevron shows without one, so the two share the
+      // slot and are never drawn on top of each other.
+      P + ' .bw-unlink{position:absolute;right:0;top:0;height:100%;width:40px;',
+      '  display:flex;align-items:center;justify-content:flex-end;padding-right:10px}',
+      P + ' .bw-unlink svg{display:block}',
+      // It hides the way the chevron it stands in for hides. Both are
+      // affordances rather than information — they say "this does something"
+      // to a cursor that is already here — and a mark sitting on every colour
+      // row at rest is a second thing to read on a row whose whole job is to
+      // say one colour. pointer-events with it, because a button you cannot
+      // see is not a button you should be able to press.
+      P + ' .bw-unlink{opacity:0;pointer-events:none}',
+      P + ' .bw-field:hover .bw-unlink,' + P + ' .bw-field:focus-within .bw-unlink,',
+      P + ' .bw-field.is-open .bw-unlink,' + P + ' .is-open .bw-unlink',
+      '  {opacity:1;pointer-events:auto}',
+      P + ' .bw-field .bw-unlink:hover{opacity:.7}',
+      // The frame ends the name at 222 of the field's 260, 8px short of the
+      // mark, so it ellipsises before it reaches it rather than under it. With
+      // no mark there the name keeps the field's own 12px gutter.
+      P + ' .bw-field.has-unlink{padding-right:38px}',
       // Sits against the chevron: the name above is what absorbs the width.
       P + ' .bw-unit{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
-      P + ' .bw-pct{font:10px/1 ' + UI_FONT + ';color:var(--bw-faint);padding-right:3px}',
-      // Not in the field: a control that lives beside the value and appears
-      // under the cursor reads as "delete this", whatever its icon says. Both
-      // of the things you can do to a colour that is already set live in the
-      // list the field opens, named, where you go to change it anyway.
-      PP + ' .bw-pop-act{display:flex;align-items:center;gap:8px;width:100%;min-height:34px;',
-      '  padding:0 8px;border-radius:8px;font:400 13px/1.3 ' + UI_FONT + ';',
-      '  color:var(--bw-muted);text-align:left}',
-      PP + ' .bw-pop-act:hover{background:' + RAISED + ';color:var(--bw-fg)}',
-      PP + ' .bw-pop-act svg{display:block;flex:0 0 auto}',
-      PP + ' .bw-pop-acts{margin-top:6px;padding-top:6px;border-top:1px solid var(--bw-hair)}',
+      P + ' .bw-pct{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
 
       /* colour popover */
       // border-box on the popover itself, not just its children: the 220 in the
@@ -1871,41 +2002,102 @@
       // is `lg`, a hue is `clay`, but a face is "Euclid Circular B". 260px is
       // the frame's own panel width, and only the family list asks for it.
       PP + '.is-wide{width:260px}',
+      // Both colour views are sized from the grid rather than the grid from
+      // them, which is what lets the palette and a ramp beside it be the same
+      // object twice: 322 is 2 border + 40 gutter + eleven 20px squares + ten
+      // 6px gaps, exactly. Eleven because a ramp is eleven and ten with one
+      // under it is an orphan — and once the ramp is eleven the palette has to
+      // be too. Same square and same gap in two boxes cannot both run gutter
+      // to gutter on different counts: ten and eleven of one square with one
+      // gap differ by a square and a gap, so something has to give, and the
+      // count is the only one of the three nobody looks at. It used to be 312
+      // for the panel's own row width, with the squares taking whatever the
+      // gaps left — 21.6 in the palette against 19.1 in the ramp, for one
+      // object drawn twice. The token lists keep the frame's 220, since a row
+      // of text needs no more.
+      PP + '.is-swatches{width:322px;max-height:560px}',
+      PP + '.is-shades{width:322px}',
       PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;height:60px;',
       '  padding:0 10px 0 20px;flex:0 0 auto;border-bottom:1px solid ' + RULE + '}',
       PP + ' .bw-pop-h strong{flex:1;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted);',
       '  text-transform:capitalize}',
-      PP + ' .bw-pop-back{width:18px;height:18px;border-radius:4px;color:var(--bw-faint);',
-      '  display:flex;align-items:center;justify-content:center}',
-      PP + ' .bw-pop-back:hover{background:var(--bw-hover);color:var(--bw-fg)}',
-      PP + ' .bw-pop-body{overflow-y:auto;padding:8px}',
-      PP + ' .bw-pop-group{padding:7px 8px 3px;font:600 9px/1 ' + UI_FONT + ';',
-      '  letter-spacing:.07em;text-transform:uppercase;color:var(--bw-faint)}',
+      // 20px at the sides: the gutter the panel uses everywhere, and the one
+      // this popover's own header already stands on — the title starts at 20,
+      // and the X's mark ends at 20, since a 40px tile holding a 20px glyph
+      // puts the glyph there and lets only the hover fill overhang. At 8 the
+      // grid was aligned to neither, overhanging the title on the left and the
+      // mark on the right by enough to read as a grid slightly too wide rather
+      // than as a padding. Aligning to the tile's own edge was the same miss
+      // 10px further in: what you see of a button at rest is its mark.
+      PP + ' .bw-pop-body{overflow-y:auto;padding:20px}',
+      // The same words in the same voice the popover's own title is set in —
+      // 15px muted and capitalised, not a 9px letterspaced caption. Two type
+      // styles for two headings on one surface was one style too many.
+      PP + ' .bw-pop-group{padding:7px 8px 3px;font:400 15px/1.4 ' + UI_FONT + ';',
+      '  text-transform:capitalize;color:var(--bw-muted)}',
       PP + ' .bw-hue{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 12px;',
       '  border-radius:6px;font:12px/1.2 ' + UI_MONO + ';color:var(--bw-fg);text-align:left;',
       '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       PP + ' .bw-hue:hover{background:' + RAISED + '}',
-      // The palette is a grid of colour, not a list of names: nine to a row
-      // inside the body's own 8px, which puts a swatch at 16px — the size a
-      // 220px popover has room for once nine of them are on a line. A name
-      // would need a row each and turn twenty-four colours into a scroll;
-      // the title carries it, and the shade grid below already worked this
-      // way.
-      PP + ' .bw-swatches{display:grid;grid-template-columns:repeat(9,1fr);gap:7px}',
-      PP + ' .bw-swatch{aspect-ratio:1;border-radius:4px;',
+      // The palette is a grid of colour, not a list of names — and so are the
+      // shades, which is the same grid and not a second one. Ten to a row at
+      // 24px, which is what sets the popover's width above rather than being
+      // set by it: sixteen was as much as nine-in-220 allowed, and a swatch is
+      // the whole control, so it is the thing that should have the room. A
+      // name would need a row each and turn two dozen colours into a scroll;
+      // the title carries it.
+      // The picker, on top of the presets and divided from them: one half says
+      // any colour there is, the other says the ones this project has names
+      // for, and they are two different acts on one surface.
+      PP + ' .bw-picker{padding-bottom:12px;margin-bottom:8px;',
+      '  border-bottom:1px solid ' + RULE + '}',
+      // No canvas: black up, white across, the hue behind both. Changing hue
+      // is then one custom property rather than a repaint.
+      PP + ' .bw-sv{position:relative;height:120px;border-radius:8px;cursor:crosshair;',
+      '  background:linear-gradient(to top,#000,rgba(0,0,0,0)),',
+      '  linear-gradient(to right,#fff,rgba(255,255,255,0)),',
+      '  var(--bw-sv-hue,hsl(0 100% 50%));',
+      '  box-shadow:inset 0 0 0 1px var(--bw-ring);touch-action:none}',
+      PP + ' .bw-strip{position:relative;height:12px;margin-top:12px;border-radius:6px;',
+      '  cursor:ew-resize;touch-action:none;box-shadow:inset 0 0 0 1px var(--bw-ring);',
+      '  background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}',
+      // The knob wears the colour it is standing on, ringed in white so it
+      // reads on both ends of the square, with a dark halo so the white ring
+      // reads on the pale end too. It never takes the pointer — the surface
+      // under it is the control, and a knob that ate the press would stall a
+      // drag the moment it caught up with the cursor.
+      // 12 and not 14: at s=0,v=1 the knob is centred on the square's corner,
+      // which is 8px in from the popover's border — 6 of radius and 2 of ring
+      // is exactly that 8, so the extreme of the control lands on the gutter
+      // instead of across the edge of the window it is in.
+      PP + ' .bw-knob{position:absolute;width:12px;height:12px;border-radius:50%;',
+      '  transform:translate(-50%,-50%);pointer-events:none;border:2px solid #fff;',
+      '  box-shadow:0 0 0 1px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.45)}',
+      // One square at one size and one gap, wherever a colour is drawn: 20x20
+      // at a 3px radius is what the frame gives the swatch in the field
+      // (4:551), so it is what the grids give theirs, and 6px is the gap the
+      // panel puts between controls everywhere else. They used to be `1fr`
+      // tracks, which meant the square was whatever the gaps left over — 21.6
+      // in the palette, 19.1 in an eleven-wide ramp, 20 in the field, three
+      // sizes for one object. The track is the square now, the gap is fixed,
+      // and the box is what gives: `.is-swatches` is sized to hold exactly
+      // this, so the grid still lands on both gutters without being asked to.
+      PP + ' .bw-swatches{display:grid;grid-template-columns:repeat(11,20px);gap:6px}',
+      PP + ' .bw-swatch{aspect-ratio:1;border-radius:3px;',
       '  box-shadow:inset 0 0 0 1px var(--bw-ring)}',
       PP + ' .bw-swatch.is-empty{background:repeating-linear-gradient(45deg,',
       '  var(--bw-hair) 0 3px,transparent 3px 6px)}',
       PP + ' .bw-swatch:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),',
       '  0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
+      // The hue whose ramp is open wears what a hovered swatch wears: the ring
+      // already means "this one", and the cursor has moved on to the shades by
+      // the time it matters. After the hover rule, so it wins the tie.
+      PP + ' .bw-swatch.is-open{box-shadow:inset 0 0 0 1px var(--bw-ring),',
+      '  0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
       // A caption takes a line of its own rather than a cell, so the grid
       // still reads as rows of colour with a heading over each run.
-      PP + ' .bw-swatches .bw-pop-group{grid-column:1/-1;padding:5px 0 1px}',
+      PP + ' .bw-swatches .bw-pop-group{grid-column:1/-1;padding:8px 0 4px}',
       PP + ' .bw-swatches .bw-pop-group:first-child{padding-top:0}',
-      PP + ' .bw-shades{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:2px}',
-      PP + ' .bw-shade{height:34px;border-radius:6px;display:flex;align-items:flex-end;',
-      '  justify-content:center;padding-bottom:3px;box-shadow:inset 0 0 0 1px var(--bw-ring)}',
-      PP + ' .bw-shade:hover{box-shadow:inset 0 0 0 1px var(--bw-ring),0 0 0 2px var(--bw-card),0 0 0 3.5px var(--bw-brand)}',
       PP + ' .bw-search-in{flex:1;min-width:0;height:100%;border:0;background:transparent;',
       '  color:var(--bw-fg);padding:0;font:400 15px/1.4 ' + UI_FONT + '}',
       PP + ' .bw-search-in:focus{outline:none}',
@@ -1930,7 +2122,6 @@
       PP + ' .bw-hue{border-radius:8px}',
       PP + ' [aria-current="true"]{background:' + SELECTED + '}',
       P + ' .bw-cname.is-custom{color:' + LITERAL + ';font-style:italic}',
-      PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
       /* swatches */
       P + ' .bw-sws{flex:1;display:flex;gap:6px;align-items:center}',
@@ -2536,6 +2727,36 @@
     // Radius hides where nothing would show it, but an element about to get a
     // background should not have to get one first to round its corners.
     radius: { key: 'radius', label: 'Radius' },
+    // Revealing writes a stroke, the way the two colour rows do and for a
+    // sharper version of their reason: a padding field with no class still
+    // tells you the element renders 0, but a stroke that reads 0 wide, no
+    // colour and a style nothing is drawn in is three controls describing
+    // nothing at all — and the property this row is named for is not on the
+    // page. So it starts at the one stroke every route can draw: 1px solid
+    // black, all three said out loud.
+    //
+    // Tokens, not lengths or hexes: `border` is the bare width utility these
+    // codebases use 101 times, and `border-black` reads as a token in the
+    // field the way `bg-white` does. `border-solid` is written rather than
+    // left to preflight so the style field shows it as this element's own
+    // choice instead of dimmed as the page's.
+    stroke: {
+      key: 'stroke', label: 'Stroke',
+      onReveal: function () {
+        if (!selected) return;
+        stripBorderWidth(selected);
+        stripFamily(selected, BORDER_STYLE_RE);
+        ensureBorderRule('border', 'border-width:1px');
+        ensureBorderRule('border-solid', '--tw-border-style:solid;border-style:solid');
+        selected.classList.add('border');
+        selected.classList.add('border-solid');
+        // Last, and through applyColor: it strips whatever colour was there,
+        // emits the preview rule on a route that has never generated one, and
+        // marks the element dirty and refreshes — which is the whole of what
+        // the other two need done after them.
+        applyColor('border', 'border-black');
+      },
+    },
     // One row for the section, not four for its fields: the frame draws
     // Typography as one thing, and a + on a 124px field would be a control
     // wider than the field it stands in for.
@@ -2548,7 +2769,7 @@
     // and an empty swatch, which is a control describing nothing. The + row
     // says the same thing in the panel's own words.
     bg: {
-      key: 'bg', label: 'Background',
+      key: 'bg', label: 'Background color',
       onReveal: function () { applyColor('bg', 'bg-white'); },
     },
     text: {
@@ -3089,14 +3310,17 @@
   /**
    * What a radius field shows: the pixel count, bare, exactly as a spacing
    * field does — nobody should have to know that `lg` is 12 here and 8
-   * somewhere else. `full` is the one rung with no pixel count, so it keeps
-   * the symbol rather than printing the eight-digit number it computes to.
+   * somewhere else. `full` is the one rung with no pixel count — it computes
+   * to `calc(infinity * 1px)`, an eight-digit number no field should print —
+   * so it says its own name instead. It used to show `∞`, which was true and
+   * unreadable: a symbol nobody types, in a field you type into, standing for
+   * the one rung whose class name is already the plainest thing about it.
    */
   function radiusText(state) {
     if (!state || state.kind === 'none') return '';
     if (state.kind === 'token') {
       var n = radiusPx(state.name);
-      return n === Infinity ? '∞' : String(n);
+      return n === Infinity ? 'full' : String(n);
     }
     if (state.kind === 'legacy') return String(legacyRadiusPx());
     // A literal in some other unit has to keep it, or it says nothing.
@@ -3249,7 +3473,10 @@
 
   function pxOfRadius(t) {
     var n = radiusPx(t);
-    return n === Infinity ? '\u221e' : n + 'px';
+    // `full` names itself in the list too, for the reason radiusText gives —
+    // and the list is where the name was always going to be read anyway, since
+    // that row is the one you click to get it.
+    return n === Infinity ? 'full' : n + 'px';
   }
 
   /** The rendered size of a scale token, measured against the page. */
@@ -3445,6 +3672,10 @@
       } else {
         var px = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(raw);
         if (px) target2 = radiusSuffixForPx(Number(px[1]));
+        // The one rung this field shows by name is the one rung it takes by
+        // name: a field that prints `full` and then refuses `full` typed back
+        // cannot round-trip the value it is showing you.
+        else if (/^full$/i.test(raw)) target2 = 'full';
         else if (/^[\d.]+(rem|em|%)$/.test(raw)) target2 = '[' + raw + ']';
         else if (/^\[[^\]]+\]$/.test(raw)) target2 = raw;
         // Includes the box's own comma list: tabbing through four values that
@@ -3913,7 +4144,7 @@
    * about, which is what will render rather than what is declared.
    */
   function discoverUtilities() {
-    var found = { bg: {}, text: {}, radius: {}, family: {} };
+    var found = { bg: {}, text: {}, border: {}, radius: {}, family: {}, stroke: {} };
 
     function walk(rules) {
       for (var i = 0; i < rules.length; i++) {
@@ -3925,10 +4156,32 @@
         var sel = rule.selectorText;
         if (sel && rule.style && sel.charAt(0) === '.' &&
             sel.indexOf('\\') === -1 && sel.indexOf(' ') === -1) {
-          var m = /^\.(bg|text)-([a-zA-Z][a-zA-Z0-9-]*)$/.exec(sel);
+          // border- joins bg- and text- here, and the read is the membership
+          // test again: `border-` is the trap four ways over — border-2 is a
+          // width, border-solid a style, border-collapse a table mode,
+          // border-oat a colour — and only the last of them sets border-color,
+          // so only the last of them can land in the map.
+          var m = /^\.(bg|text|border)-([a-zA-Z][a-zA-Z0-9-]*)$/.exec(sel);
           if (m) {
-            var value = m[1] === 'bg' ? rule.style.backgroundColor : rule.style.color;
+            var value = m[1] === 'bg' ? rule.style.backgroundColor
+              : m[1] === 'border' ? rule.style.borderColor
+              : rule.style.color;
             if (value) found[m[1]][m[2]] = value;
+          }
+
+          // The stroke's widths and styles, noted by name rather than by
+          // value: all the writer needs to know is whether the route has
+          // already generated the class, because one it has must be left
+          // alone. A scoped copy of a rule the page already owns is the
+          // px-6 md:px-12 failure — it outranks the route's own variants and
+          // changes the element the moment it is touched.
+          if (/^\.border(?:-(?:0|[1-9][0-9]*))?$/.test(sel) &&
+              (rule.style.borderWidth || rule.style.borderTopWidth)) {
+            found.stroke[sel.slice(1)] = 1;
+          }
+          if (/^\.border-(?:solid|dashed|dotted|double|hidden|none)$/.test(sel) &&
+              rule.style.borderStyle) {
+            found.stroke[sel.slice(1)] = 1;
           }
 
           // Radius rungs are read the same way and for the same reason: the
@@ -3995,11 +4248,15 @@
     FAMILIES = utils.family;
     familyCache = {}; // a client-routed page can redefine what --font-* means
     faceInk = {};     // and a webfont that arrives late draws differently
-    // Union of what bg-* and text-* can each render; the picker offers names,
-    // and ensurePreviewRule fills any gap for the specific prefix in use.
+    // Union of what bg-*, text-* and border-* can each render; the picker
+    // offers names, and ensurePreviewRule fills any gap for the specific prefix
+    // in use. A token is a token whichever utility the route happened to
+    // generate it under — on uiux_experiment `oat` reaches the palette through
+    // border-oat's 30 sites and nothing else.
     var live = {};
     Object.keys(utils.text).forEach(function (n) { live[n] = utils.text[n]; });
     Object.keys(utils.bg).forEach(function (n) { live[n] = utils.bg[n]; });
+    Object.keys(utils.border).forEach(function (n) { live[n] = utils.border[n]; });
     var project = [];
 
     Object.keys(live).forEach(function (name) {
@@ -4080,6 +4337,85 @@
     return null;
   }
 
+  /**
+   * Which property each colour prefix paints, computed and declared.
+   *
+   * Five call sites were each spelling out the same bg/text pair inline, so
+   * adding a third prefix meant finding all five. `borderTopColor` and not the
+   * `borderColor` shorthand: getComputedStyle answers '' for a shorthand whose
+   * sides disagree, and the four sides of a border disagree far more often
+   * than a background does with itself.
+   */
+  var COLOR_PROP = { bg: 'backgroundColor', text: 'color', border: 'borderTopColor' };
+  var COLOR_CSS = { bg: 'background-color', text: 'color', border: 'border-color' };
+
+  // ------------------------------------------------------------ colour maths
+  //
+  // HSV, because that is the space a picker is a picture of: a square of
+  // saturation against value, under the hue it is a square of. RGB has no such
+  // picture and HSL's square is a diamond you cannot fill a rectangle with.
+  //
+  // The state lives in the popover rather than being re-derived from the class
+  // on every frame, which is what makes the square behave: white is s=0 at
+  // v=1 and has no hue left in it, so a picker that read its hue back off the
+  // colour would forget where the strip was the moment you dragged into a
+  // corner.
+
+  function clamp01(n) { return n < 0 ? 0 : n > 1 ? 1 : n; }
+
+  function hexToRgb(hex) {
+    var v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+
+  function rgbToHsv(rgb) {
+    var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    var h = 0;
+    if (d) {
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return { h: h, s: max ? d / max : 0, v: max };
+  }
+
+  /** The hex a point on the square is, which is the thing that gets written. */
+  function hsvHex(hsv) {
+    var h = ((hsv.h % 360) + 360) % 360 / 60, s = hsv.s, v = hsv.v;
+    var i = Math.floor(h), f = h - i;
+    var p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+    var rgb = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i % 6];
+    return '#' + rgb.map(function (c) {
+      return ('0' + Math.round(c * 255).toString(16)).slice(-2);
+    }).join('');
+  }
+
+  /**
+   * Where the picker opens.
+   *
+   * The colour the element is actually wearing, whether that is a token, a hex
+   * or something the page's own CSS put there — resolved and painted, because
+   * a token's value can be a `var(--x)` and an inherited one arrives as
+   * `oklch()`. Nothing painted opens at white, which is the value the + row
+   * already writes, rather than at the black `rgba(0,0,0,0)` would flatten to.
+   */
+  function pickerStart(el, prefix) {
+    var css = null;
+    if (el) {
+      var info = readColor(el, prefix);
+      css = info ? resolvedColor(info, prefix) : null;
+      if (!css) {
+        var c = getComputedStyle(el);
+        var painted = prefix === 'bg' ? c.backgroundColor
+          : prefix === 'text' ? c.color : c.borderTopColor;
+        if (isPainted(painted)) css = painted;
+      }
+    }
+    return rgbToHsv(hexToRgb(css ? toHex(css) : '#ffffff'));
+  }
+
   function readColor(el, prefix) {
     var classes = classesOf(el);
     for (var i = classes.length - 1; i >= 0; i--) {
@@ -4092,7 +4428,24 @@
   function stripColor(el, prefix) {
     classesOf(el).forEach(function (c) {
       if (parseColorClass(c, prefix)) el.classList.remove(c);
+      // Same rule as px-* clearing pl-*, met on the edge rather than the axis:
+      // a box colour that left border-b-oat standing would paint three sides
+      // and leave the fourth saying something else, so the field you just used
+      // would read as broken on one edge. Zero sites across both codebases —
+      // but the clearing costs a membership test, and not clearing costs a bug
+      // nobody would look for.
+      else if (prefix === 'border' && borderSideColor(c)) el.classList.remove(c);
     });
+  }
+
+  /**
+   * A per-side colour, separated from a per-side width the way every other
+   * `border-` form is separated here: match the side, then test the tail for
+   * membership. border-b-oat is a colour, border-b-2 is not.
+   */
+  function borderSideColor(cls) {
+    var m = /^border-([trblxyse])-(.+)$/.exec(cls);
+    return !!(m && parseColorClass('border-' + m[2], 'border'));
   }
 
   /** The CSS value a parsed colour renders as. */
@@ -4102,6 +4455,23 @@
     var ramp = COLORS && COLORS.ramps[info.hue];
     if (!ramp) return null;
     return info.shade ? ramp[info.shade] : ramp.DEFAULT;
+  }
+
+  /**
+   * What a token actually paints, which is not always what it says.
+   *
+   * A ramp entry can be `var(--x)`, and a var resolves against the element it
+   * is used on rather than against the panel — so the answer has to be read off
+   * the selection. The swatch needs it to show the right colour and the unlink
+   * needs it to write the right hex, and the two were working it out their own
+   * way before.
+   */
+  function resolvedColor(info, prefix) {
+    var value = colorValue(info);
+    if (value && value.indexOf('var(') !== -1 && selected) {
+      value = getComputedStyle(selected)[COLOR_PROP[prefix]];
+    }
+    return value;
   }
 
   /**
@@ -4119,9 +4489,13 @@
    */
   function ownColor(el, prefix) {
     if (!el || !el.style) return '';
-    return prefix === 'bg'
-      ? (el.style.backgroundColor || el.style.background || '')
-      : (el.style.color || '');
+    if (prefix === 'bg') return el.style.backgroundColor || el.style.background || '';
+    // `border` and `borderColor` are both shorthands an author writes, and
+    // either wins over every class the same way `color` does.
+    if (prefix === 'border') {
+      return el.style.borderColor || el.style.borderTopColor || '';
+    }
+    return el.style.color || '';
   }
 
   /** Does this element carry this colour itself, by class or by style? */
@@ -4181,7 +4555,7 @@
     var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
     try {
       dynStyle.sheet.insertRule(
-        sel + '{' + (prefix === 'bg' ? 'background-color' : 'color') + ':' + value + '}',
+        sel + '{' + COLOR_CSS[prefix] + ':' + value + '}',
         dynStyle.sheet.cssRules.length
       );
     } catch (e) {
@@ -4200,6 +4574,14 @@
     refresh();
   }
 
+  // What an arrow moves an opacity by, and what Shift moves it by. Opacity is
+  // the one value in this panel with no ladder to walk: every integer from 0
+  // to 100 is writable and means something, so the arrows count percent rather
+  // than step between rungs the way spacing and radius do. One to land on the
+  // exact number, ten to cross the range in ten presses.
+  var ALPHA_STEP = 1;
+  var ALPHA_LEAP = 10;
+
   /** Rebuild a class with a different alpha; 100 drops the suffix entirely. */
   function withAlpha(info, prefix, alpha) {
     var base = info.kind === 'arbitrary'
@@ -4211,13 +4593,34 @@
   // ---------------------------------------------------------- colour popover
 
   var popover = null;
-  var popState = { prefix: null, hue: null, anchor: null, spacing: null, corner: null };
+  // The ramp is a dropdown of its own standing beside the palette, not a second
+  // view inside it. Two elements, so `hue` no longer means "which of my two
+  // views am I showing" — it means which ramp is open next door.
+  var shadePop = null;
+  var popState = { prefix: null, hue: null, anchor: null, spacing: null, corner: null,
+    // Where the picker's two knobs are. Kept here rather than derived from
+    // the class each frame, so a drag into a corner does not lose the hue.
+    hsv: { h: 0, s: 0, v: 1 } };
 
   function closePopover() {
     if (popover) popover.style.display = 'none';
+    if (shadePop) shadePop.style.display = 'none';
     popState.prefix = null;
+    popState.hue = null;
     popState.anchor = null;
     markOpenAnchor();
+  }
+
+  /**
+   * Shutting the ramp leaves the palette open, which is the whole point of it
+   * being a second box: you came back from a ramp to the colours, and the
+   * colours never went away. Re-renders the palette only to take the ring off
+   * the swatch that owned it.
+   */
+  function closeShades() {
+    popState.hue = null;
+    if (shadePop) shadePop.style.display = 'none';
+    if (popoverOpen()) renderPopover();
   }
 
   /** Exactly one row can own the open list, so exactly one wears the ring. */
@@ -4231,15 +4634,24 @@
   function popoverOpen() { return !!popState.prefix; }
 
   function buildPopover() {
-    popover = el('div', 'bw-pop');
-    popover.setAttribute('data-tw-pop', '');
+    popover = mountPop('data-tw-pop');
+    // Its own attribute rather than a second `data-tw-pop`: everything that
+    // hit-tests a popover wants both, and everything that addresses one wants
+    // exactly one of them.
+    shadePop = mountPop('data-tw-pop-shade');
+  }
+
+  function mountPop(attr) {
+    var node = el('div', 'bw-pop');
+    node.setAttribute(attr, '');
     // Marked as an editor surface so clicks inside it never select the page,
     // and mounted on <body> rather than the panel — the panel clips its
     // overflow, which cut the list off at the panel edge.
-    popover.setAttribute('data-tw-editor', 'popover');
-    popover.style.display = 'none';
-    bindTheme(popover);
-    document.body.appendChild(popover);
+    node.setAttribute('data-tw-editor', 'popover');
+    node.style.display = 'none';
+    bindTheme(node);
+    document.body.appendChild(node);
+    return node;
   }
 
   /**
@@ -4276,6 +4688,7 @@
 
     popover.style.left = Math.round(left) + 'px';
     popover.style.top = Math.round(top) + 'px';
+    placeShades();
 
     // Clicking a field can scroll the panel to bring it into view, which moves
     // the anchor out from under a placement made in the same tick — measured at
@@ -4406,23 +4819,20 @@
   function renderPopover() {
     markOpenAnchor();
     popover.classList.toggle('is-wide', popState.prefix === 'family');
+    // Both colour views are the grid, so both get the width the grid needs.
+    popover.classList.toggle('is-swatches',
+      popState.prefix === 'bg' || popState.prefix === 'text');
     popover.innerHTML = '';
     var head = el('div', 'bw-pop-h');
 
-    if (popState.hue) {
-      var back = el('button', 'bw-pop-back');
-      back.innerHTML = ICONS.back;
-      back.title = 'All colours';
-      back.addEventListener('click', function () { popState.hue = null; renderPopover(); });
-      head.appendChild(back);
-    }
     head.appendChild(el('strong', null,
       popState.prefix === 'font' ? 'Font size'
         : popState.prefix === 'family' ? 'Font family'
         : popState.prefix === 'weight' ? 'Weight'
         : popState.prefix === 'radius' ? 'Radius'
+        : popState.prefix === 'strokeStyle' ? 'Stroke style'
         : popState.prefix === 'spacing' ? popState.spacing.name
-        : (popState.hue || 'Colour')));
+        : 'Color'));
     var shut = el('button', 'bw-x');
     shut.innerHTML = ICONS.close;
     shut.addEventListener('click', closePopover);
@@ -4492,6 +4902,40 @@
         }
         item.addEventListener('click', function () {
           setFontWeight(selected, 'font-' + t);
+          closePopover();
+        });
+        body.appendChild(item);
+      });
+      popover.appendChild(body);
+      if (popState.anchor) placePopover(popState.anchor);
+      return;
+    }
+
+    if (popState.prefix === 'strokeStyle') {
+      var currentS = readBorderStyle(selected);
+      // The four that draw something, and whichever of the two that do not is
+      // actually set — kept in the list for the reason a faux weight is kept:
+      // a value the field is showing must have a row of its own, or the way
+      // off it is to guess.
+      var shownS = BORDER_STYLES.concat(
+        BORDER_OFF.filter(function (t) { return currentS.name === t; }));
+      shownS.forEach(function (t) {
+        var item = el('button', 'bw-hue');
+        item.setAttribute('data-tw-stroke', t);
+        item.appendChild(el('span', 'bw-sizename', t.charAt(0).toUpperCase() + t.slice(1)));
+        // The specimen is the value: a 2px line in the style it names, which
+        // is the one thing about a border style that a name cannot say. Every
+        // other list in the panel is one row of one size for a reason, and
+        // this does not break it — the rule is the value, not a rendering of
+        // the row's own type at some capped scale.
+        var rule = el('span', 'bw-strokebar');
+        rule.style.borderTopStyle = t === 'hidden' || t === 'none' ? 'solid' : t;
+        if (t === 'hidden' || t === 'none') rule.style.opacity = '.25';
+        item.appendChild(rule);
+        if (currentS.name === t) item.setAttribute('aria-current', 'true');
+        item.title = 'border-' + t;
+        item.addEventListener('click', function () {
+          setBorderStyle(t);
           closePopover();
         });
         body.appendChild(item);
@@ -4583,7 +5027,8 @@
       return;
     }
 
-    if (!popState.hue) {
+    {
+      body.appendChild(colorPicker());
       // Project tokens first, then the stock palette. These codebases use the
       // stock ramps close to zero times — they speak bark, brand-teal,
       // background — so offering emerald-500 first would be offering the wrong
@@ -4600,76 +5045,242 @@
         // The name has nowhere to be printed now, so it is the tooltip — and
         // a ramp says it opens rather than applies, because clicking it does.
         item.title = ramp.DEFAULT ? popState.prefix + '-' + hue : hue + ' \u2014 pick a shade';
+        // The ring says which ramp the box beside this one is holding. The
+        // grid is the only thing on screen that can say it: a second dropdown
+        // of eleven blues has nothing in it to point back at where they came
+        // from.
+        if (popState.hue === hue) item.classList.add('is-open');
         item.addEventListener('click', function () {
           if (ramp.DEFAULT) { applyColor(popState.prefix, popState.prefix + '-' + hue); closePopover(); return; }
-          popState.hue = hue;
-          renderPopover();
+          // Clicking the open ramp again shuts it, the way pressing an open
+          // menu's own button does.
+          if (popState.hue === hue) { closeShades(); return; }
+          openShades(hue);
         });
         swatches.appendChild(item);
       });
       body.appendChild(swatches);
-    } else {
-      var ramp = COLORS.ramps[popState.hue];
-      var grid = el('div', 'bw-shades');
-      Object.keys(ramp).forEach(function (shade) {
-        var cell = el('button', 'bw-shade');
-        cell.style.background = ramp[shade];
-        cell.title = popState.prefix + '-' + popState.hue + '-' + shade;
-        cell.setAttribute('data-tw-shade', shade);
-        cell.appendChild(el('span', 'bw-shade-n', shade));
-        cell.addEventListener('click', function () {
-          applyColor(popState.prefix, popState.prefix + '-' + popState.hue + '-' + shade);
-          closePopover();
-        });
-        grid.appendChild(cell);
-      });
-      body.appendChild(grid);
     }
 
-    // What you can do to the colour that is already there, said in words, and
-    // under both views: a token colour opens straight into its own shade grid,
-    // so actions only on the palette would be actions you never see.
-    // Removing it had no home at all before — the palette could only ever
-    // put a colour on, which since a revealed row starts at white meant a
-    // colour you could add and not take off.
-    var live = readColor(selected, popState.prefix);
-    if (live) {
-      var acts = el('div', 'bw-pop-acts');
-      if (live.kind === 'token') {
-        var loose = el('button', 'bw-pop-act');
-        loose.setAttribute('data-tw-detach', popState.prefix);
-        loose.innerHTML = ICONS.detach;
-        loose.appendChild(el('span', null, 'Detach to a hex'));
-        loose.title = 'Keep the colour, drop the token — then its opacity can be set';
-        loose.addEventListener('click', function () {
-          var hex = toHex(colorValue(live));
-          applyColor(popState.prefix, withAlpha({ kind: 'arbitrary', value: hex },
-            popState.prefix, live.alpha));
-          closePopover();
-        });
-        acts.appendChild(loose);
-      }
-      var drop = el('button', 'bw-pop-act');
-      drop.setAttribute('data-tw-color-none', popState.prefix);
-      drop.innerHTML = ICONS.cross;
-      drop.appendChild(el('span', null,
-        popState.prefix === 'bg' ? 'Remove background' : 'Remove text colour'));
-      drop.title = 'Take the class off — the element goes back to what it inherits';
-      drop.addEventListener('click', function () {
-        // Keep the row on screen. Without this it has nothing to show, folds
-        // back to its + and takes the field out from under the cursor that
-        // just used it — and that + writes white, so the way back to picking
-        // a colour would be to add one first.
-        revealed[popState.prefix] = true;
-        applyColor(popState.prefix, null);
-        closePopover();
-      });
-      acts.appendChild(drop);
-      body.appendChild(acts);
-    }
+    // The list is a list of colours and nothing else. What you can do to the
+    // colour already on the element is drawn in the row it is on — the unlink
+    // in the field, the minus in the tile beside it — where both are on screen
+    // the whole time rather than one click inside a list you opened to change
+    // the colour, not to take it off.
 
     popover.appendChild(body);
     if (popState.anchor) placePopover(popState.anchor);
+  }
+
+  /**
+   * The ramp, as a dropdown of its own standing beside the palette.
+   *
+   * It used to be the palette's second view, reached by clicking a hue and left
+   * by a back chevron — which meant the eleven blues arrived exactly where the
+   * colours had been, and the only way to compare a ramp against the palette it
+   * came out of was to remember one of them. Two boxes say it at once: the grid
+   * stays where it was with a ring on the hue you opened, and its eleven shades
+   * stand next to it. The chevron goes with the view it existed to leave, and
+   * `ICONS.back` with it — this was its only use.
+   */
+  function openShades(hue) {
+    popState.hue = hue;
+    renderPopover();
+    renderShades();
+  }
+
+  function renderShades() {
+    if (!popState.hue || !COLORS.ramps[popState.hue]) return;
+    var ramp = COLORS.ramps[popState.hue];
+    shadePop.className = 'bw-pop is-shades';
+    shadePop.innerHTML = '';
+
+    // The same header the palette wears, named for the ramp — and no chevron
+    // in front of it, because what a back button would return to is already
+    // on screen to the right of this one.
+    var head = el('div', 'bw-pop-h');
+    head.appendChild(el('strong', null, popState.hue));
+    var shut = el('button', 'bw-x');
+    shut.innerHTML = ICONS.close;
+    shut.setAttribute('data-tw-shades-close', '');
+    shut.addEventListener('click', closeShades);
+    head.appendChild(shut);
+    shadePop.appendChild(head);
+
+    var body = el('div', 'bw-pop-body');
+    // The same grid the palette is, because it is the same act: a ramp is
+    // eleven colours and picking one of them is picking a colour. The shade
+    // number is the tooltip, as every other name in these grids is.
+    var grid = el('div', 'bw-swatches');
+    Object.keys(ramp).forEach(function (shade) {
+      var cell = el('button', 'bw-swatch');
+      cell.style.background = ramp[shade];
+      cell.title = popState.prefix + '-' + popState.hue + '-' + shade;
+      cell.setAttribute('data-tw-shade', shade);
+      cell.addEventListener('click', function () {
+        applyColor(popState.prefix, popState.prefix + '-' + popState.hue + '-' + shade);
+        closePopover();
+      });
+      grid.appendChild(cell);
+    });
+    body.appendChild(grid);
+    shadePop.appendChild(body);
+
+    shadePop.style.display = 'flex';
+    placeShades();
+  }
+
+  /**
+   * To the left of the palette, and to its right when the panel is near enough
+   * the left edge that there is no room. Placed off the palette rather than off
+   * the field, because it is beside the palette and not beside the row — so it
+   * travels with it, including through the settling frame that placePopover
+   * schedules after a scroll.
+   *
+   * Levelled on the first square of each, not on the two boxes and not on the
+   * two grids. The boxes are nothing alike — one is a header over a row of
+   * eleven, the other a header over a picker, a caption and three rows — so
+   * tops level put a row of shades against the palette's picker and lined up
+   * nothing you were looking at. The grid boxes are no better: the palette's
+   * begins at its "Theme" caption, which spans the row and is a good 27px of
+   * text nobody is comparing shades against, so grid to grid leaves the two
+   * rows visibly out by exactly that caption. Square to square, the eleven
+   * shades land on the same line as the first eleven hues and the pair reads
+   * as one grid that happens to be in two boxes — same square, same gap, same
+   * line, on both sides of the seam.
+   */
+  function placeShades() {
+    if (!popState.hue || !shadePop || shadePop.style.display === 'none') return;
+    var p = popover.getBoundingClientRect();
+    var w = shadePop.offsetWidth || 312;
+    var h = shadePop.offsetHeight || 100;
+    var gap = 6;
+    var edge = 8;
+
+    var left = p.left - gap - w;
+    if (left < edge) {
+      var right = p.right + gap;
+      left = right + w <= window.innerWidth - edge
+        ? right
+        : Math.max(edge, window.innerWidth - w - edge);
+    }
+    shadePop.style.left = Math.round(Math.max(edge, left)) + 'px';
+
+    var fit = function (t) {
+      return Math.max(edge, Math.min(t, window.innerHeight - h - edge));
+    };
+    var top = fit(p.top);
+    shadePop.style.top = Math.round(top) + 'px';
+
+    // Measured after that first placement rather than computed from the two
+    // headers: the palette's body scrolls, so where its first square actually
+    // sits is a question only the laid-out box can answer.
+    var theirs = popover.querySelector('.bw-swatch');
+    var mine = shadePop.querySelector('.bw-swatch');
+    if (!theirs || !mine) return;
+    top = fit(top + (theirs.getBoundingClientRect().top - mine.getBoundingClientRect().top));
+    shadePop.style.top = Math.round(top) + 'px';
+  }
+
+  /**
+   * The picker: a saturation/value square under a hue strip, above the presets.
+   *
+   * It sits on top of the grid rather than beside it because the popover is a
+   * column and a column costs no width — side by side would want ~560px against
+   * a 352px panel. And on top rather than under, because it is the control that
+   * can say any colour at all: the presets below it are the shortcuts.
+   *
+   * The square needs no canvas. Black up the vertical, white across the
+   * horizontal, the hue behind both — three layers of the same box, so
+   * changing hue is one custom property and never a redraw.
+   */
+  function colorPicker() {
+    var wrap = el('div', 'bw-picker');
+    wrap.setAttribute('data-tw-picker', popState.prefix);
+
+    var sv = el('div', 'bw-sv');
+    sv.setAttribute('data-tw-sv', '');
+    var svKnob = el('span', 'bw-knob');
+    sv.appendChild(svKnob);
+
+    var strip = el('div', 'bw-strip');
+    strip.setAttribute('data-tw-strip', '');
+    var hueKnob = el('span', 'bw-knob');
+    strip.appendChild(hueKnob);
+
+    wrap.appendChild(sv);
+    wrap.appendChild(strip);
+
+    // Read once when the drag starts, not per frame: dragging changes which
+    // colour is written, never how opaque it is, and the opacity field beside
+    // the swatch is what owns that.
+    var alpha = 100;
+    var last = null;
+
+    function paint() {
+      var hsv = popState.hsv;
+      sv.style.setProperty('--bw-sv-hue', 'hsl(' + hsv.h + ' 100% 50%)');
+      svKnob.style.left = (hsv.s * 100) + '%';
+      svKnob.style.top = ((1 - hsv.v) * 100) + '%';
+      svKnob.style.background = hsvHex(hsv);
+      hueKnob.style.left = (hsv.h / 360 * 100) + '%';
+      hueKnob.style.top = '50%';
+      hueKnob.style.background = 'hsl(' + hsv.h + ' 100% 50%)';
+    }
+
+    function write() {
+      var hex = hsvHex(popState.hsv);
+      // The same point twice is not an edit. A pointer at rest still fires,
+      // and every write here costs a class, a rule and a history step.
+      if (hex === last) return;
+      last = hex;
+      applyColor(popState.prefix,
+        withAlpha({ kind: 'arbitrary', value: hex }, popState.prefix, alpha));
+      dragRun = true;
+    }
+
+    function drag(target, move) {
+      target.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        target.setPointerCapture(e.pointerId);
+        var live = readColor(selected, popState.prefix);
+        alpha = live ? live.alpha : 100;
+        // The first write of the drag opens its own history step; every one
+        // after it folds into that step rather than adding another.
+        dragRun = false;
+        last = null;
+        move(e);
+        var onMove = function (ev) { move(ev); };
+        var onUp = function (ev) {
+          target.releasePointerCapture(ev.pointerId);
+          target.removeEventListener('pointermove', onMove);
+          target.removeEventListener('pointerup', onUp);
+          target.removeEventListener('pointercancel', onUp);
+          dragRun = false;
+        };
+        target.addEventListener('pointermove', onMove);
+        target.addEventListener('pointerup', onUp);
+        target.addEventListener('pointercancel', onUp);
+      });
+    }
+
+    drag(sv, function (e) {
+      var r = sv.getBoundingClientRect();
+      popState.hsv.s = clamp01((e.clientX - r.left) / r.width);
+      popState.hsv.v = 1 - clamp01((e.clientY - r.top) / r.height);
+      paint();
+      write();
+    });
+    drag(strip, function (e) {
+      var r = strip.getBoundingClientRect();
+      popState.hsv.h = clamp01((e.clientX - r.left) / r.width) * 360;
+      paint();
+      write();
+    });
+
+    paint();
+    return wrap;
   }
 
   function openPopover(prefix, anchor) {
@@ -4677,36 +5288,79 @@
     popState.prefix = prefix;
     var current = readColor(selected, prefix);
     popState.hue = current && current.kind === 'token' && current.shade ? current.hue : null;
+    popState.hsv = pickerStart(selected, prefix);
     renderPopover();
     popover.style.display = 'flex';
     popState.anchor = anchor;
     placePopover(anchor);
+    // Measured off the palette, so the palette has to be on screen first.
+    if (popState.hue) renderShades();
   }
 
   // -------------------------------------------------------------- colour row
 
-  function colorRow(prefix, label) {
-    var row = el('div', 'bw-row');
-    row.setAttribute('data-tw-field', prefix === 'bg' ? 'bgColor' : 'textColor');
-    row.appendChild(el('span', 'bw-lbl', label));
-
+  /**
+   * The colour control itself: the field, and the opacity field beside it.
+   *
+   * Pulled out of colorRow when Stroke arrived, because frame 7:687 draws the
+   * same object in a different arrangement — no label of its own, a section's
+   * name above it, and a pair of fields underneath. What the two rows share is
+   * everything inside the 260px; what they do not share is the row around it
+   * and what the tile beside it means. So the caller owns the row and the tile,
+   * and this owns the colour.
+   */
+  function colorField(prefix) {
     var field = el('div', 'bw-field bw-color');
 
-    var token = el('button', 'bw-ctoken');
+    // The swatch opens the list and nothing else does. The whole field used to
+    // be the button, which left the value with no way to be typed into — and a
+    // hex is a thing people arrive holding, out of a design file or another
+    // tab, so the one value in this panel you most want to paste was the one
+    // you could only pick. The colour block is the obvious half to keep: it is
+    // what a picker looks like everywhere, and the value beside it now behaves
+    // like every other value in the panel, which is to say you can type in it.
+    var token = el('button', 'bw-cswatch');
     token.setAttribute('data-tw-color-open', prefix);
     var chip = el('span', 'bw-chip');
-    var name = el('span', 'bw-cname', '—');
+    token.appendChild(chip);
+    token.addEventListener('click', function () { openPopover(prefix, field); });
+
+    var name = document.createElement('input');
+    name.className = 'bw-cname';
+    name.type = 'text';
+    name.spellcheck = false;
+    name.setAttribute('data-tw-color-text', prefix);
+    name.placeholder = '—';
     // A hex is a literal, the same as p-[13px] or rounded-[3px], and this was
     // the one field in the panel that did not say so. It sits where a unit
-    // sits, so the chevron takes its place on hover exactly as elsewhere.
+    // sits, at the field's own 12px gutter.
     var snow = snowflake();
     snow.style.display = 'none';
-    token.appendChild(chip);
-    token.appendChild(name);
-    token.appendChild(snow);
-    token.addEventListener('click', function () { openPopover(prefix, row); });
 
-    var alphaBox = el('span', 'bw-alpha');
+    // Frame 7:620 puts the unlink in the field, in the right-hand slot the
+    // chevron otherwise owns. It had been a row in the list the field opens,
+    // where it went when the field's controls were pulled out wholesale — a
+    // control beside the value reads as "delete this" whatever its icon says.
+    // What made that true was that removal lived there too; removal is now the
+    // tile in the toggle column, so the one mark left in the field is not a
+    // delete and cannot be read as one.
+    var loose = el('button', 'bw-unlink');
+    loose.setAttribute('data-tw-detach', prefix);
+    loose.innerHTML = ICONS.unlink;
+    loose.title = 'Keep the color, drop the token — then its opacity can be set';
+    loose.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var live = readColor(selected, prefix);
+      if (!live || live.kind !== 'token') return;
+      applyColor(prefix, withAlpha(
+        { kind: 'arbitrary', value: toHex(resolvedColor(live, prefix)) },
+        prefix, live.alpha));
+    });
+
+    // A field of its own, 57 wide, because that is what the frame draws — and
+    // it takes its 57 and its 12 out of the colour field beside it rather than
+    // out of the row, so the tile after them holds still in either state.
+    var alphaBox = el('div', 'bw-field bw-alpha');
     var alphaInput = document.createElement('input');
     alphaInput.className = 'bw-alpha-in';
     alphaInput.type = 'text';
@@ -4714,11 +5368,82 @@
     alphaInput.setAttribute('data-tw-alpha', prefix);
     alphaBox.appendChild(alphaInput);
     alphaBox.appendChild(el('span', 'bw-pct', '%'));
+    var sizer = el('span', 'bw-alpha-sz');
+    sizer.setAttribute('aria-hidden', 'true');
+    alphaBox.appendChild(sizer);
+    function sizeAlpha() {
+      sizer.textContent = alphaInput.value || '0';
+      alphaInput.style.width = Math.ceil(sizer.getBoundingClientRect().width) + 1 + 'px';
+    }
+    alphaInput.addEventListener('input', sizeAlpha);
 
-    token.appendChild(chevron());
     field.appendChild(token);
-    field.appendChild(alphaBox);
-    row.appendChild(field);
+    field.appendChild(name);
+    field.appendChild(snow);
+    field.appendChild(loose);
+
+    /**
+     * What was typed, if it is a colour.
+     *
+     * Two vocabularies, because the field speaks two: `#4837ca` (or `4837ca`,
+     * or `#48c`) is a literal, and `emerald-500`, `clay`, `bg-clay-100/40` is
+     * a token on the scale. Anything else is not refused with a message — the
+     * field simply puts back what it was showing, the way a spacing field does
+     * with a word typed into it.
+     */
+    function classFromText(text) {
+      var t = String(text || '').trim().toLowerCase();
+      if (!t) return null;
+      var alpha = 100;
+      var slash = t.indexOf('/');
+      if (slash !== -1) {
+        var a = parseInt(t.slice(slash + 1), 10);
+        if (isNaN(a)) return null;
+        alpha = Math.max(0, Math.min(100, a));
+        t = t.slice(0, slash);
+      }
+      var hex = t.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/);
+      if (hex) {
+        var v = hex[1].length === 3
+          ? hex[1].replace(/./g, function (c) { return c + c; })
+          : hex[1];
+        return withAlpha({ kind: 'arbitrary', value: '#' + v }, prefix, alpha);
+      }
+      if (!COLORS) return null;
+      // `bg-clay-100` and `clay-100` are the same request; the prefix is the
+      // panel's business, not the typist's.
+      var nameOnly = t.indexOf(prefix + '-') === 0 ? t.slice(prefix.length + 1) : t;
+      // A whole-name ramp first: `brand-teal` is one token, not `brand` at
+      // shade `teal`, and only the map knows which of the two a name is.
+      if (COLORS.ramps[nameOnly] && COLORS.ramps[nameOnly].DEFAULT) {
+        return withAlpha({ kind: 'token', hue: nameOnly, shade: null }, prefix, alpha);
+      }
+      var cut = nameOnly.lastIndexOf('-');
+      if (cut > 0) {
+        var hue = nameOnly.slice(0, cut), shade = nameOnly.slice(cut + 1);
+        var ramp = COLORS.ramps[hue];
+        if (ramp && ramp[shade]) {
+          return withAlpha({ kind: 'token', hue: hue, shade: shade }, prefix, alpha);
+        }
+      }
+      return null;
+    }
+
+    function commitText() {
+      var cls = classFromText(name.value);
+      var live = readColor(selected, prefix);
+      // Committing what the field already shows is not an edit. Blur fires on
+      // every field you tab through, and without this each one marked the
+      // element dirty and pushed a history step that undid to itself.
+      if (!cls || (live && cls === live.cls)) return refresh();
+      applyColor(prefix, cls);
+    }
+
+    name.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commitText(); name.blur(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); refresh(); name.blur(); }
+    });
+    name.addEventListener('blur', commitText);
 
     function commitAlpha() {
       var info = readColor(selected, prefix);
@@ -4727,49 +5452,97 @@
       if (isNaN(n)) return refresh();
       applyColor(prefix, withAlpha(info, prefix, Math.max(0, Math.min(100, n))));
     }
+    /**
+     * Count the opacity up or down — by one, or by ten with Shift held.
+     *
+     * The arrows step *from where the value is* rather than onto a rung,
+     * which is what parts this from every other stepper in the panel: spacing
+     * and radius walk a ladder because only the rungs have classes behind
+     * them, where `/37` is as writable as `/40` and as legible. So a press is
+     * a percent and Shift is ten of them — 37 goes to 38 or to 47, never to a
+     * number the person did not ask for. It reads the field rather than the
+     * class because the field is what is on screen: a value typed and not yet
+     * committed is the one the arrow is being pressed against.
+     */
+    function stepAlpha(dir, leap) {
+      var info = readColor(selected, prefix);
+      if (!info) return;
+      var typed = Math.round(parseFloat(alphaInput.value));
+      var from = isNaN(typed) ? info.alpha : Math.max(0, Math.min(100, typed));
+      var next = from + dir * (leap ? ALPHA_LEAP : ALPHA_STEP);
+      next = Math.max(0, Math.min(100, next));
+      // Both ends stop rather than wrap, and a step that changes nothing is not
+      // an edit — the same guard the spacing fields keep, for the same reason:
+      // it would mark the element dirty and push a history entry that undoes
+      // to itself. 0 keeps the colour, unlike spacing's step below zero: the
+      // opacity is a suffix on the class, not the class, so there is nothing
+      // to drop but the transparency itself.
+      if (next === from) return;
+      applyColor(prefix, withAlpha(info, prefix, next));
+      // refresh() leaves a focused input alone so it never fights the typist,
+      // so the step has to put its own value in — otherwise the blur that
+      // follows commits the stale text back and the step undoes itself.
+      alphaInput.value = String(next);
+      sizeAlpha();
+    }
+
     alphaInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); commitAlpha(); alphaInput.blur(); }
       else if (e.key === 'Escape') { e.stopPropagation(); refresh(); alphaInput.blur(); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        stepAlpha(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+      }
     });
     alphaInput.addEventListener('blur', commitAlpha);
 
-    readouts.push(function () {
+    /**
+     * Draw the current value, and report what it is.
+     *
+     * The caller decides what to do with the answer — a colour row hides
+     * itself on `set` being false, where inside a section the section has
+     * already decided it is on screen and the field simply says "—".
+     */
+    function sync() {
       var info = readColor(selected, prefix);
       var inline = ownColor(selected, prefix);
-      var show = !!(revealed[prefix] || info || inline);
-      shown[prefix] = show;
-      row.style.display = show ? '' : 'none';
-      if (!show) return;
 
       // An inline declaration outranks anything the panel could write, so the
       // field shows what is actually painted and stops there.
       token.disabled = !!inline;
+      name.disabled = !!inline;
       field.classList.toggle('is-locked', !!inline);
+      // The unlink is offered on a token and nowhere else: an arbitrary colour
+      // has no token to come off, and a locked one cannot be written at all. It
+      // also owns the slot the chevron sits in, so the field is told to keep the
+      // chevron out of it rather than the two landing on top of each other on
+      // the hover that reveals one of them.
+      var tokenSet = !inline && !!info && info.kind === 'token';
+      loose.style.display = tokenSet ? '' : 'none';
+      field.classList.toggle('has-unlink', tokenSet);
+
       if (inline) {
-        var painted = getComputedStyle(selected)[prefix === 'bg' ? 'backgroundColor' : 'color'];
+        var painted = getComputedStyle(selected)[COLOR_PROP[prefix]];
         chip.style.background = painted;
         chip.className = 'bw-chip' + (isPainted(painted) ? '' : ' is-empty');
         // Upper case, the way colorLabel spells an arbitrary hex: one hex is
         // one hex however the panel came by it.
-        name.textContent = (toHex(painted) || painted).toUpperCase();
+        name.value = (toHex(painted) || painted).toUpperCase();
         name.className = 'bw-cname is-unset';
         snow.style.display = 'none';
         alphaBox.style.display = 'none';
         token.title = 'set by a style attribute (' + inline + ')' +
-          ' — an inline colour outranks every class, so the panel cannot change it here';
-        return;
+          ' — an inline color outranks every class, so the panel cannot change it here';
+        return { set: true, inline: inline };
       }
 
-      var value = colorValue(info);
-      // var(--x) resolves against the element, not the panel, so read it there.
-      if (value && value.indexOf('var(') !== -1) {
-        var computed = getComputedStyle(selected);
-        value = prefix === 'bg' ? computed.backgroundColor : computed.color;
-      }
+      var value = info ? resolvedColor(info, prefix) : '';
       chip.style.background = value || 'transparent';
       chip.className = 'bw-chip' + (value ? '' : ' is-empty');
       var literal = !!info && info.kind === 'arbitrary';
-      name.textContent = colorLabel(info);
+      // Never over the typist: refresh runs on every keystroke elsewhere in
+      // the panel, and this field is one you are in the middle of a word in.
+      if (document.activeElement !== name) name.value = info ? colorLabel(info) : '';
       // is-custom is the italic-and-a-shade-back the whole panel uses for a
       // literal, set from the same condition as the snowflake so the two can
       // never disagree — which a suite asserts across every field at once.
@@ -4778,11 +5551,446 @@
 
       var detached = literal;
       field.setAttribute('data-detached', detached ? 'true' : 'false');
+      // Frame 7:622: opacity is what a hex has and a token does not. A token is
+      // a name on a scale and `clay-100/40` is a fourth kind of thing again —
+      // the way to set one is to come off the token first, which is what the
+      // unlink beside it is for.
       alphaBox.style.display = detached ? '' : 'none';
-      if (detached && document.activeElement !== alphaInput) alphaInput.value = String(info.alpha);
+      if (detached && document.activeElement !== alphaInput) {
+        alphaInput.value = String(info.alpha);
+        sizeAlpha();
+      }
       token.title = info
-        ? (detached ? 'Arbitrary colour — click to pick a token' : prefix + '-' + colorLabel(info))
-        : 'No colour set — click to pick one';
+        ? (detached ? 'Arbitrary color — open the palette to pick a token'
+          : prefix + '-' + colorLabel(info))
+        : 'No color set — open the palette to pick one';
+      name.title = 'Type a hex or a token name';
+      return { set: !!info, inline: '' };
+    }
+
+    return { field: field, alphaBox: alphaBox, sync: sync };
+  }
+
+  function colorRow(prefix, label) {
+    var row = el('div', 'bw-row');
+    row.setAttribute('data-tw-field', prefix === 'bg' ? 'bgColor' : 'textColor');
+    row.appendChild(el('span', 'bw-lbl', label));
+
+    var c = colorField(prefix);
+    row.appendChild(c.field);
+    row.appendChild(c.alphaBox);
+
+    // The same 40x40 tile in the same column the + occupies, so pressing one
+    // leaves the cursor over the other: taking a colour off folds the row back
+    // to the reveal row that offers it again. Removal used to be a named row in
+    // the popover and had to keep `revealed` set, because a field vanishing
+    // from under the cursor that had just reached into a list to remove it was
+    // worse than a row that said nothing. Nothing vanishes from under this one
+    // — the tile it was clicked in is the tile the + lands in.
+    var drop = el('button', 'bw-toggle');
+    drop.setAttribute('data-tw-color-none', prefix);
+    drop.innerHTML = ICONS.minus;
+    drop.title = prefix === 'bg' ? 'Remove background' : 'Remove text color';
+    drop.addEventListener('click', function () {
+      revealed[prefix] = false;
+      applyColor(prefix, null);
+    });
+    row.appendChild(drop);
+
+    readouts.push(function () {
+      var info = readColor(selected, prefix);
+      var inline = ownColor(selected, prefix);
+      var show = !!(revealed[prefix] || info || inline);
+      shown[prefix] = show;
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
+      var state = c.sync();
+      // Nothing to take off an inline colour: the class list is empty and the
+      // style attribute is not this panel's to edit.
+      drop.style.display = state.inline ? 'none' : '';
+    });
+
+    return row;
+  }
+
+  // -------------------------------------------------------------- the stroke
+
+  /**
+   * Stroke, frame 7:687: a colour across the row, style beside width under it.
+   *
+   * `border-` is the trap four ways over — border-2 is a width, border-solid a
+   * style, border-oat a colour, border-t-2 one edge's width, and border-collapse
+   * is not a stroke at all. Each is matched by its own exact test, and the
+   * colour by ramp membership, so no one of them can ever strip another. This
+   * is the same rule the three text- families already live by.
+   */
+  var BORDER_STYLES = ['solid', 'dashed', 'dotted', 'double'];
+  // hidden and none are read and never offered. Both render nothing while
+  // leaving the colour and the width in the class list, so the element would
+  // say one thing in the file and another on screen — and the tile beside the
+  // label already removes a stroke outright, which is the honest way to say it.
+  // A stroke that is authored with one still shows it, so it can be got off.
+  var BORDER_OFF = ['hidden', 'none'];
+  // 1 is written `border`, never `border-1`: the bare utility is what Tailwind
+  // ships and what these codebases actually use — 101 sites on uiux_experiment
+  // against zero for every numbered width put together.
+  var BORDER_WIDTHS = [0, 1, 2, 4, 8];
+
+  var BORDER_W_RE = /^border(?:-(0|[1-9][0-9]*))?$/;
+  // A length, not a colour: border-[#c0392b] starts the same way and is two of
+  // the two arbitrary border classes on uiux_experiment.
+  var BORDER_W_ARB = /^border-\[([0-9.]+(?:px|r?em)?)\]$/;
+  var BORDER_SIDE_W = /^border-[trblxyse](?:-(?:[0-9]+|\[[^\]]+\]))?$/;
+  var BORDER_STYLE_RE = /^border-(solid|dashed|dotted|double|hidden|none)$/;
+
+  /** Every side's rendered width, in the order border-width says them. */
+  function computedBorder(el) {
+    if (!el) return null;
+    var cs = getComputedStyle(el);
+    return ['Top', 'Right', 'Bottom', 'Left'].map(function (side) {
+      return Math.round(parseFloat(cs['border' + side + 'Width']) || 0);
+    });
+  }
+
+  /**
+   * The width this element sets on itself, if it sets one.
+   *
+   * `border` on its own is 1px, so it reads as the rung 1 and is written back
+   * as itself. Anything with no rung behind it becomes border-[3px] and takes
+   * the snowflake, exactly as spacing and radius do.
+   */
+  function readBorderWidth(el) {
+    if (!el) return { px: null, raw: null, from: null, arbitrary: false };
+    var classes = classesOf(el);
+    for (var i = classes.length - 1; i >= 0; i--) {
+      var cls = classes[i];
+      var arb = BORDER_W_ARB.exec(cls);
+      if (arb) {
+        var px = /^([0-9.]+)px$/.exec(arb[1]);
+        return { px: px ? Number(px[1]) : null, raw: arb[1], from: cls, arbitrary: true };
+      }
+      var m = BORDER_W_RE.exec(cls);
+      if (m) {
+        return { px: m[1] === undefined ? 1 : Number(m[1]), raw: null, from: cls, arbitrary: false };
+      }
+    }
+    return { px: null, raw: null, from: null, arbitrary: false };
+  }
+
+  function borderWidthText(state) {
+    if (!state || state.from === null) return '';
+    if (!state.arbitrary) return String(state.px);
+    return state.px === null ? state.raw : String(state.px);
+  }
+
+  function readBorderStyle(el) {
+    if (!el) return { name: null, from: null };
+    var classes = classesOf(el);
+    for (var i = classes.length - 1; i >= 0; i--) {
+      var m = BORDER_STYLE_RE.exec(classes[i]);
+      if (m) return { name: m[1], from: classes[i] };
+    }
+    return { name: null, from: null };
+  }
+
+  /**
+   * A width or a style rung the route has never generated has no CSS at all,
+   * the same gap an arbitrary colour has and the same fix. Emitted only where
+   * the page has none of its own — a scoped copy of a rule the route already
+   * owns outranks its own responsive variants, which is the px-6 md:px-12
+   * failure read from the other side.
+   */
+  function ensureBorderRule(cls, body) {
+    if (!cls || dynSeen[cls]) return;
+    if (renderable.stroke && renderable.stroke[cls]) return;
+    dynSeen[cls] = true;
+    if (!dynStyle) {
+      dynStyle = document.createElement('style');
+      dynStyle.setAttribute('data-tw-editor', 'dynamic');
+      document.head.appendChild(dynStyle);
+    }
+    var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
+    try {
+      dynStyle.sheet.insertRule(sel + '{' + body + '}', dynStyle.sheet.cssRules.length);
+    } catch (e) {
+      dynSeen[cls] = false;
+    }
+  }
+
+  function stripBorderWidth(el) {
+    stripFamily(el, BORDER_W_RE);
+    stripFamily(el, BORDER_W_ARB);
+    // Same rule as px-* clearing pl-*: a box width that left border-b-2 in
+    // place would do nothing to the bottom edge, and the field just typed into
+    // would read as broken on exactly one side.
+    stripFamily(el, BORDER_SIDE_W);
+  }
+
+  /** `null` clears the width; a number is a length in pixels. */
+  function setBorderWidth(px, raw) {
+    if (!selected) return;
+    stripBorderWidth(selected);
+    if (px !== null || raw) {
+      var cls, value;
+      if (raw) { cls = 'border-[' + raw + ']'; value = raw; }
+      else if (px === 1) { cls = 'border'; value = '1px'; }
+      else if (BORDER_WIDTHS.indexOf(px) !== -1) { cls = 'border-' + px; value = px + 'px'; }
+      else { cls = 'border-[' + px + 'px]'; value = px + 'px'; }
+      // border-width alone. Preflight already sets `border:0 solid` on every
+      // element, so the style is solid unless a style class says otherwise —
+      // and where one does, saying it again here would overwrite it.
+      ensureBorderRule(cls, 'border-width:' + value);
+      selected.classList.add(cls);
+    }
+    markDirty(selected, 'classes');
+    refresh();
+  }
+
+  function setBorderStyle(name) {
+    if (!selected) return;
+    stripFamily(selected, BORDER_STYLE_RE);
+    if (name) {
+      var cls = 'border-' + name;
+      // The custom property as well as the property itself: Tailwind v4's width
+      // utilities set `border-style:var(--tw-border-style)`, so a rule that set
+      // only border-style would be undone by the width class beside it.
+      ensureBorderRule(cls, '--tw-border-style:' + name + ';border-style:' + name);
+      selected.classList.add(cls);
+    }
+    markDirty(selected, 'classes');
+    refresh();
+  }
+
+  /**
+   * Does this element have a stroke to show?
+   *
+   * Its own classes, an inline colour — and a border the page's own CSS puts
+   * there, because that one is on screen: a + row offering to add it would be
+   * offering something the element already has. Same reason the padding field
+   * prints what the page renders rather than a zero it cannot back up.
+   */
+  function strokeSet(el) {
+    if (!el) return false;
+    if (readColor(el, 'border') || ownColor(el, 'border')) return true;
+    if (readBorderWidth(el).from || readBorderStyle(el).from) return true;
+    var own = classesOf(el);
+    for (var i = 0; i < own.length; i++) {
+      if (BORDER_SIDE_W.test(own[i]) || borderSideColor(own[i])) return true;
+    }
+    var w = computedBorder(el);
+    return !!(w && (w[0] || w[1] || w[2] || w[3]));
+  }
+
+  /**
+   * The style field: a list of four, the way the weight list is a list, with
+   * no search over it. Whatever is set is in the list even when it is one of
+   * the two that draw nothing, the same way a weight the font does not ship
+   * stays on its own row rather than vanishing from under the value it names.
+   */
+  function borderStyleField() {
+    var d = dropField('strokeStyle', function (anchor) {
+      if (!selected) return;
+      popState.prefix = 'strokeStyle';
+      popState.hue = null;
+      renderPopover();
+      popover.style.display = 'flex';
+      popState.anchor = anchor;
+      placePopover(anchor);
+    });
+    d.token.setAttribute('data-tw-stroke-style', '');
+
+    d.sync = function () {
+      var state = readBorderStyle(selected);
+      var live = selected ? getComputedStyle(selected).borderTopStyle : 'none';
+      var name = state.name || live;
+      d.name.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+      // Not this element's own: dimmed, the way an inherited spacing value is.
+      d.name.className = 'bw-cname' + (state.name ? '' : ' is-unset');
+      d.note.textContent = '';
+      d.token.title = state.name
+        ? 'Style: ' + state.from
+        : 'Style: not set — the page renders ' + live;
+    };
+    return d;
+  }
+
+  /**
+   * The width field: a plain number, no mark and no list.
+   *
+   * Frame 7:687 gives it neither — the chevron is on Solid beside it and not
+   * here — so it is typed and stepped, and the ladder lives in the arrow keys
+   * rather than behind a control. Pixels, like every other length in the panel.
+   */
+  function borderWidthField() {
+    var field = el('div', 'bw-field is-plain');
+    field.setAttribute('data-tw-field', 'strokeWidth');
+
+    var readout = document.createElement('input');
+    readout.className = 'bw-val';
+    readout.type = 'text';
+    readout.inputMode = 'numeric';
+    readout.autocomplete = 'off';
+    readout.spellcheck = false;
+    readout.placeholder = '—';
+
+    var snow = snowflake();
+    snow.style.display = 'none';
+    field.appendChild(readout);
+    field.appendChild(snow);
+
+    function commit() {
+      if (!selected) return;
+      var raw = readout.value.trim().replace(/\s+/g, '');
+      var px = null, arb = null;
+      if (raw === '' || raw === '—') { px = null; }
+      else {
+        var m = /^([0-9]+(?:\.[0-9]+)?)(?:px)?$/.exec(raw);
+        if (m) px = Number(m[1]);
+        else if (/^[0-9.]+(?:r?em)$/.test(raw)) arb = raw;
+        else return refresh(); // not something we can write; put the old value back
+      }
+      // Committing what the field already shows is not an edit — blur fires on
+      // every field merely tabbed through, and without this each one marked the
+      // element dirty and pushed a history step that undid to itself.
+      var was = borderWidthText(readBorderWidth(selected));
+      var want = arb || (px === null ? '' : String(px));
+      if (want === was) return refresh();
+      setBorderWidth(px, arb);
+    }
+
+    function step(dir) {
+      var state = readBorderWidth(selected);
+      var live = state.from !== null && state.px !== null ? state.px
+        : (computedBorder(selected) || [0])[0];
+      var i = BORDER_WIDTHS.indexOf(live);
+      // Off the ladder: step to the neighbouring rung rather than pretending
+      // the value was on it.
+      if (i === -1) {
+        for (i = 0; i < BORDER_WIDTHS.length && BORDER_WIDTHS[i] <= live; i++) {}
+        i = dir > 0 ? i - 1 : i;
+      }
+      var next = i + dir;
+      // Below the first rung the class comes off, the way a radius rung does
+      // rather than pinning a zero the element never asked for.
+      if (next < 0) return setBorderWidth(null, null);
+      if (next >= BORDER_WIDTHS.length) return;
+      setBorderWidth(BORDER_WIDTHS[next], null);
+    }
+
+    readout.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); readout.blur(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        step(e.key === 'ArrowUp' ? 1 : -1);
+        // Stepping IS the panel changing the value, so it puts the new one in
+        // by hand: refresh() leaves a focused input alone, and the blur that
+        // followed would otherwise commit the stale text and undo the step.
+        readout.value = borderWidthText(readBorderWidth(selected));
+      }
+    });
+    readout.addEventListener('blur', commit);
+    readout.addEventListener('focus', function () { readout.select(); });
+
+    return {
+      field: field,
+      sync: function () {
+        if (document.activeElement === readout) return; // don't fight the typist
+        var state = readBorderWidth(selected);
+        if (state.from !== null) {
+          readout.placeholder = '—';
+          readout.value = borderWidthText(state);
+          readout.className = 'bw-val' + (state.arbitrary ? ' is-jit' : '');
+          snow.style.display = state.arbitrary ? '' : 'none';
+          readout.title = 'Width: ' + state.from;
+          return;
+        }
+        // Nothing in the class list. What the page renders goes in the
+        // placeholder rather than the value, so a number this element does not
+        // own is never mistaken for one it does — and four sides that disagree
+        // are said in full, because one of them would be a lie about the others.
+        var w = computedBorder(selected) || [0, 0, 0, 0];
+        var same = w[0] === w[1] && w[1] === w[2] && w[2] === w[3];
+        snow.style.display = 'none';
+        readout.className = 'bw-val is-unset';
+        readout.value = same && w[0] === 0 ? '0' : '';
+        readout.placeholder = same ? (w[0] === 0 ? '—' : String(w[0])) : w.join(', ');
+        readout.title = same
+          ? (w[0] === 0
+              ? 'Width: not set, and renders 0'
+              : 'Width: not set here — the page renders ' + w[0] + 'px')
+          : 'Width: not set here — the page renders ' + w.join(', ') +
+            ' on top, right, bottom, left';
+      },
+    };
+  }
+
+  /**
+   * Stroke, as one section — the shape of frame 7:687: the colour across the
+   * row with the tile beside it, style and width sharing the line below.
+   *
+   * It sits with padding, margin and radius rather than with the two colour
+   * rows at the foot of the panel, and directly after radius: both describe
+   * the edge of the same box, and that is the order the frame's own canvas
+   * puts them in.
+   */
+  function strokeSection() {
+    var row = el('div', 'bw-row top');
+    row.setAttribute('data-tw-section', 'stroke');
+    row.appendChild(el('span', 'bw-lbl', 'Stroke'));
+
+    var stack = el('div', 'bw-stack');
+    var colour = colorField('border');
+    // The colour and its opacity are one line inside the stack, not two rows:
+    // 260 is what the stack has, and 191 + 12 + 57 is what the frame draws in
+    // it, so the tile outside the stack holds still whether opacity shows.
+    var line = el('div', 'bw-cline');
+    line.appendChild(colour.field);
+    line.appendChild(colour.alphaBox);
+    stack.appendChild(line);
+
+    var style = borderStyleField();
+    var width = borderWidthField();
+    var pair = el('div', 'bw-pair');
+    pair.appendChild(style.field);
+    pair.appendChild(width.field);
+    stack.appendChild(pair);
+    row.appendChild(stack);
+
+    // The tile beside the section's own label, so what it removes is the thing
+    // the label names. On the two colour rows the same tile takes off the one
+    // colour that row is about; here the row is about a stroke, and a minus
+    // that left a width or a style behind would be removing a colour from
+    // something still drawn on the page. It is also the only complete way out:
+    // the width steps down to nothing, but the style list offers no "none" —
+    // both of the styles that draw nothing are read and never offered.
+    var drop = el('button', 'bw-toggle');
+    drop.setAttribute('data-tw-stroke-none', '');
+    drop.innerHTML = ICONS.minus;
+    drop.title = 'Remove stroke';
+    drop.addEventListener('click', function () {
+      if (!selected) return;
+      revealed.stroke = false;
+      stripColor(selected, 'border');
+      stripBorderWidth(selected);
+      stripFamily(selected, BORDER_STYLE_RE);
+      markDirty(selected, 'classes');
+      refresh();
+    });
+    row.appendChild(drop);
+
+    readouts.push(function () {
+      var show = !!selected && (revealed.stroke || strokeSet(selected));
+      shown.stroke = show;
+      row.style.display = show ? '' : 'none';
+      if (!show) return;
+      var state = colour.sync();
+      style.sync();
+      width.sync();
+      // Nothing here is the panel's to take off when the page draws the border
+      // itself or an inline style paints it — the classes are not what is
+      // making it, so a minus would clear nothing and look broken.
+      drop.style.display = state.inline ? 'none' : '';
     });
 
     return row;
@@ -4884,9 +6092,19 @@
     if (ui.promptView) ui.promptView.setAttribute('data-tw-session', id);
   }
 
+  /**
+   * Everything but `me` is a rail entry, and a rail entry landing under
+   * another tells the one above it to run its line down into the gap.
+   * `is-run` is set on the *previous* node because that is the only node that
+   * knows the distance: an entry is as tall as its own text, so the line from
+   * a dot to the next one can only be drawn from above.
+   */
   function logMsg(kind, text) {
     if (!ui.plog) return null;
-    var node = el('div', 'bw-pmsg is-' + kind, text);
+    var rail = kind !== 'me';
+    var node = el('div', 'bw-pmsg is-' + kind + (rail ? ' is-rail' : ''), text);
+    var prev = ui.plog.lastElementChild;
+    if (rail && prev && prev.classList.contains('is-rail')) prev.classList.add('is-run');
     ui.plog.appendChild(node);
     ui.plog.scrollTop = ui.plog.scrollHeight;
     return node;
@@ -5137,14 +6355,26 @@
       if (box.key === 'margin') {
         body.appendChild(radiusSection());
         body.appendChild(revealRow(REVEALS.radius));
+        // Straight after radius: both describe the edge of the box padding and
+        // margin describe, and that is the order the frame's own canvas puts
+        // them in. Appended here rather than at a fixed index so it stays put
+        // as rows come and go, the same way radius does.
+        body.appendChild(strokeSection());
+        body.appendChild(revealRow(REVEALS.stroke));
       }
     });
     body.appendChild(typographySection());
     body.appendChild(revealRow(REVEALS.typography));
-    body.appendChild(colorRow('bg', 'Background'));
-    body.appendChild(revealRow(REVEALS.bg));
+    // Text before background, and both of them named `… color`. Text is the
+    // one you reach for far more often — an element that sets a background is
+    // usually a container, and a container's text belongs to its children —
+    // so it goes where the eye lands first. And "Background" on its own was
+    // the odd label out beside "Text color": both rows hold a colour and only
+    // one of them said so.
     body.appendChild(colorRow('text', 'Text color'));
     body.appendChild(revealRow(REVEALS.text));
+    body.appendChild(colorRow('bg', 'Background color'));
+    body.appendChild(revealRow(REVEALS.bg));
 
     panel.appendChild(body);
 
@@ -5569,7 +6799,8 @@
       // click is swallowed rather than also changing the selection — one click
       // should do one thing.
       if (popoverOpen() && e.target.closest &&
-          !e.target.closest('[data-tw-pop]') && !e.target.closest('[data-tw-color-open]')) {
+          !e.target.closest('[data-tw-pop],[data-tw-pop-shade]') &&
+          !e.target.closest('[data-tw-color-open]')) {
         closePopover();
         e.preventDefault();
         e.stopPropagation();
@@ -5605,6 +6836,8 @@
     // mode itself — so there is always a way back to the page from the keyboard.
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !editing) return;
+      // The ramp is a layer of its own now, so it is a step of its own.
+      if (popState.hue) { closeShades(); return; }
       if (popoverOpen()) { closePopover(); return; }
       if (selected) { deselect(); return; }
       setEditing(false);

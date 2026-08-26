@@ -18,7 +18,7 @@ Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
 ## Run it
 
 ```bash
-npm test                                   # 11 suites, ~80s
+npm test                                   # 12 suites, ~85s
 node cli.js --root ../uiux_experiment --check   # inspect a project
 node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
 node cli.js --root ../uiux_experiment --prompt  # …with the Prompt tab enabled
@@ -52,7 +52,7 @@ so the tab is never drawn. Two tabs on screen means the flag is on.
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `assets/` | the panel's icons, exported from Figma and inlined verbatim |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
-| `test/` | 11 suites; `run.mjs` orchestrates |
+| `test/` | 12 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 `how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
@@ -111,10 +111,15 @@ spacing does. The reason is the same reason spacing gives: `lg` is 12 here and
 8 somewhere else, so a token name makes you look it up before you can read your
 own element. The name survives in the tooltip and in the dropdown's filter.
 
-**`rounded-full` is the one rung with no length, so it keeps the symbol.**
+**`rounded-full` is the one rung with no length, so it says its own name.**
 `calc(infinity * 1px)`, which computes to an eight-digit number no field should
-print. It shows `∞`, in the field and in the list, and the tooltip names the
-class.
+print — 33554400 on this Chromium. It showed `∞` at first, which was true and
+unreadable: a symbol nobody types, in a field you type into, standing for the
+one rung whose class name is already the plainest thing about it. It now reads
+`full` in the field and in the list, and the field **takes** `full` typed back,
+because a field that prints a value and then refuses it cannot round-trip what
+it is showing you. Every other rung is still a bare number, and the tooltip
+still names the class.
 
 **Four corners that disagree are said in full, comma separated.** An axis shows
 `0, 8` for the same reason: one number would be a lie about the others, and
@@ -126,9 +131,10 @@ for — decided when the element is selected, so the toggle owns it after that.
 
 **Radius sits with padding and margin, not with typography.** It describes the
 same box they do. Appended straight after the margin section in the body build
-rather than at a fixed index, so it stays put as rows come and go. Gap follows
-it, which is the one oddity: the BOXES loop puts gap last, and gap shows on
-flex and grid containers only, so most selections never see the seam.
+rather than at a fixed index, so it stays put as rows come and go. Stroke is
+appended straight after it, for the same reason and to the same slot. Gap
+follows the two, which is the one oddity: the BOXES loop puts gap last, and gap
+shows on flex and grid containers only, so most selections never see the seam.
 
 **gap shows the gap the element is using, and offers no switch.** `gap-4`,
 `gap-x-4` and `gap-y-4` are three different statements about a container, and
@@ -140,6 +146,92 @@ class list rather than about the page. Nothing set yet is the one gap, which is
 what `gap-4` means and what the + row reveals into. Padding and margin keep
 their toggle: `px-*` and `pt-*` really are two views of the same four edges,
 where these three are three different classes.
+
+**Stroke is one section over three classes, and the colour is the same object
+the two colour rows are.** Frame 7:687 draws it as the colour field across the
+row with a tile beside it and style sharing the line under it with width —
+which is 7:620 with a section's name above it and a pair underneath. So the
+field itself was pulled out of `colorRow` into `colorField(prefix)` and the two
+callers own what differs: the row around it, and what the tile beside it means.
+Nothing about the colour is written twice, including the trap-free membership
+read, the unlink, the opacity field and the inline-style refusal.
+
+**`border-` is the trap four ways over, and every one of them is matched by an
+exact test.** `border-2` is a width, `border-solid` a style, `border-oat` a
+colour, `border-b-2` one edge's width — and `border-collapse` is not a stroke
+at all. The colour goes through the same ramp membership `bg-`/`text-` use, so
+`.border-solid` can never enter the map: it sets `border-style` and the read
+requires `border-color`, which makes the discovery its own membership test the
+way `.font-medium` is kept out of the family map. Measured on
+`uiux_experiment`: 101 bare `border`, 38 colours, 7 per-side widths, one
+`border-0`, and **zero** numbered widths or style utilities.
+
+**1 is written `border`, never `border-1`.** The bare utility is the one
+Tailwind ships and the one these codebases use — 101 sites against zero for
+every numbered width put together. The ladder is 0, 1, 2, 4, 8 and anything off
+it becomes `border-[3px]` with the snowflake, exactly as spacing and radius do.
+There is no dropdown behind the width field because the frame draws none: the
+chevron is on Solid beside it and the ladder lives in the arrow keys.
+
+**Revealing a stroke writes one, where revealing a padding writes nothing.**
+The sharper version of the colour rows' reason. A padding field with no class
+still tells you the element renders 0; a stroke reading 0 wide, no colour and a
+style nothing is drawn in is three controls describing a property that is not
+on the page. So the + writes `border border-solid border-black` — 1px solid
+black, the one stroke every route can draw, said out loud in all three classes
+rather than left half to preflight. Tokens and not lengths or hexes, so the
+fields read them back as tokens.
+
+**The style list offers the four that draw something, and reads all six.**
+`border-hidden` and `border-none` render nothing while leaving the colour and
+the width in the class list, so the element would say one thing in the file and
+another on screen — and the tile beside the label already removes a stroke
+outright, which is the honest way to say it. An element authored with one still
+shows it and still gets a row for it in the list, the way a weight the font
+does not ship keeps its row rather than vanishing from under the value it
+names.
+
+**The tile beside Stroke removes the stroke, not the colour.** On the two
+colour rows the same 40x40 minus takes off the one colour that row is about;
+here the row is a section and its label names the whole property. A minus that
+left a width and a style behind would be taking the colour off something still
+drawn on the page. It is also the only complete way out — the width steps down
+to nothing, but the style list offers no "none" by the rule above.
+
+**A width or a style rung the route has never generated gets a runtime rule,
+and one it has does not.** The same gap an arbitrary colour has, met the same
+way, and gated the same way: `discoverUtilities` now notes which `border` and
+`border-<style>` rules the page already owns, because a scoped copy of one it
+owns outranks its own responsive variants — the `px-6 md:px-12` failure again.
+The style rule sets `--tw-border-style` as well as `border-style`: Tailwind v4's
+width utilities read the style out of that variable, so a rule that set only
+the property would be undone by the width class beside it. The width rule sets
+`border-width` and nothing else, because preflight has already put
+`border:0 solid` on every element.
+
+**A box write clears the edges, both for width and for colour.** Same rule as
+`px-*` clearing `pl-*`, met on the edge rather than the axis: a width that left
+`border-b-2` standing would do nothing to the bottom edge, and a colour that
+left `border-b-oat` standing would paint three sides and leave the fourth
+saying something else. Zero per-side colours across both codebases — the
+clearing costs a membership test, and not clearing costs a bug nobody would
+look for.
+
+**The stroke section shows for a border the page's own CSS draws, not only for
+one in the class list.** That border is on screen, so a + row offering to add
+it would be offering something the element already has. Same reason the padding
+field prints what the page renders rather than a zero it cannot back up — and
+the width field puts that number in its *placeholder* rather than its value, so
+a number the element does not own is never mistaken for one it does. Four sides
+that disagree are said in full, `1, 0, 0, 0`, because one of them would be a
+lie about the others.
+
+**The style list's specimen is a rule in the style it names, at 3px.** The one
+exemption the family list's face already has: a style is the value here whose
+*name* says least about it. 3 and not 2 because `double` is two lines with a
+gap between them, and under three there is no room for the gap — it draws as
+one solid line, which would make that the one row in the list showing the wrong
+thing.
 
 **A property that is not set keeps its row, with a + in it.** Frame 4:407 draws
 Margin that way — a 40px line, the label on the left, a + in the same 40x40
@@ -246,6 +338,21 @@ to it. Measured 15 above against 34 below before that. The log carries no top
 border either: the tab strip's rule already divides it from the tabs, and with
 an empty context line the two sat on top of each other.
 
+**What you said is a box; what came back is a timeline.** The transcript is
+one column of the same 13px text, so the two speakers are told apart by shape
+rather than by colour or by a label on every line — a label would cost more
+room than either message says. Your turn wears the composer's own box, 8px and
+its 10/12 padding, so a sent message stands where it was typed, but bordered in
+EDGE rather than filled: `#232323` is what a *field* wears and this one can no
+longer be typed in. Everything that comes back — text, tool calls, errors —
+takes a 5px dot at the gutter with the text 20px in, and a hairline joins one
+dot to the next. That line is drawn by the entry *above* it, running from under
+its own dot to 12px below itself, which is exactly the log's gap: an entry is as
+tall as its own text, so only the node above knows the distance. `is-run` is
+therefore set on the previous node as each reply lands, which also means a run
+ending — at your next message, or at the end of a turn — simply has no line to
+draw rather than one to clear.
+
 **A turn that worked reports nothing back.** The seconds it took and the share
 of the plan's five-hour window it used are facts about the machinery, not about
 the change you asked for, and they sat under the field until the next thing you
@@ -264,6 +371,20 @@ in the design's `#aaa`, replacing a 9x9 `currentColor` glyph drawn back when
 the export had no file for it. It sits in a `.bw-toggle` — the same tile and
 the same hover fill every section toggle uses — so the right-hand column holds
 still whichever of the two a row is showing.
+
+**Every tile in that column hangs 10px into the gutter, so its mark lands where
+the close button's does.** The header already sits this way — `0 10px 0 20px`,
+a 20px glyph centred in a 40px tile — which puts the x's *mark* on the panel's
+20px gutter and only its hover fill outside it. The toggles were flush with
+that gutter instead, tile edge against field edge, so the mark inside them
+stopped 10px short and the + column read as a second column half a tile in from
+the x above it. `margin-right:-10px` is what buys the alignment, and it is a
+negative margin rather than a nudge because the flex line gets those 10px back:
+the field beside the tile grows into them and the 12px between the two is
+untouched. Everything measured off that field moves with it — the colour row is
+270 and its hex split 201 + 12 + 57, the radius corners are two 129px columns —
+which is the frame's arithmetic done again with the tile out of the row rather
+than a set of new numbers.
 
 **The all-corners write clears every `rounded*` on the element.** Same rule as
 `px-*` over `pl-*`: leaving a more specific class in place means the field you
@@ -305,14 +426,141 @@ that stays is the family list, because a typeface is the one value here whose
 weight the font does not have is not offered, and one that is set but not
 shipped is kept on its own row labelled `faux`.
 
-**The palette is a grid of colour, not a list of names.** Nine swatches to a
-row inside the popover's own 8px, which puts a swatch at 16px — what a 220px
-popover has room for with nine on a line. A name needs a row each and turns
-two dozen colours into a scroll; the tooltip carries it, and a ramp's tooltip
-says it opens rather than applies, because clicking it does. The Theme and
-Palette captions take a line of their own rather than a cell, so the ordering
-that put project tokens first is still legible. The shade view underneath
-already worked this way.
+**The palette is a grid of colour, not a list of names — and a ramp is that
+same grid in a box of its own beside it.** Eleven to a row at 20px, which is
+what sets the popover's width rather than being set by it: `.is-swatches` is
+322, which is 2 of border, 40 of gutter, eleven 20px squares and ten 6px gaps,
+exactly. Eleven because a ramp is eleven and ten with one under it is an orphan
+— and once the ramp is eleven the palette has to be, since the same square at
+the same gap cannot run gutter to gutter on two different counts. Something has
+to give and the count is the only one of the three nobody looks at. It was 312
+for the panel's own row width with `1fr` tracks, which meant the square was
+whatever the gaps left over: 21.6 in the palette, 19.1 in the ramp, 20 in the
+field, three sizes for one object. A
+name needs a row each and turns two dozen colours into a scroll; the tooltip
+carries it, and a ramp's tooltip says it opens rather than applies, because
+clicking it does. The Theme and Palette captions take a line of their own
+rather than a cell, so the ordering that put project tokens first is still
+legible — and they are set in the popover's own title voice, 15px muted and
+capitalised, rather than the 9px letterspaced caption they were. Two type
+styles for two headings on one surface was one style too many. The shade grid
+had its own taller cell with the number printed across it in
+`mix-blend-mode:difference`, which made two boxes of one popover look like two
+controls — and the number was doing what a tooltip does everywhere else here.
+Picking a shade is picking a colour; it looks like it now.
+
+**A ramp is a dropdown of its own, 6px to the left of the palette, and the
+palette stays open behind it.** It used to be the popover's second view,
+reached by clicking a hue and left by a back chevron, so eleven shades arrived
+exactly where the colours had been and the only way to compare a ramp against
+the palette it came out of was to remember one of them. Two boxes say both at
+once. The chevron went with the view it existed to leave, and `ICONS.back` with
+it — that was its only use — and so did the branch in five copies of the test
+helper that stepped back to the full list when the hue it wanted was not on
+screen: the grid is never not on screen now. The hue whose ramp is open wears
+the ring a hovered swatch wears, because the ramp itself has nothing in it that
+says which of two dozen colours these eleven came from.
+
+**The two are levelled on their first square — not on the boxes, and not on
+the grids.** The boxes are nothing alike: one is a header over a row of eleven,
+the other a header over a picker, a caption and three rows, so tops level put
+the shades against the palette's picker and lined up nothing anyone was looking
+at. Grid box to grid box is subtler and still wrong — the palette's grid begins
+at its `Theme` caption, which spans the row, so the two rows come out exactly
+one line of caption apart. That one measured as a pass while the screenshot
+plainly showed the miss, which is the argument for measuring the thing you are
+looking at. Square to square, with the same square and the same gap on both
+sides of the seam, the pair reads as one grid that happens to be in two boxes.
+Measured after placement rather than derived from the two headers, because the
+palette's body scrolls and only the laid-out box knows where its first square
+ended up.
+
+**A popover's content stands on the panel's 20px gutter, which is where its own
+header already stands.** The title starts at 20 and the close button's mark ends
+at 20 — a 40px tile holding a 20px glyph puts the glyph there and lets only the
+hover fill overhang. The body was at 8, aligned to neither, and a swatch row
+overhung the title on one side and the mark on the other by enough to read as a
+grid slightly too wide rather than as a padding. Aligning to the tile's edge
+instead was the same miss 10px further in: what you see of a button at rest is
+its mark, not its hit area. 20 all round, so the vertical answers the
+horizontal.
+
+**The panel says "color", not "colour".** Every string the panel puts on screen
+or in a tooltip — the popover's title, the unlink's, the minus's, the swatch's
+— is US-spelled, because the classes it writes are (`text-color` has no `u` in
+it and never will) and reading two spellings of one word in one window is a
+seam. The prose in this file and in the source keeps its own voice; this is
+about what the tool says out loud.
+
+**The swatch is the button; the value is a field.** The whole field used to be
+one button that opened the list, which left the one value in this panel people
+most often arrive holding — a hex, out of a design file or another tab — as the
+only one they could not paste. The colour block is the obvious half to keep as
+the opener: it is what a picker looks like everywhere, and it wears the same
+hover ring the swatches in the list do so it reads as pressable. It is 40 wide
+— 12 of gutter, 20 of swatch, 8 after it — which is frame 4:551's geometry
+unchanged, so the value still starts at 40 and the row still lines up with a
+spacing field. The chevron went with the change: a mark at the far end of the
+field promising "this opens" now points at nothing, since the thing that opens
+is 250px to its left.
+
+**The value takes a hex or a token, and refuses by putting itself back.**
+`#4837ca`, `4837ca` and `#48c` are the same request; so are `emerald-500`,
+`bg-emerald-500` and `bg-emerald-700/40` — the prefix is the panel's business,
+not the typist's, and `/40` is the alpha the opacity field beside it owns. A
+whole-name ramp is tried before a hue-plus-shade split, because `brand-teal` is
+one token and only the map knows which of the two a name is. Anything that is
+neither is not refused with a message: the field puts back what it was showing,
+which is what a spacing field does with a word typed into it. And committing
+what it already shows is not an edit, for the reason every other field in this
+panel has that guard — blur fires on everything you tab through.
+
+**Text color sits above Background color, and both of them say "color".** Text
+is the one you reach for far more often: an element that sets a background is
+usually a container, and a container's text belongs to its children — so it
+goes where the eye lands first. "Background" alone was also the odd label out
+beside "Text color"; both rows hold a colour and only one of them said so.
+
+**The picker sits on top of the presets, not beside them.** Frames 7:620/7:622
+gave the row its own controls; the popover got the one control that can say any
+colour at all, and the grid under it stayed the shortcut to the ones this
+project has names for. On top because the popover is a column and a column
+costs no width — side by side wants ~560px against a 352px panel. On top rather
+than under because the square is the general case and the grid is the
+convenience.
+
+**The square needs no canvas, and the hue is a custom property.** Black up the
+vertical, white across the horizontal, `var(--bw-sv-hue)` behind both — three
+layers of one box, so moving the hue strip is one property and never a repaint.
+The state is HSV and it lives in `popState.hsv` rather than being read back off
+the class each frame, which is what makes the square behave: white is `s=0` at
+`v=1` and has no hue left in it, so a picker that re-derived its hue from the
+colour would forget where the strip was the moment you dragged into a corner.
+The knob is 12px and not 14 because at `s=0,v=1` it is centred on the square's
+corner, 8px in from the popover's border — 6 of radius and 2 of ring is exactly
+that 8, so the extreme of the control lands on the gutter instead of across the
+edge of the window it is in.
+
+**A drag is one step in the ledger, however many frames it took.** Text
+coalesces on a timer, which works because keystrokes are discrete and a pause
+between them is a real boundary; a drag has a beginning and an end it can
+simply state, so `dragRun` states them — set after the drag's *first* write, so
+that write opens the step the rest fold into. Writing per frame is otherwise
+the normal path and not a special case: the DOM is the source of truth, the
+field shows the live hex, `ensurePreviewRule` gives each hex a rule, and the
+same point twice is skipped because a pointer at rest still fires and every
+write costs a class, a rule and a step.
+
+**No colour-picker package, and the reason is this repo rather than the
+packages.** Pickr and Coloris are both MIT, both zero-dependency, both draw the
+same square and strip. But `editor.js` is served verbatim by `server.js` with
+no bundler anywhere in the project, so taking one means committing a `dist`
+blob and a theme stylesheet, then overriding that stylesheet to `#171717` /
+`#232323` / 8px / 40px and scoping it so it cannot leak onto whatever page the
+overlay was injected into. The parts that are actually hard were already here —
+`toHex` paints to a canvas, `withAlpha` writes the class, `ensurePreviewRule`
+gives it a rule, the opacity field commits alpha — and what was missing was two
+controls and about a hundred lines.
 
 **Revealing a colour writes white; revealing anything else writes nothing.**
 The one exception to the rule above it, and for the reason the colour rows hide
@@ -376,6 +624,11 @@ membership, so `rounded` can never swallow `rounded-tl-lg`.
 `text-` is the trap three ways over once alignment exists: `text-lg` is a size,
 `text-clay` a colour, `text-center` an alignment. Each is matched by an exact
 set, so setting one leaves the other two alone.
+`border-` is the trap four ways over, and the worst of them: `border-2` is a
+width, `border-solid` a style, `border-oat` a colour, `border-b-2` one edge —
+and `border-collapse` and `border-spacing-2` are not strokes at all. Colour
+membership is the ramp test the other prefixes use, which rules out every one
+of the others by construction; the rest are exact patterns.
 
 **Undo/redo is by snapshot, not by command.** Every control already writes
 straight to the DOM and to `dirty`, so recording the state after each mutation
@@ -494,16 +747,50 @@ field disables itself and the title says where the colour comes from. Same rule
 as `px-*` clearing `pl-*`, met from the other side. Every *other* field has the
 same blind spot against an inline style; only colour is handled.
 
-**What you can do to a colour lives in the list, not in the field.** The field
-used to grow a small unlink button under the cursor, beside the value — which
-reads as "delete this" whatever its icon says — and removing a colour had no
-home at all: the palette could only ever put one on. Since a revealed row now
-starts at white, that meant a colour you could add and not take off. Both
-actions are named rows under the swatches, under *both* views, because a token
-colour opens straight into its own shade grid and actions only on the palette
-would be actions you never see. Removing also sets `revealed`, or the row would
-have nothing to show, fold back to its + and take the field out from under the
-cursor that just used it — and that + writes white.
+**What you can do to a colour is drawn in the row, not hidden in the list.**
+Frames 7:620 and 7:622: the unlink in the field's right-hand slot, the minus in
+the 40x40 tile beside it, both on screen the whole time. They spent a while as
+named rows *inside* the popover, on the rule that "a control beside the value
+reads as delete this, whatever its icon says" — and that was true while removal
+was one of the two controls in the field. It is not one of them now: removal is
+the tile in the toggle column, so the one mark left beside the value is not a
+delete and cannot be read as one. The list went back to being a list of
+colours, which is what you opened it to change.
+
+**The minus and the + are the same tile, which is what makes the fold safe.**
+Taking a colour off clears `revealed`, so the row folds straight back to the +
+that offers it again — the thing removal was forbidden to do while it lived in
+the popover, because the field vanished from under a cursor that had reached
+into a list to remove it. Nothing vanishes from under this one: the tile it was
+clicked in is the tile the + lands in, same 40x40, same column, and the suite
+asserts the two land on the same pixel. Pressing the + writes white again, as
+it always did.
+
+**Opacity is a field of its own, and it is what a hex has.** Frame 7:622 splits
+the row: the 57 it takes and the 12 beside it come out of the colour field and
+out of nothing else, so the tile after them stands in the same place whichever
+state the row is in. It was a 24px
+monospace number wedged behind a hairline inside the colour field; it now
+carries "100%" in the panel's own 15px, sized from a hidden sizer rather than
+from `ch` — a `ch` is the width of a zero and these digits are not all a zero
+wide, so `3ch` for "100" left a space that read as "100 %". A token has no
+opacity field because `clay-100/40` is a fourth kind of thing again; the way to
+one is the unlink, which is the whole reason it sits there.
+
+**The unlink and the chevron share one slot, and hide the same way.** Both are
+affordances rather than information — they say "this does something" to a
+cursor that is already here — so the unlink is held at `opacity:0` until the
+field is hovered, focused or open, exactly as the chevron is, and takes
+`pointer-events` with it so a mark you cannot see is not a button you can
+press. A mark standing on every colour row at rest would be a second thing to
+read on a row whose whole job is to say one colour. They cannot both come out:
+`has-unlink` takes the chevron out of the slot, since a token has the unlink
+and anything else keeps the chevron. It writes the colour the element *renders* — `resolvedColor` follows
+`var(--x)` against the selection, because a ramp entry is not always a literal
+— so the paint does not change, only what the class says. The hand-drawn
+12px glyph it replaced existed because `assets/` had no file for it; it does
+now, and `ic-minus.svg` is the export's plus with its upright taken off, the
+same `M4.16667 10H15.8333` on the same 20 grid.
 
 **A hex colour is a literal, and this was the one field that never said so.**
 Every other value in the panel that is not a token on a scale is italic, a
@@ -645,6 +932,16 @@ hiding is deliberate: a hidden element cannot be clicked, so it could not be
 undone, and the editor already marks unsaved edits on the page instead of
 pretending they are committed.
 
+**The Undo in that notice is bare, like the close button.** It wore the
+`#232323` a field wears, which put a filled box inside a box that is already
+tinted and outlined — two things to look at where the notice makes one
+statement. It is now text on the notice's own ground, lighting from label grey
+to value white under the cursor, which is the move every row label makes. 5px
+above and below sets its 13px line on the same centre as the 15px heading
+beside it, and nothing at the sides keeps it flush to the notice's 14px gutter.
+The hover rule that was there before moved a `border-color` on an element with
+`border:0` — it had never shown anything.
+
 **An element may only be removed from a JSX children list.** That is the one
 position where lifting the node out still parses. A component root has to return
 something, `{open && <div/>}` would be left as `{open && }`, and a `.map()`
@@ -781,6 +1078,12 @@ These drove the design; re-check them if the target changes.
 | arbitrary `rounded-[3px]` | 66 | **180** |
 | bare `rounded` (v3 alias) | 1 | 10 |
 | per-corner `rounded-l-*` | 3 | 2 |
+| bare `border` (1px) | **101** | — |
+| numbered `border-2` | **0** | — |
+| `border-[3px]` and friends | 0 | — |
+| border colour tokens | 38 | — |
+| per-side `border-b` | 7 | — |
+| `border-solid` / `-dashed` / `-dotted` | **0** | — |
 
 Editable coverage on gw-web: **91.4%** of 2881 host elements.
 
@@ -819,8 +1122,12 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    are done (see below); what is left is a `files` allowlist, dropping
    `private: true`, `engines`, a README, and one install test against a fresh
    `create-next-app`. Still only worth finishing if other people will use it.
-6. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
-   is 608 arbitrary colours, so "detached" is the norm there.
+6. **The hex is still read-only as *text*.** The picker sets it and the opacity
+   field sets its alpha, but there is nowhere to paste `#3f6212` into. gw-web is
+   608 arbitrary colours, so "detached" is the norm there. A drag also leaves
+   one preview rule per distinct hex in the dev-only stylesheet, which nothing
+   ever collects — the same thing typing hexes would have done, now reachable a
+   great deal faster.
 7. **Logical radius utilities are read but never written.** `rounded-s-lg`,
    `rounded-ss-*` and friends depend on writing direction, so they are left
    exactly as authored — membership matching means they are never mistaken for
@@ -829,7 +1136,13 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    both codebases. The four *physical* corners do have fields now; the
    *physical* edges (`rounded-l-[2px]`) have none, but are read into the two
    corners they paint and cleared by an all-corners write.
-8. **A rung a route has never used previews at the stock value.** Cora derives
+8. **Per-side strokes are read, cleared and never written.** `border-b-2` and
+   `border-b-oat` show the section, are counted by `strokeSet`, and are cleared
+   by a box write so the field just used cannot be a no-op on one edge — but
+   there are no fields for them, because frame 7:687 draws none. 7 per-side
+   widths and zero per-side colours on `uiux_experiment`. Same shape as the
+   physical radius edges, and the same reason to leave it.
+9. **A rung a route has never used previews at the stock value.** Cora derives
    its ladder from `--radius: 0.75rem`, so `rounded-3xl` should be 26.4px, but
    Tailwind generated no rule for it and the fallback says 24px. The multiplier
    is not inferable from the rungs that do exist — cora's live/stock ratios run
@@ -933,7 +1246,7 @@ positive.
 
 ## Test discipline
 
-`npm test` runs 11 suites: 3 pure-unit (`00`, `05`, `06`) and 8 browser suites
+`npm test` runs 12 suites: 3 pure-unit (`00`, `05`, `06`) and 9 browser suites
 against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
@@ -948,6 +1261,20 @@ line there renders 19 elements, which is the case the warning exists for.
 The per-corner block is on Cora too, and asserts 21.6px: a corner rung built
 from the stock ladder instead would say 16px beside three 12px corners.
 
+`test/11-stroke.js` owns the seam `border-` makes, which is the whole reason
+that suite exists: that the four families are read apart and written apart,
+that `border-collapse` offers a + like any unset row rather than a stroke,
+that a box colour takes `border-b-red-500` with it, that revealing writes
+exactly `border border-solid border-black` and the page draws it on a fixture
+that has generated no such rule, that a rung is written as the rung and 3px is
+not, that the arrows walk the ladder and step off the bottom of it by dropping
+the class, that the minus takes all three classes at once, and that what is
+left reaches disk with nothing else on the line moved. Its selections click the
+card at x=120: the delete handle for the live selection sits on the element's
+top-left corner and swallows a click at (3,3), and it closes the panel with the
+header's × rather than Escape, because by then the caret is in a field and
+Escape belongs to the field it is in.
+
 `test/02-spacing-sides.js` also owns the reveal rows: that every property has
 one whether or not it is set, in the order the panel reads in, that the + sits
 in the same column a section toggle does, and that revealing writes nothing.
@@ -956,6 +1283,26 @@ with two children, refused on a block one and on a flex one with a single item
 to space. The two-child case is a `<section>` and not the `<h2>` the block cases
 use, which is also why its expected order carries no Text row — a container's
 text belongs to its children.
+
+`test/01-classes.js` owns the colour row's own chrome: that the swatch is the
+only thing that opens the list and is 40 wide with its chip on the 12px gutter,
+that the value is an `<input>` which takes `#4837CA`, `48c`, `emerald-500` and
+`bg-emerald-700/40` alike and puts itself back on anything else, that a token
+offers the unlink 10px in from the field's edge with no chevron behind it, that
+the unlink keeps the paint and changes only the class, that the opacity field
+takes its 57 and its 12 out of the colour field and not out of the row, and
+that the minus folds the row back onto a + in the same 40x40 tile it was
+clicked in. It owns the picker too — that it sits above the presets rather than beside them,
+that dragging the square writes a hex that actually paints (the class is in no
+source file, so if it paints, `ensurePreviewRule` did its job), and that a drag
+undoes as one step. It owns the pair of boxes as well: that a hue opens a ramp
+of its own 6px to the palette's left with the palette still open behind it and
+a ring on the hue that opened it, that the two first squares sit on one line,
+that a shade is the same 20x20 square a hue is, that eleven of them stand on
+the 20px gutter at both ends, that shutting the ramp leaves the palette where
+it was, and that picking a shade writes the class and takes both boxes away. It
+compares colour by painting it, never as a string — the same green arrives as
+`oklch()` from a generated utility and `rgb()` from the hex the picker writes.
 
 `test/10-radius-corners.js` covers the seam the live suite cannot reach
 cheaply — a corner overriding the box, the box clearing the corners, one value

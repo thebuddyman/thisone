@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3131;
 const URL = `http://localhost:${PORT}`;
 
 const UNIT = ['00-families.js', '05-jsx-adapter.js', '06-detect.js'];
-const BROWSER = ['01-classes.js', '02-spacing-sides.js', '03-text.js', '04-safety.js', '07-delete.js', '08-edit-mode.js', '09-history.js', '10-radius-corners.js'];
+const BROWSER = ['01-classes.js', '02-spacing-sides.js', '03-text.js', '04-safety.js', '07-delete.js', '08-edit-mode.js', '09-history.js', '10-radius-corners.js', '11-stroke.js'];
 
 const work = mkdtempSync(join(tmpdir(), 'tw-editor-test-'));
 const page = join(work, 'index.html');

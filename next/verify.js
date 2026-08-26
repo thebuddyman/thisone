@@ -15,14 +15,13 @@ async function pickColor(panel, prefix, hue, shade) {
   const reveal = panel.locator(`[data-tw-reveal="${prefix}"]`);
   if (await reveal.isVisible()) await reveal.click();
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
-  const pop = panel.page().locator('[data-tw-pop]'); // floats on <body>, not inside the panel
-  // The popover opens on the element's current hue when it has one, so step
-  // back to the full list if the hue we want is not on screen.
-  if (!(await pop.locator(`[data-tw-hue="${hue}"]`).count())) {
-    await pop.locator('.bw-pop-back').click();
-  }
+  // Both float on <body>, not inside the panel — and they are two boxes now,
+  // so the grid never has to be stepped back to: it is on screen the whole
+  // time, and the ramp opens beside it.
+  const pop = panel.page().locator('[data-tw-pop]');
+  const shades = panel.page().locator('[data-tw-pop-shade]');
   await pop.locator(`[data-tw-hue="${hue}"]`).click();
-  await pop.locator(`[data-tw-shade="${shade}"]`).click();
+  await shades.locator(`[data-tw-shade="${shade}"]`).click();
 }
 
 const path = require('path');
@@ -234,11 +233,11 @@ function restore(g) {
   const boxRadius = panel.locator('[data-tw-field="radius-all"] input');
   check('Radius row shows on a painted element', await radiusRow.isVisible());
   // The field gives a length, not a token name. `full` is the one rung with no
-  // length behind it — calc(infinity * 1px) — so it keeps the symbol rather
+  // length behind it — calc(infinity * 1px) — so it says its own name rather
   // than printing the eight-digit number it computes to, and the tooltip
   // carries the class either way.
   check('Radius row reads what the element renders, and names it in the title',
-    (await boxRadius.inputValue()).trim() === '\u221e' &&
+    (await boxRadius.inputValue()).trim() === 'full' &&
     /rounded-full/.test(await boxRadius.getAttribute('title')),
     `${await boxRadius.inputValue()}  (${await boxRadius.getAttribute('title')})`);
 
@@ -267,7 +266,7 @@ function restore(g) {
   check("rung reports THIS route's value, not --radius-lg", lgLabel === '12px', lgLabel);
   const rungLabels = await rpop.locator('[data-tw-radius] .bw-sizename').allTextContents();
   check('every row is a pixel length, with no rung name to translate',
-    rungLabels.every((v) => /^\d+px$/.test(v) || v === '\u221e'), rungLabels.join(','));
+    rungLabels.every((v) => /^\d+px$/.test(v) || v === 'full'), rungLabels.join(','));
 
   await rpop.locator('[data-tw-radius="lg"]').click();
   await page.waitForTimeout(600); // the button is transition-all duration-200

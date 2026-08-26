@@ -21,14 +21,13 @@ async function pickColor(panel, prefix, hue, shade) {
   const reveal = panel.locator(`[data-tw-reveal="${prefix}"]`);
   if (await reveal.isVisible()) await reveal.click();
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
-  const pop = panel.page().locator('[data-tw-pop]'); // floats on <body>, not inside the panel
-  // The popover opens on the element's current hue when it has one, so step
-  // back to the full list if the hue we want is not on screen.
-  if (!(await pop.locator(`[data-tw-hue="${hue}"]`).count())) {
-    await pop.locator('.bw-pop-back').click();
-  }
+  // Both float on <body>, not inside the panel — and they are two boxes now,
+  // so the grid never has to be stepped back to: it is on screen the whole
+  // time, and the ramp opens beside it.
+  const pop = panel.page().locator('[data-tw-pop]');
+  const shades = panel.page().locator('[data-tw-pop-shade]');
   await pop.locator(`[data-tw-hue="${hue}"]`).click();
-  await pop.locator(`[data-tw-shade="${shade}"]`).click();
+  await shades.locator(`[data-tw-shade="${shade}"]`).click();
 }
 
 const INDEX = process.env.TW_EDITOR_FILE;
