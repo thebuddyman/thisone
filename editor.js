@@ -3211,23 +3211,47 @@
    * Sit beside the panel rather than over it, so the control you are editing
    * stays visible. Falls to the other side, then clamps, when space runs out.
    */
+  var placeSettling = false;
+
   function placePopover(anchor) {
-    var a = anchor.getBoundingClientRect();
-    var box = panel.getBoundingClientRect();
-    var w = popover.offsetWidth || 200;
+    // Some rows hand over the whole row and some hand over the field itself.
+    // Measure the field either way, or a list flipping above a row would clear
+    // the label too and float 29px off the control it belongs to.
+    var box = (anchor.classList && anchor.classList.contains('bw-field'))
+      ? anchor
+      : (anchor.querySelector && anchor.querySelector('.bw-field')) || anchor;
+    var a = box.getBoundingClientRect();
+    var w = popover.offsetWidth || 220;
     var h = popover.offsetHeight || 300;
-    var gap = 8;
+    var gap = 6;
+    var edge = 8;
 
-    var left = box.left - w - gap;
-    if (left < gap) left = box.right + gap;
-    if (left + w > window.innerWidth - gap) left = Math.max(gap, window.innerWidth - w - gap);
+    // Left-aligned with the field and hanging under it, the way a menu does.
+    // It used to sit beside the whole panel, which put the list and the control
+    // it was changing an inch apart with the panel in between.
+    var left = Math.max(edge, Math.min(window.innerWidth - w - edge, a.left));
 
-    var top = a.top - 6;
-    if (top + h > window.innerHeight - gap) top = window.innerHeight - h - gap;
-    if (top < gap) top = gap;
+    // Below by default, above when there is no room — which is the common case
+    // here, since the panel is anchored to the bottom of the window.
+    var top = a.bottom + gap;
+    if (top + h > window.innerHeight - edge) {
+      var above = a.top - gap - h;
+      top = above >= edge ? above : Math.max(edge, window.innerHeight - h - edge);
+    }
 
     popover.style.left = Math.round(left) + 'px';
     popover.style.top = Math.round(top) + 'px';
+
+    // Clicking a field can scroll the panel to bring it into view, which moves
+    // the anchor out from under a placement made in the same tick — measured at
+    // 29px on the lower rows. Settle once on the next frame, when it has
+    // stopped moving.
+    if (placeSettling) return;
+    placeSettling = true;
+    requestAnimationFrame(function () {
+      placeSettling = false;
+      if (popoverOpen() && popState.anchor) placePopover(popState.anchor);
+    });
   }
 
   /**
