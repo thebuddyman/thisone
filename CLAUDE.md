@@ -150,6 +150,21 @@ the order the panel otherwise reads in, so finding one meant knowing to look at
 the end, and revealing it made the layout jump as the row appeared somewhere
 else. A row already in place only fills in. Revealing still writes nothing.
 
+**A + is only offered where the property could change the page.** A row that is
+merely unset keeps its slot; a row that could do nothing whatever you set in it
+has no slot at all, because opening it hands you controls that are inert. Two
+of them fail that test on ordinary elements. **Typography** needs text under it
+— its own or a descendant's, since type cascades and a card holding a heading
+really can be given a family — so an `<img>`, a spacer or an empty div offers
+nothing. The looser test is deliberate: `hasOwnText`, which is what the section's
+own fields use, would leave the + on no element at all, since an element that
+passes it is already showing the section. **gap** needs a container that is flex
+or grid *and* has two things to stand between: one item lays out identically at
+every value gap can take, and text counts, because a bare string inside a flex
+parent is an anonymous flex item like any other. The rule is the + row's alone
+in both cases — an element already carrying `gap-4` keeps its field however few
+children it has, so a stale class stays removable.
+
 **The reveal row is a button, not a row with a button in it.** A 20px + is a
 small thing to hit for something this coarse, and the row has one meaning end
 to end — so the whole 312px takes the click and the label is part of the target
@@ -793,7 +808,13 @@ they were 11/11 both before and after, with nothing else running.
 **Stale servers give misleading results.** Three times a `lsof | kill` did not
 take, the new server died with `EADDRINUSE`, and an old one kept serving. Always
 `pkill -f next-server; pkill -f "next dev"` and verify the port is free before
-concluding anything.
+concluding anything. `run.mjs`'s own `server.kill()` is one of the ones that
+does not always take: a finished `npm test` can leave 3131 held, so the *next*
+run's server dies with `EADDRINUSE` and its suites talk to the previous run's
+server — whose temp fixture has been deleted. The tell is failures that wander
+between suites and between runs (a 409 stale-hash in one, a padding read of 24
+where the fixture says 16 in the next). `lsof -ti tcp:3131 | xargs -r kill -9`
+before every run, and confirm the port is free after the kill, not before.
 
 **Back up every file a test *could* touch, not the one you expect.** Two files of
 the user's were damaged this way (`cora/layout.tsx`, `meridian/design-system/
@@ -868,8 +889,12 @@ from the stock ladder instead would say 16px beside three 12px corners.
 
 `test/02-spacing-sides.js` also owns the reveal rows: that every property has
 one whether or not it is set, in the order the panel reads in, that the + sits
-in the same column a section toggle does, that gap is offered on a flex element
-and not on a block one, and that revealing writes nothing.
+in the same column a section toggle does, and that revealing writes nothing.
+It owns the "could this do anything" rule too: gap offered on a flex container
+with two children, refused on a block one and on a flex one with a single item
+to space. The two-child case is a `<section>` and not the `<h2>` the block cases
+use, which is also why its expected order carries no Text row — a container's
+text belongs to its children.
 
 `test/10-radius-corners.js` covers the seam the live suite cannot reach
 cheaply — a corner overriding the box, the box clearing the corners, one value

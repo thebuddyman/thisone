@@ -532,8 +532,23 @@ function check(name, pass, detail) {
   await page.keyboard.press('Escape');
   await page.locator('[data-eid="9"]').evaluate((el) => { el.className = 'p-4 flex'; });
   await page.locator('[data-eid="9"]').click({ position: { x: 60, y: 20 } });
-  check('…and is, on a flex one',
+  // A heading holding one line of text is one flex item, and one item lays out
+  // identically at every value gap can take. Same empty offer Typography makes
+  // on an element with no text under it.
+  check('nor on a flex one with a single item to space',
+    !(await panel.locator('[data-tw-reveal="gap"]').isVisible()));
+  await page.keyboard.press('Escape');
+  await page.locator('[data-eid="5"]').evaluate((el) => { el.className = 'p-12 flex'; });
+  await page.locator('[data-eid="5"]').click({ position: { x: 200, y: 6 } });
+  check('…and is, on a flex one with two',
     await panel.locator('[data-tw-reveal="gap"]').isVisible());
+  // In gap's own slot, after Radius — and with no Text row above it, which is
+  // the container's own answer: the text on screen belongs to its children.
+  const gapOrder = await order();
+  check('offered in the slot gap reads in, after Radius',
+    gapOrder.join(' > ') ===
+      'Padding > Margin > Radius > Gap > Typography > Background > Text color',
+    gapOrder.join(' > '));
 
   // ---- gap shows the gap the element is using, and no switch ----
   //
@@ -563,14 +578,13 @@ function check(name, pass, detail) {
     const got = await gapShows(cls);
     check(`${cls.replace('flex p-4 ', '')} shows ${want}`, got === want, got);
   }
-  check('and there is no switch between one gap and two',
-    (await panel.locator('[data-tw-toggle="gap"]').count()) === 0);
-
-  // Put it back the way the margin check below expects to find it.
+  // Put it back the way the margin check below expects to find it. The section
+  // and not the heading, so Gap is on screen for the order check below: a
+  // heading is one flex item, and gap is not offered where it can do nothing.
   await card.click({ position: { x: 200, y: 6 } });
-  await page.locator('[data-eid="9"]').evaluate((e) => { e.className = 'p-4 flex'; });
-  const back = await page.locator('[data-eid="9"]').boundingBox();
-  await page.mouse.click(back.x + back.width / 2, back.y + back.height / 2);
+  await page.locator('[data-eid="9"]').evaluate((e) => { e.className = 'p-4'; });
+  await page.locator('[data-eid="5"]').evaluate((e) => { e.className = 'p-12 flex'; });
+  await page.locator('[data-eid="5"]').click({ position: { x: 200, y: 6 } });
 
   // Clicked at the label end, which is the half of the row that used to do
   // nothing at all.
@@ -580,12 +594,12 @@ function check(name, pass, detail) {
     !(await panel.locator('[data-tw-reveal="m"]').isVisible()) &&
     (await panel.locator('[data-tw-field="m-y"]').isVisible()));
   check('revealing wrote nothing',
-    (await page.locator('[data-eid="9"]').getAttribute('class')) === 'p-4 flex',
-    await page.locator('[data-eid="9"]').getAttribute('class'));
+    (await page.locator('[data-eid="5"]').getAttribute('class')) === 'p-12 flex',
+    await page.locator('[data-eid="5"]').getAttribute('class'));
   const after = await order();
   check('and the panel still reads in the same order',
     after.join(' > ') ===
-      'Text > Padding > Margin > Radius > Gap > Typography > Background > Text color',
+      'Padding > Margin > Radius > Gap > Typography > Background > Text color',
     after.join(' > '));
 
   await page.screenshot({ path: `${__dirname}/sides.png` });

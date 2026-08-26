@@ -2167,6 +2167,22 @@
     return false;
   }
 
+  /**
+   * Is there any text under this element at all — its own or a descendant's?
+   *
+   * The looser test hasOwnText, and deliberately: typography cascades, so a
+   * card holding a heading and a paragraph really can be given a family, and
+   * the + row is what offers it. What it cannot do is put type on an element
+   * with no type under it — an <img>, a spacer, an empty div — where every
+   * field the row reveals would be a control that cannot change the page.
+   * A form control renders text of its own that is not in the DOM tree.
+   */
+  function hasText(el) {
+    if (!el) return false;
+    if (/^(input|select)$/.test(el.tagName.toLowerCase())) return true;
+    return !!(el.textContent || '').trim();
+  }
+
   /** Can this box do anything for this element, whether or not it is set? */
   function boxApplies(el, box) {
     return box.applies ? box.applies(el) : true;
@@ -2183,6 +2199,28 @@
    */
   function supportsGap(el) {
     return !!el && /^(inline-)?(flex|grid)$/.test(getComputedStyle(el).display);
+  }
+
+  /**
+   * …and there has to be something for the gap to stand between.
+   *
+   * A flex container with one item, or none, lays out identically at every
+   * value gap can take — so offering to add one there is the same empty offer
+   * Typography makes on an element with no text. Text counts: a bare string
+   * inside a flex parent is an anonymous flex item like any other, so
+   * <div class="flex">a <span>b</span></div> has two.
+   *
+   * The rule is the + row's alone. An element already carrying gap-4 keeps its
+   * field however few children it has, so a stale class stays removable.
+   */
+  function canGap(el) {
+    if (!supportsGap(el)) return false;
+    var n = el.children.length;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var c = el.childNodes[i];
+      if (c.nodeType === 3 && c.nodeValue && c.nodeValue.trim()) n++;
+    }
+    return n > 1;
   }
 
   /**
@@ -2392,14 +2430,17 @@
   /** The optional sections, each named where its own row sits. */
   var REVEALS = {
     m: { key: 'm', label: 'Margin' },
-    gap: { key: 'gap', label: 'Gap', applies: supportsGap },
+    gap: { key: 'gap', label: 'Gap', applies: canGap },
     // Radius hides where nothing would show it, but an element about to get a
     // background should not have to get one first to round its corners.
     radius: { key: 'radius', label: 'Radius' },
     // One row for the section, not four for its fields: the frame draws
     // Typography as one thing, and a + on a 124px field would be a control
     // wider than the field it stands in for.
-    typography: { key: 'typography', label: 'Typography' },
+    // …and only where there is text for it to reach. On an element with none
+    // under it every field the row reveals is inert, which is the one thing a
+    // + should never open into.
+    typography: { key: 'typography', label: 'Typography', applies: hasText },
     // An element with no colour of its own still renders in one, inherited or
     // from the page's own CSS — but the field could only say so with a dash
     // and an empty swatch, which is a control describing nothing. The + row

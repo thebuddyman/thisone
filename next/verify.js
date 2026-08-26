@@ -415,9 +415,27 @@ function restore(g) {
   // one is stale by the time this runs. If the section is standing in for
   // itself with a + row, that + is clicked, so the geometry below is measured
   // on all four fields whatever this element happens to carry.
-  const typoBtn = page.locator('button[data-bw-loc]').first();
+  // It must carry TEXT OF ITS OWN — the section's `applies: hasText` means a
+  // wrapper has neither the controls nor the + row standing in for them, and
+  // measuring a section that correctly is not there reads as a broken panel.
+  // It must also live in the Cora page, because the write below diffs that
+  // file and that file is the one this run guarded.
+  const typoCands = page.locator('[data-bw-loc^="src/app/experiments/cora/login/page.tsx:"]');
+  const typoTotal = await typoCands.count();
+  let typoBtn = null;
+  for (let i = 0; i < typoTotal; i++) {
+    const c = typoCands.nth(i);
+    const own = await c.evaluate((el) => {
+      for (const n of el.childNodes) {
+        if (n.nodeType === 3 && n.nodeValue.trim().length > 2) return true;
+      }
+      return false;
+    });
+    if (own) { typoBtn = c; break; }
+  }
+  if (!typoBtn) throw new Error('no element with its own text in the Cora page');
   await typoBtn.scrollIntoViewIfNeeded();
-  await typoBtn.click();
+  await typoBtn.click({ force: true });
   await page.waitForTimeout(300);
   const typoReveal = panel.locator('[data-tw-reveal="typography"]');
   if (await typoReveal.isVisible()) {
