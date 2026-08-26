@@ -1186,6 +1186,7 @@
   // A literal value reads a shade back from a token: still legible, but not
   // claiming the same standing as something on the scale.
   var LITERAL = '#b4b4b4';
+  var EDGE = '#333333';     // the hairline around a dropdown, from the frame
   var BRAND = '#d97959';  // --primary from the template
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
@@ -1550,9 +1551,11 @@
       P + ' .bw-detach:hover{background:var(--bw-hover);color:var(--bw-fg)}',
 
       /* colour popover */
-      PP + '{position:fixed;width:220px;max-height:340px;z-index:2147483647;',
+      // border-box on the popover itself, not just its children: the 220 in the
+      // frame is the outer width, and PP + ' *' only reaches descendants.
+      PP + '{position:fixed;width:220px;max-height:340px;z-index:2147483647;box-sizing:border-box;',
       '  display:none;flex-direction:column;overflow:hidden;background:var(--bw-card);',
-      '  color:var(--bw-fg);border:0;border-radius:12px;',
+      '  color:var(--bw-fg);border:1px solid ' + EDGE + ';border-radius:12px;',
       '  box-shadow:var(--bw-shadow);user-select:none}',
       // Family names are the longest label any of these lists carries — a rung
       // is `lg`, a hue is `clay`, but a face is "Euclid Circular B". 260px is
