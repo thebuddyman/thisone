@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-19 commits, working tree clean, `npm test` green.
+20 commits, working tree clean, `npm test` green.
 
 ---
 
@@ -167,10 +167,12 @@ be rewritten (a container, or JSX that refuses) the field is disabled and the
 reason is its placeholder, said in the field rather than beside it.
 
 **An axis field owns the two edges beneath it — both ways.** A `py-*` lookup
-cannot see `pt-*`, so reading an axis reads its edges. Edges that disagree open
-the four-edge view by themselves; folded by hand they show comma separated,
-upright — two real values are not one inherited one — with `0` for an edge that
-owns no class, because `, 8` reads as a missing number.
+cannot see `pt-*`, so reading an axis reads its edges. Disagreement is the only
+reason the four-edge view opens: `pt-0 pb-0 pl-4 pr-4` reads perfectly well as
+0 and 16, and two inputs beat four for saying the same thing. Folded, a
+disagreeing pair shows comma separated and upright — two real values are not one
+inherited one — with `0` for an edge that owns no class, because `, 8` reads as
+a missing number.
 Writing has to clear them for the same reason — leaving `pl-6` in place while
 writing `px-8` means the more specific class wins and the field you just typed
 into does nothing.

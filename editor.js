@@ -1853,20 +1853,22 @@
       if (!show) return;
       if (expandedFor[box.prefix] !== selected) {
         expandedFor[box.prefix] = selected;
-        // Open on an element that already owns the finer classes, so one
-        // written with pt-6 does not look unset behind a collapsed view — and
-        // on one whose two edges simply disagree, because a single axis field
-        // cannot state two values without a comma. Decided once, here; after
-        // that the toggle is the user's.
-        var perSide = open.some(function (f) {
-          return readSpacing(selected, box.prefix, f.side).source === 'explicit';
-        });
-        var uneven = !box.expanded && Object.keys(PAIR).some(function (axis) {
-          var edges = PAIR[axis];
-          return spacingText(readSpacing(selected, box.prefix, edges[0])) !==
-                 spacingText(readSpacing(selected, box.prefix, edges[1]));
-        });
-        expanded[box.prefix] = perSide || uneven;
+        // Four inputs are worth showing only when they would say something two
+        // cannot. Now that an axis field reads the edges beneath it, pt-0 pb-0
+        // pl-4 pr-4 reads perfectly well as 0 and 16 — so the four edges open
+        // for disagreement and nothing else. Decided once, here; after that the
+        // toggle is the user's.
+        expanded[box.prefix] = box.expanded
+          // gap expands to its two axes, which have no edges to compare; show
+          // them when either is set in its own right.
+          ? open.some(function (f) {
+            return readSpacing(selected, box.prefix, f.side).source === 'explicit';
+          })
+          : Object.keys(PAIR).some(function (axis) {
+            var edges = PAIR[axis];
+            return spacingText(readSpacing(selected, box.prefix, edges[0])) !==
+                   spacingText(readSpacing(selected, box.prefix, edges[1]));
+          });
       }
       render();
     });

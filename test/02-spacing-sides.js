@@ -257,6 +257,16 @@ function check(name, pass, detail) {
   check('an unset edge in a comma pair reads 0',
     (await read('p-y')) === '20, 0', await read('p-y'));
 
+  // Four per-side classes that agree in pairs say nothing two fields cannot,
+  // now that an axis reads its edges — so they fold.
+  await reselect('text-2xl font-bold pt-0 pb-0 pl-4 pr-4');
+  check('per-side classes that agree in pairs stay folded',
+    (await shown()).includes('p-y') && !(await shown()).includes('p-t'),
+    (await shown()).join(','));
+  check('and the two folded fields state them',
+    (await read('p-y')) === '0' && (await read('p-x')) === '16',
+    [await read('p-y'), await read('p-x')].join(' / '));
+
   // Put the four-value element back for the checks below.
   await reselect('text-2xl font-bold pt-5 pb-2 pl-6 pr-6');
   await panel.locator('[data-tw-toggle="p"]').click();
