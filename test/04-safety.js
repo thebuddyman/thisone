@@ -22,6 +22,10 @@ async function step(panel, field, dir) {
 }
 /** Pick a Tailwind colour through the popover: open → hue → shade. */
 async function pickColor(panel, prefix, hue, shade) {
+  // A colour that is not set stands in for itself with a + row, so open it the
+  // way a user would before reaching for the field.
+  const reveal = panel.locator(`[data-tw-reveal="${prefix}"]`);
+  if (await reveal.isVisible()) await reveal.click();
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
   const pop = panel.page().locator('[data-tw-pop]'); // floats on <body>, not inside the panel
   // The popover opens on the element's current hue when it has one, so step

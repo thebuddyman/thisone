@@ -11,8 +11,16 @@ const FAMILY = {
   // words are the only safe test.
   textAlign: /^text-(?:left|center|right|justify|start|end)$/,
   radiusArb: /^rounded-\[[^\]]+\]$/,
-  radiusSide: /^rounded-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee)(?:-|$)/,
+  // Everything that lands on a corner — what the all-corners field owns and
+  // clears. Nothing else in Tailwind begins with the word.
+  radiusAny: /^rounded(?:-|$)/,
+  // The logical forms, which depend on writing direction and are the only
+  // radius classes left exactly as authored.
+  radiusLogical: /^rounded-(?:s|e|ss|se|es|ee)(?:-|$)/,
 };
+
+// The four physical corners, which now have fields of their own.
+FAMILY.corner = (cls) => /^rounded-(?:tl|tr|bl|br)(?:-|$)/.test(cls);
 
 // The ladder the overlay builds from the theme, plus the two ends the utility
 // bakes in. `rounded` with no suffix is the v3 alias — read, never written.
@@ -30,8 +38,17 @@ const cases = [
   ['rounded','radius',1],['rounded-sm','radius',1],['rounded-2xl','radius',1],['rounded-full','radius',1],['rounded-none','radius',1],['rounded-[3px]','radius',1],
   // The ones a /^rounded-/ prefix would have eaten.
   ['rounded-t-lg','radius',0],['rounded-tl-xl','radius',0],['rounded-s','radius',0],['rounded-l-[2px]','radius',0],['rounded-e-full','radius',0],
-  ['rounded-t-lg','radiusSide',1],['rounded-l-[2px]','radiusSide',1],['rounded-s','radiusSide',1],['rounded-br-md','radiusSide',1],
-  ['rounded-sm','radiusSide',0],['rounded-2xl','radiusSide',0],['rounded','radiusSide',0],['rounded-[3px]','radiusSide',0],
+  // The logical forms, which are the ones left as written. rounded-s must not
+  // catch rounded-sm, and rounded-e must not catch rounded-[3px].
+  ['rounded-s-lg','radiusLogical',1],['rounded-ss-md','radiusLogical',1],['rounded-e','radiusLogical',1],
+  ['rounded-sm','radiusLogical',0],['rounded-2xl','radiusLogical',0],['rounded-t-lg','radiusLogical',0],['rounded-br-md','radiusLogical',0],
+  // The four corner fields own exactly these.
+  ['rounded-tl-xl','corner',1],['rounded-br-md','corner',1],['rounded-bl-[3px]','corner',1],['rounded-tr','corner',1],
+  ['rounded-t-lg','corner',0],['rounded-l-[2px]','corner',0],['rounded-ss-md','corner',0],['rounded-lg','corner',0],
+  // The all-corners write clears every one of them, and nothing else.
+  ['rounded','radiusAny',1],['rounded-lg','radiusAny',1],['rounded-[3px]','radiusAny',1],
+  ['rounded-t-lg','radiusAny',1],['rounded-tl-xl','radiusAny',1],['rounded-ss-md','radiusAny',1],
+  ['round','radiusAny',0],['roundedx','radiusAny',0],['border-rounded','radiusAny',0],
   ['text-left','textAlign',1],['text-center','textAlign',1],['text-right','textAlign',1],['text-justify','textAlign',1],
   // The three families that share the prefix must not see each other.
   ['text-lg','textAlign',0],['text-2xl','textAlign',0],['text-clay','textAlign',0],['text-slate-500','textAlign',0],['text-[13px]','textAlign',0],['text-[#fffdf9]','textAlign',0],

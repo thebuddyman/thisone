@@ -212,7 +212,8 @@ const server = plan.framework === 'html'
   ? spawn(process.execPath, [path.join(HERE, 'server.js')],
       { stdio: 'inherit', env: { ...process.env, TW_EDITOR_FILE: path.join(plan.root, 'index.html') } })
   : spawn(process.execPath,
-      [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(port), '--app', app],
+      [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(port), '--app', app]
+        .concat(flag('prompt') ? ['--prompt'] : []),
       { stdio: 'inherit' });
 
 console.log(`\n${dim('start your app separately: ' + (plan.devCommand || 'n/a') + '  →  ' + app)}\n`);

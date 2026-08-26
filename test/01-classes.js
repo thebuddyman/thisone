@@ -38,6 +38,10 @@ const rgb = (page, sel) => page.evaluate((s) => {
 
 /** Pick a Tailwind colour through the popover: open → hue → shade. */
 async function pickColor(panel, prefix, hue, shade) {
+  // A colour that is not set stands in for itself with a + row, so open it the
+  // way a user would before reaching for the field.
+  const reveal = panel.locator(`[data-tw-reveal="${prefix}"]`);
+  if (await reveal.isVisible()) await reveal.click();
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
   const pop = panel.page().locator('[data-tw-pop]'); // floats on <body>, not inside the panel
   // The popover opens on the element's current hue when it has one, so step
@@ -116,6 +120,126 @@ function check(name, pass, detail) {
   await pickColor(panel, 'bg', 'emerald', '500');
   const after = await rgb(page, '[data-eid="8"]');
   check('bg colour applied instantly', after.bg === after.emerald, `${after.bg} vs emerald ${after.emerald}`);
+
+  // ---- the colour field, frame 4:551 ----
+  //
+  // A 20x20 swatch on the 12px gutter with the name 8px after it, so the value
+  // starts at 40 — the same place a spacing field's does behind its 20px mark.
+  //
+  // The hex check below rewrites the card's classes to get an arbitrary colour
+  // on screen, so the string it arrives with is put back verbatim afterwards —
+  // the rest of this suite goes on to save it and read it off disk.
+  const beforeColour = await card.getAttribute('class');
+  const swatch = await page.evaluate(() => {
+    const r = document.querySelector('[data-tw-editor="panel"] [data-tw-field="bgColor"]');
+    const f = r.querySelector('.bw-field').getBoundingClientRect();
+    const chip = r.querySelector('.bw-chip').getBoundingClientRect();
+    const name = r.querySelector('.bw-cname').getBoundingClientRect();
+    const snow = r.querySelector('.bw-snow');
+    return {
+      x: Math.round(chip.left - f.left), w: Math.round(chip.width), h: Math.round(chip.height),
+      radius: getComputedStyle(r.querySelector('.bw-chip')).borderRadius,
+      name: Math.round(name.left - f.left),
+      snow: !!(snow && snow.offsetParent),
+      italic: getComputedStyle(r.querySelector('.bw-cname')).fontStyle === 'italic',
+    };
+  });
+  check('the swatch is 20x20 with a 3px radius, 12px in',
+    swatch.x === 12 && swatch.w === 20 && swatch.h === 20 && swatch.radius === '3px',
+    `${swatch.x}: ${swatch.w}x${swatch.h} r${swatch.radius}`);
+  check('and the name starts at 40', swatch.name === 40, swatch.name);
+  check('a token colour is neither snowflaked nor italic',
+    !swatch.snow && !swatch.italic, JSON.stringify(swatch));
+
+  // The chevron is an affordance, not information: hidden until the cursor is
+  // on the field, kept on every field that opens a list.
+  await panel.locator('[data-tw-field="bgColor"] .bw-field').hover();
+  check('the chevron comes back on hover',
+    (await page.evaluate(() => getComputedStyle(document.querySelector(
+      '[data-tw-editor="panel"] [data-tw-field="bgColor"] .bw-chev')).opacity)) === '1');
+
+  // An arbitrary colour is a literal, exactly as p-[13px] is, and this was the
+  // one field in the panel that did not say so.
+  await card.evaluate((el) => { el.className = 'bg-[#ffdb25] p-4'; });
+  await page.keyboard.press('Escape');
+  await card.click({ position: { x: 120, y: 6 } });
+  const jit = await page.evaluate(() => {
+    const r = document.querySelector('[data-tw-editor="panel"] [data-tw-field="bgColor"]');
+    const snow = r.querySelector('.bw-snow');
+    return {
+      text: r.querySelector('.bw-cname').textContent.trim(),
+      snow: !!(snow && snow.offsetParent),
+      italic: getComputedStyle(r.querySelector('.bw-cname')).fontStyle === 'italic',
+    };
+  });
+  check('a hex colour carries the snowflake, and is italic with it',
+    jit.snow && jit.italic && /^#/.test(jit.text), JSON.stringify(jit));
+
+  // ---- a colour the element paints on itself with a style attribute ----
+  //
+  // 714 elements in uiux_experiment carry a `style` prop and 263 of them set a
+  // colour, so this is an idiom rather than an edge. There is nothing in the
+  // class list to read, and an inline declaration outranks every class — so
+  // the panel shows what is painted and refuses to write over it, rather than
+  // calling the element unset and offering a + for a colour plainly on screen.
+  await card.evaluate((el) => {
+    el.className = 'p-4';
+    el.style.color = 'rgb(255, 136, 0)';
+  });
+  await page.keyboard.press('Escape');
+  await card.click({ position: { x: 120, y: 6 } });
+  const inline = await page.evaluate(() => {
+    const p = document.querySelector('[data-tw-editor="panel"]');
+    const row = p.querySelector('[data-tw-field="textColor"]');
+    return {
+      shown: !!row.offsetParent,
+      offered: !!p.querySelector('[data-tw-reveal="text"]').offsetParent,
+      text: row.querySelector('.bw-cname').textContent.trim(),
+      swatch: getComputedStyle(row.querySelector('.bw-chip')).backgroundColor,
+      locked: p.querySelector('[data-tw-color-open="text"]').disabled,
+    };
+  });
+  check('an inline colour is read, not called unset',
+    inline.shown && !inline.offered && inline.text === '#FF8800',
+    JSON.stringify(inline));
+  check('and its swatch shows the colour that is actually painted',
+    inline.swatch === 'rgb(255, 136, 0)', inline.swatch);
+  check('the field refuses rather than writing a class an inline style outranks',
+    inline.locked);
+
+  // ---- what you can do to a colour lives in the list, not in the field ----
+  //
+  // A control beside the value that appears under the cursor reads as "delete
+  // this" whatever its icon says, and removing a colour had no home at all —
+  // the palette could only put one on, which since a revealed row starts at
+  // white meant a colour you could add and not take off.
+  await card.evaluate((el) => { el.style.color = ''; el.className = 'bg-white p-4'; });
+  await page.keyboard.press('Escape');
+  await card.click({ position: { x: 120, y: 6 } });
+  check('the field carries no control of its own',
+    (await panel.locator('.bw-detach').count()) === 0);
+
+  await panel.locator('[data-tw-color-open="bg"]').click();
+  check('the list names both things you can do to a colour that is set',
+    (await page.locator('[data-tw-pop] .bw-pop-act').allTextContents())
+      .join(' | ') === 'Detach to a hex | Remove background',
+    (await page.locator('[data-tw-pop] .bw-pop-act').allTextContents()).join(' | '));
+
+  await page.locator('[data-tw-color-none="bg"]').click();
+  check('removing takes the class off and nothing else',
+    (await card.getAttribute('class')) === 'p-4', await card.getAttribute('class'));
+  check('and the element goes back to painting nothing',
+    (await card.evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgba(0, 0, 0, 0)');
+  // The row would otherwise have nothing to show, fold back to its + and take
+  // the field out from under the cursor that just used it — and that + writes
+  // white, so the way back to picking would be to add a colour first.
+  check('the row stays open to pick again, rather than folding to its +',
+    (await panel.locator('[data-tw-color-open="bg"]').isVisible()) &&
+    !(await panel.locator('[data-tw-reveal="bg"]').isVisible()));
+
+  await card.evaluate((el, cls) => { el.style.color = ''; el.className = cls; }, beforeColour);
+  await page.keyboard.press('Escape');
+  await card.click({ position: { x: 120, y: 6 } });
 
   const live = await card.getAttribute('class');
   check('old bg-white stripped, no duplicates',

@@ -17,6 +17,7 @@ const http = require('http');
 const path = require('path');
 
 const { loadTypeScript, parseLoc, editFile } = require('./jsx-adapter');
+const { runTurn } = require('./claude');
 const {
   compilePalette, extractColors, extractTextSizes, extractFontWeights, extractRadii, HUES,
 } = require('./palette');
@@ -29,6 +30,17 @@ function arg(name, fallback) {
 const ROOT = path.resolve(arg('root', process.cwd()));
 const PORT = Number(arg('port', 3500));
 const APP = arg('app', 'http://localhost:3000');
+
+// Off unless asked for, and the tab is not even drawn without it.
+//
+// /edit and /prompt are not the same kind of route wearing the same lock.
+// /edit replaces a byte span inside a .tsx under the root, and safeResolve is
+// what makes that true; /prompt hands a sentence to a coding agent, and no
+// amount of path checking bounds what comes out the other side. Same token,
+// same origin, categorically larger blast radius — so it is opt-in, the way
+// anything you would not want on by default has to be.
+const PROMPT_ENABLED = process.argv.includes('--prompt');
+const PROMPT_MODEL = arg('prompt-model', undefined);
 const OVERLAY_FILE = path.join(__dirname, '..', 'editor.js');
 
 // Next treats localhost and 127.0.0.1 as different origins; allow both forms or
@@ -122,6 +134,117 @@ function json(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
+/**
+ * The three checks every writing route shares. Returns false once it has
+ * answered the request itself.
+ *
+ * Factored out when /prompt arrived rather than copied: the second copy of a
+ * security gate is the one that drifts.
+ */
+function guard(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+    json(res, 403, { ok: false, error: `origin not allowed: ${origin || '(none)'}` });
+    return false;
+  }
+  if (!(req.headers['content-type'] || '').includes('application/json')) {
+    // The three content types a cross-origin form can send without preflight
+    // are exactly the ones to refuse here.
+    json(res, 415, { ok: false, error: 'expected application/json' });
+    return false;
+  }
+  if (req.headers.authorization !== `Bearer ${TOKEN}`) {
+    json(res, 401, { ok: false, error: 'bad or missing token' });
+    return false;
+  }
+  return true;
+}
+
+/** Read a JSON body, refusing anything that looks like it is not one. */
+function readJson(req, res, limit, then) {
+  let body = '';
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > limit) req.destroy();
+  });
+  req.on('end', () => {
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      return json(res, 400, { ok: false, error: 'invalid JSON' });
+    }
+    then(payload);
+  });
+}
+
+// One turn at a time. Two headless sessions editing the same file from the same
+// panel is a race with no upside — and the panel has one text box, so a second
+// turn can only be an accident.
+let turnInFlight = null;
+
+function handlePrompt(req, res, payload) {
+  if (typeof payload.prompt !== 'string' || !payload.prompt.trim()) {
+    return json(res, 400, { ok: false, error: 'prompt must be a non-empty string' });
+  }
+  if (payload.prompt.length > 8000) {
+    return json(res, 400, { ok: false, error: 'prompt too long' });
+  }
+  if (turnInFlight) {
+    return json(res, 409, { ok: false, error: 'a turn is already running' });
+  }
+
+  // Server-sent events rather than a JSON reply: a turn takes tens of seconds
+  // and the panel has to show that something is happening.
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  let settled = false;
+  const send = (event) => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (event.t === 'done') {
+      settled = true;
+      turnInFlight = null;
+      res.end();
+    }
+  };
+
+  const ctx = payload.context && typeof payload.context === 'object' ? payload.context : null;
+  console.log(`prompt: ${JSON.stringify(payload.prompt.slice(0, 80))}${ctx ? ` @ ${ctx.file}:${ctx.line}` : ''}`);
+
+  turnInFlight = runTurn(
+    {
+      cwd: ROOT,
+      prompt: payload.prompt,
+      context: ctx,
+      sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : undefined,
+      model: PROMPT_MODEL,
+    },
+    send
+  );
+
+  // The tab was closed, or Stop was pressed. Either way nobody is reading the
+  // answer, and a turn nobody is reading is still writing to their files.
+  //
+  // On the RESPONSE, never on the request: `req`'s 'close' fires as soon as the
+  // body has been read, which is a moment after every turn starts — it killed
+  // each one within milliseconds and reported it as `claude exited null`, a
+  // signal death dressed up as a crash. `res` closes when the client actually
+  // goes away, which is the thing being asked about.
+  res.on('close', () => {
+    if (settled) return;
+    settled = true;
+    if (turnInFlight) {
+      turnInFlight.kill();
+      turnInFlight = null;
+    }
+  });
+}
+
 function handleEdit(req, res, payload) {
   const list = Array.isArray(payload.edits) ? payload.edits : [payload];
   if (!list.length) return json(res, 400, { ok: false, error: 'no edits supplied' });
@@ -199,6 +322,7 @@ const server = http.createServer((req, res) => {
         idAttr: 'data-bw-loc',
         previewAttr: 'data-bw-edited',
         endpoint: `http://localhost:${PORT}/edit`,
+        promptEndpoint: PROMPT_ENABLED ? `http://localhost:${PORT}/prompt` : null,
         token: TOKEN,
         text: true, // only a lone static JsxText child is editable; the rest is refused
         // The dev server re-renders from the new source after a write, so the
@@ -220,35 +344,29 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/edit') {
-    const origin = req.headers.origin;
-    if (!origin || !ALLOWED_ORIGINS.has(origin)) {
-      return json(res, 403, { ok: false, error: `origin not allowed: ${origin || '(none)'}` });
-    }
-    if (!(req.headers['content-type'] || '').includes('application/json')) {
-      // The three content types a cross-origin form can send without preflight
-      // are exactly the ones to refuse here.
-      return json(res, 415, { ok: false, error: 'expected application/json' });
-    }
-    if (req.headers.authorization !== `Bearer ${TOKEN}`) {
-      return json(res, 401, { ok: false, error: 'bad or missing token' });
-    }
-
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 262144) req.destroy();
-    });
-    req.on('end', () => {
-      let payload;
-      try {
-        payload = JSON.parse(body);
-      } catch {
-        return json(res, 400, { ok: false, error: 'invalid JSON' });
-      }
+    if (!guard(req, res)) return;
+    readJson(req, res, 262144, (payload) => {
       try {
         handleEdit(req, res, payload);
       } catch (err) {
         console.error(err);
+        json(res, 500, { ok: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/prompt') {
+    if (!PROMPT_ENABLED) {
+      return json(res, 404, { ok: false, error: 'prompt disabled; start the server with --prompt' });
+    }
+    if (!guard(req, res)) return;
+    readJson(req, res, 16384, (payload) => {
+      try {
+        handlePrompt(req, res, payload);
+      } catch (err) {
+        console.error(err);
+        turnInFlight = null;
         json(res, 500, { ok: false, error: err.message });
       }
     });
@@ -270,5 +388,6 @@ compilePalette(ROOT)
       if (addr.address !== '127.0.0.1') throw new Error(`refusing to listen on ${addr.address}`);
       console.log(`bw editor  -> http://127.0.0.1:${PORT}  (project: ${ROOT})`);
       console.log(`app origin -> ${APP}`);
+      console.log(`prompt tab -> ${PROMPT_ENABLED ? 'on (claude may write anywhere under the root)' : 'off (--prompt to enable)'}`);
     });
   });

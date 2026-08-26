@@ -94,7 +94,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
     await panel.locator('[data-tw-save]').textContent());
   check('every other control folds away',
     !(await panel.locator('[data-tw-field="text"]').isVisible()) &&
-    !(await panel.locator('[data-tw-add-row]').isVisible()));
+    !(await panel.locator('[data-tw-reveal="radius"]').isVisible()));
   check('NOTHING was written to disk yet', disk() === before);
 
   // ---- undo puts it back ----

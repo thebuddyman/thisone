@@ -10,6 +10,10 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 /** Pick a Tailwind colour through the popover: open → hue → shade. */
 async function pickColor(panel, prefix, hue, shade) {
+  // A colour that is not set stands in for itself with a + row, so open it the
+  // way a user would before reaching for the field.
+  const reveal = panel.locator(`[data-tw-reveal="${prefix}"]`);
+  if (await reveal.isVisible()) await reveal.click();
   await panel.locator(`[data-tw-color-open="${prefix}"]`).click();
   const pop = panel.page().locator('[data-tw-pop]'); // floats on <body>, not inside the panel
   // The popover opens on the element's current hue when it has one, so step
@@ -227,10 +231,16 @@ function restore(g) {
   const handle = await btn.elementHandle(); // the class is about to change under it
 
   const radiusRow = panel.locator('[data-tw-field="radius"]');
+  const boxRadius = panel.locator('[data-tw-field="radius-all"] input');
   check('Radius row shows on a painted element', await radiusRow.isVisible());
-  check('Radius row reads the token the element wears',
-    (await radiusRow.locator('.bw-cname').textContent()).trim() === 'full',
-    await radiusRow.locator('.bw-cname').textContent());
+  // The field gives a length, not a token name. `full` is the one rung with no
+  // length behind it — calc(infinity * 1px) — so it keeps the symbol rather
+  // than printing the eight-digit number it computes to, and the tooltip
+  // carries the class either way.
+  check('Radius row reads what the element renders, and names it in the title',
+    (await boxRadius.inputValue()).trim() === '\u221e' &&
+    /rounded-full/.test(await boxRadius.getAttribute('title')),
+    `${await boxRadius.inputValue()}  (${await boxRadius.getAttribute('title')})`);
 
   // Tailwind's half steps are 12% of this project's spacing classes, and an
   // integers-only pattern read every one of them as unset.
@@ -251,8 +261,13 @@ function restore(g) {
     rungs.join(',') === 'none,xs,sm,md,lg,xl,2xl,3xl,4xl,full', rungs.join(','));
   check('current rung is marked',
     (await rpop.locator('[data-tw-radius="full"]').getAttribute('aria-current')) === 'true');
-  const lgLabel = await rpop.locator('[data-tw-radius="lg"] .bw-sizepx').textContent();
+  // The row IS the length now, the way the spacing list's rows are — so the
+  // number is the name, not a note beside it.
+  const lgLabel = await rpop.locator('[data-tw-radius="lg"] .bw-sizename').textContent();
   check("rung reports THIS route's value, not --radius-lg", lgLabel === '12px', lgLabel);
+  const rungLabels = await rpop.locator('[data-tw-radius] .bw-sizename').allTextContents();
+  check('every row is a pixel length, with no rung name to translate',
+    rungLabels.every((v) => /^\d+px$/.test(v) || v === '\u221e'), rungLabels.join(','));
 
   await rpop.locator('[data-tw-radius="lg"]').click();
   await page.waitForTimeout(600); // the button is transition-all duration-200
@@ -302,12 +317,199 @@ function restore(g) {
   check('arbitrary radius previews, with no rule in any source file',
     custom === '13px', custom);
 
+  // ---- the four corners ----
+  // The live-only half of the per-corner work. A route that renders
+  // `.rounded-lg` has generated nothing for `.rounded-tl-lg`, so the overlay
+  // must emit one — and emit it from THIS route's value. Built from the stock
+  // ladder instead, the corner would snap to 8px beside three 12px ones, which
+  // is the `px-6 md:px-12` failure wearing a different utility.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const coraCorner = snapshot(CORA);
+  const btn3 = page.locator('button.rounded-lg').first();
+  await btn3.scrollIntoViewIfNeeded();
+  await btn3.click();
+  await page.waitForTimeout(300);
+  const handle3 = await btn3.elementHandle();
+
+  await panel.locator('[data-tw-toggle="radius"]').click();
+  const cornerIn = (c) => panel.locator(`[data-tw-field="radius-${c}"] input`);
+  const cornerVals = [];
+  for (const c of ['tl', 'tr', 'bl', 'br']) cornerVals.push(await cornerIn(c).inputValue());
+  check("each corner reads the route's own rung, not the stock ladder",
+    cornerVals.every((v) => v === '12'), cornerVals.join('/'));
+
+  await panel.locator('[data-tw-radius-corner="tl"]').click();
+  await page.locator('[data-tw-radius="2xl"]').click();
+  await page.waitForTimeout(600);
+  const cornerCss = await handle3.evaluate((x) => {
+    const s = getComputedStyle(x);
+    return s.borderTopLeftRadius + ' / ' + s.borderTopRightRadius;
+  });
+  const cornerCls = await handle3.evaluate((x) => x.getAttribute('class'));
+  check('a per-corner rung is written as rounded-tl-*',
+    /(?:^| )rounded-tl-2xl(?: |$)/.test(cornerCls) && /(?:^| )rounded-lg(?: |$)/.test(cornerCls),
+    cornerCls.split(' ').filter((c) => c.startsWith('rounded')).join(' ') || '(none)');
+  // 21.6px, not the stock 16: Cora derives 2xl from --radius too, so this is
+  // the number that says the corner's runtime rule was built from the live
+  // value rather than from the ladder theme.css ships.
+  check('it previews on that corner alone, and the other three hold at 12px',
+    /^[\d.]+px \/ 12px$/.test(cornerCss) && !cornerCss.startsWith('12px'), cornerCss);
+
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1200);
+  const cornerDiff = coraCorner.split('\n')
+    .map((l, i) => [i, l, snapshot(CORA).split('\n')[i]])
+    .filter(([, a, b]) => a !== b);
+  check('exactly one line changed writing a corner', cornerDiff.length === 1,
+    cornerDiff.map(([i]) => i + 1).join(','));
+  if (cornerDiff.length === 1) {
+    const list = (l) => (/className="([^"]*)"/.exec(l) || [, l])[1].trim().split(/\s+/);
+    const B = list(cornerDiff[0][1]), A = list(cornerDiff[0][2]);
+    check('the corner class was added and nothing was taken away',
+      A.filter((t) => !B.includes(t)).join() === 'rounded-tl-2xl' &&
+      B.every((t) => A.includes(t)),
+      `+${A.filter((t) => !B.includes(t)).join(' ')} -${B.filter((t) => !A.includes(t)).join(' ')}`);
+  }
+
   // A radius shows nothing on an element with no edge to round, so the row
   // stays off — and stays one click away in the Add strip.
   await page.locator('fieldset').first().click({ position: { x: 3, y: 3 } });
   await page.waitForTimeout(300);
-  check('unpainted element: row is off but reachable from Add',
-    !(await radiusRow.isVisible()) && (await panel.locator('[data-tw-add="radius"]').count()) === 1);
+  check('unpainted element: the controls are off and the row offers them',
+    !(await radiusRow.isVisible()) &&
+    (await panel.locator('[data-tw-reveal="radius"]').isVisible()));
+
+  // ---- typography: one section, and a family read off the page ----
+  // Still on Cora: the route declares four families, one of them the project's
+  // own (Square Peg behind `accent`), which is the case a list of Google's
+  // fonts would get wrong in both directions.
+  await page.goto(APP + '/experiments/cora/login', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+
+  const typo = await page.evaluate(() => {
+    // What the overlay itself can see, by the rule it uses: a generated
+    // .font-<name> whose declaration sets font-family. A weight utility sets
+    // font-weight and cannot land here, which is the whole membership test.
+    const out = {};
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+      const walk = (rs) => { for (const r of rs) {
+        if (r.selectorText && r.style) {
+          const m = /^\.font-([a-zA-Z][a-zA-Z0-9-]*)$/.exec(r.selectorText);
+          if (m && r.style.fontFamily) out[m[1]] = r.style.fontFamily;
+        }
+        if (r.cssRules && r.cssRules.length) walk(r.cssRules);
+      } };
+      if (rules) walk(rules);
+    }
+    return out;
+  });
+  check('families come off the page, not a config or a font service',
+    Object.keys(typo).length >= 2 && !!typo.sans, Object.keys(typo).join(' '));
+  check('a weight utility never reads as a family', !typo.medium && !typo.bold,
+    Object.keys(typo).filter((k) => /^(medium|bold|semibold|light)$/.test(k)).join(' ') || 'none');
+
+  // Addressed by what the loader stamped, never by a class: the radius block
+  // above rewrites this same button's rounded-* on disk, so a selector naming
+  // one is stale by the time this runs. If the section is standing in for
+  // itself with a + row, that + is clicked, so the geometry below is measured
+  // on all four fields whatever this element happens to carry.
+  const typoBtn = page.locator('button[data-bw-loc]').first();
+  await typoBtn.scrollIntoViewIfNeeded();
+  await typoBtn.click();
+  await page.waitForTimeout(300);
+  const typoReveal = panel.locator('[data-tw-reveal="typography"]');
+  if (await typoReveal.isVisible()) {
+    await typoReveal.click();
+    await page.waitForTimeout(150);
+  }
+
+  // The frame: a full-width family field, weight and size sharing the line
+  // below it 12px apart, a 124-wide alignment segment under that.
+  const geo = await panel.evaluate((p) => {
+    const box = (sel) => {
+      const el = p.querySelector('[data-tw-section="typography"] ' + sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top) };
+    };
+    return {
+      label: p.querySelector('[data-tw-section="typography"] .bw-lbl').textContent,
+      family: box('[data-tw-field="family"]'),
+      weight: box('[data-tw-field="weight"]'),
+      size: box('[data-tw-field="font"]'),
+      align: box('[data-tw-field="align"]'),
+    };
+  });
+  check('one section label, not three', geo.label === 'Typography', geo.label);
+  check('the family field spans the full width',
+    geo.family.w === geo.weight.w + 12 + geo.size.w && geo.family.h === 40,
+    `${geo.family.w} vs ${geo.weight.w}+12+${geo.size.w}, h${geo.family.h}`);
+  check('weight and size share the next line, 12px apart',
+    geo.weight.y === geo.size.y && geo.size.x - (geo.weight.x + geo.weight.w) === 12,
+    `gap ${geo.size.x - (geo.weight.x + geo.weight.w)}`);
+  check('the rows sit 12px apart and 40px tall',
+    geo.weight.y - (geo.family.y + geo.family.h) === 12 &&
+    geo.align.y - (geo.weight.y + geo.weight.h) === 12 && geo.align.h === 40,
+    `${geo.weight.y - (geo.family.y + geo.family.h)} / ${geo.align.y - (geo.weight.y + geo.weight.h)}`);
+  check("the segment keeps the frame's 124px inside a stretching column",
+    geo.align.w === 124, String(geo.align.w));
+
+  // ---- write a family, and prove exactly one token moved ----
+  const famBefore = snapshot(CORA);
+  await panel.locator('[data-tw-family-open]').click();
+  const fpop = page.locator('[data-tw-pop]');
+  await page.waitForTimeout(250);
+  const listed = await fpop.locator('.bw-hue').count();
+  check('the list offers exactly the families the page can render',
+    listed === Object.keys(typo).length, `${listed} of ${Object.keys(typo).length}`);
+
+  const pickName = Object.keys(typo).find((k) => !['sans', 'serif', 'mono'].includes(k)) || 'serif';
+  const typoEl = await typoBtn.elementHandle();
+  const famRenderedBefore = await typoEl.evaluate((x) => getComputedStyle(x).fontFamily);
+  const clsBefore = (await typoEl.evaluate((x) => x.getAttribute('class'))).split(/\s+/);
+  await fpop.locator(`[data-tw-family="${pickName}"]`).click();
+  await page.waitForTimeout(400);
+  const famRenderedAfter = await typoEl.evaluate((x) => getComputedStyle(x).fontFamily);
+  check('the family previews with no rule added anywhere',
+    famRenderedAfter !== famRenderedBefore, `${famRenderedBefore} → ${famRenderedAfter}`);
+
+  // The font- trap, checked on the element itself: setting a family strips
+  // families by membership, so a weight sharing the prefix must be untouched.
+  const famCls = (await typoEl.evaluate((x) => x.getAttribute('class'))).split(/\s+/);
+  const kept = clsBefore.filter((c) => c.indexOf('font-') !== 0 || !typo[c.slice(5)]);
+  check('every class that was not a family survived the write',
+    kept.every((c) => famCls.includes(c)),
+    kept.filter((c) => !famCls.includes(c)).join(' ') || '(none lost)');
+  check('the element wears exactly one family, the new one',
+    famCls.filter((c) => c.indexOf('font-') === 0 && typo[c.slice(5)]).join() === 'font-' + pickName,
+    famCls.filter((c) => c.indexOf('font-') === 0).join(' ') || '(none)');
+
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1200);
+  check('the family write was not refused',
+    !/refus|cannot|failed/i.test(await panel.locator('[data-tw-status]').textContent()),
+    (await panel.locator('[data-tw-status]').textContent()).slice(0, 90));
+  const famAfter = snapshot(CORA);
+  const famDiff = famBefore.split('\n')
+    .map((l, i) => [i, l, famAfter.split('\n')[i]])
+    .filter(([, a, b]) => a !== b);
+  check('exactly one line changed writing the family', famDiff.length === 1,
+    famDiff.map(([i]) => i + 1).join(',') || '(no line changed)');
+  if (famDiff.length === 1) {
+    const list = (l) => (/className="([^"]*)"/.exec(l) || [, l])[1].trim().split(/\s+/);
+    const B = list(famDiff[0][1]), A = list(famDiff[0][2]);
+    const added = A.filter((t) => !B.includes(t));
+    const gone = B.filter((t) => !A.includes(t));
+    check('the only token added on disk is the family',
+      added.join() === 'font-' + pickName, `+${added.join(' ')} -${gone.join(' ')}`);
+    check('nothing but a family was removed on disk',
+      gone.every((t) => t.indexOf('font-') === 0 && typo[t.slice(5)]),
+      gone.join(' ') || '(nothing removed)');
+  }
+  check('line count unchanged by the family write',
+    famBefore.split('\n').length === famAfter.split('\n').length);
 
   await page.goto(APP + '/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);

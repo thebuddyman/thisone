@@ -55,10 +55,17 @@ function check(name, pass, detail) {
   // The field whose list is open says so. data-tw-field sits on the .bw-field
   // itself for some rows and on a wrapper for others, so find it either way —
   // tying the ring to the row lit every dropdown except the spacing ones.
+  // The ring is an outline, not an inset shadow: a child's background paints
+  // over a parent's inset shadow, and the token button fills its field, so the
+  // shadow form was invisible under .bw-ctoken:hover — which is where the
+  // cursor sits right after the click that opened the list. Read both, so this
+  // check is about the ring being visible rather than about which property
+  // happens to draw it.
   const ringOf = () => page.evaluate(() => {
     const n = document.querySelector('[data-tw-field="p-x"]');
     const box = n.classList.contains('bw-field') ? n : n.querySelector('.bw-field');
-    return getComputedStyle(box).boxShadow;
+    const cs = getComputedStyle(box);
+    return cs.boxShadow + ' | ' + cs.outlineColor + ' ' + cs.outlineWidth + ' ' + cs.outlineStyle;
   });
   const ringOpen = await ringOf();
   check('the field lights up while its list is open',
@@ -389,6 +396,160 @@ function check(name, pass, detail) {
     zeros.filter((z) => !z.unset).map((z) => `${z.field}=${z.value}`).join(' '));
 
   await card2.click({ position: { x: 3, y: 3 } });
+
+  // ---- a property that is not set keeps its row, with a + in it ----
+  //
+  // Frame 4:407: Margin unset is a 40px line reading "Margin" with a + where
+  // the fields go, in Margin's own slot. Not a chip in a strip at the end of
+  // the panel — that moved every unset property out of the order the panel
+  // otherwise reads in, and revealing one made the layout jump.
+  await page.locator('[data-eid="9"]').evaluate((el) => { el.className = 'p-4'; });
+  // Not the corner: the delete handle for the live selection sits there.
+  await page.locator('[data-eid="9"]').click({ position: { x: 60, y: 20 } });
+
+  const order = () => page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-tw-editor="panel"] .bw-body > *'))
+    .filter((n) => n.offsetParent)
+    .map((n) => (n.querySelector('.bw-lbl') || {}).textContent || ''));
+
+  const labels = await order();
+  check('every property has a row, set or not',
+    labels.join(' > ') === 'Text > Padding > Margin > Radius > Typography > Background > Text color',
+    labels.join(' > '));
+  check('and no Add strip at the end to go looking in',
+    (await panel.locator('[data-tw-add-row]').count()) === 0);
+  // A colour the element does not set is the same case as a margin it does
+  // not set: the field could only say so with a dash and an empty swatch.
+  check('a colour with nothing set stands in for itself too',
+    (await panel.locator('[data-tw-reveal="bg"]').isVisible()) &&
+    (await panel.locator('[data-tw-reveal="text"]').isVisible()) &&
+    !(await panel.locator('[data-tw-color-open="bg"]').isVisible()));
+  // A colour is the one kind of row whose + writes something. Every other one
+  // reveals a field that already has an answer — padding with no class still
+  // renders 0 — where a colour with no class is a dash and an empty swatch,
+  // which is what the row was hiding. So it starts at white.
+  await panel.locator('[data-tw-reveal="bg"]').click();
+  check('and its + brings the field out, starting at white',
+    (await panel.locator('[data-tw-color-open="bg"]').isVisible()) &&
+    !(await panel.locator('[data-tw-reveal="bg"]').isVisible()) &&
+    (await page.locator('[data-eid="9"]').getAttribute('class')) === 'p-4 bg-white',
+    await page.locator('[data-eid="9"]').getAttribute('class'));
+  check('and white actually paints, with no rule in any source file',
+    (await page.locator('[data-eid="9"]').evaluate(
+      (e) => getComputedStyle(e).backgroundColor)) === 'rgb(255, 255, 255)');
+
+  const reveal = panel.locator('[data-tw-reveal="m"]');
+  check('the unset margin row is the frame\'s 40px line', 
+    (await reveal.boundingBox()).height === 40, (await reveal.boundingBox()).height);
+  check('its label sits beside the +, not above it',
+    await reveal.evaluate((n) => {
+      const l = n.querySelector('.bw-lbl').getBoundingClientRect();
+      const b = n.querySelector('.bw-toggle').getBoundingClientRect();
+      return Math.abs((l.top + l.height / 2) - (b.top + b.height / 2)) < 2 && l.right <= b.left;
+    }));
+  check('the + sits in the same column a section toggle does',
+    await page.evaluate(() => {
+      const p = document.querySelector('[data-tw-editor="panel"]');
+      const add = p.querySelector('[data-tw-reveal="m"] .bw-toggle').getBoundingClientRect();
+      const tog = p.querySelector('[data-tw-toggle="p"]').getBoundingClientRect();
+      return Math.round(add.right) === Math.round(tog.right) && add.width === tog.width;
+    }));
+  // The whole row is the button, not the 20px mark at the end of it.
+  check('the row itself is the control, end to end',
+    await reveal.evaluate((n) => n.tagName === 'BUTTON' &&
+      n.hasAttribute('data-tw-add') && n.querySelectorAll('button').length === 0));
+
+  // ---- the frame's hairlines ----
+  const rules = () => page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-tw-editor="panel"] .bw-body > *'))
+    .filter((n) => n.offsetParent)
+    .map((n) => n.classList.contains('has-rule')));
+  const marks = await rules();
+  check('every row on screen carries a divider except the top one',
+    marks.length > 3 && marks[0] === false && marks.slice(1).every(Boolean),
+    marks.join(','));
+  check('a divider runs the full width of the panel, and hangs no scrollbar off it',
+    await page.evaluate(() => {
+      const b = document.querySelector('[data-tw-editor="panel"] .bw-body');
+      const row = b.querySelector('.has-rule');
+      const line = getComputedStyle(row, '::before');
+      return b.scrollWidth === b.clientWidth &&
+        line.left === '-20px' && line.height === '1px';
+    }));
+  // 20px of air on both sides of every line, which is what the frame measures:
+  // 167 to a Padding label at 186.5, 280 to a Margin one at 299.5.
+  //
+  // Measured to what is drawn, not to the row box. An open row starts at its
+  // label, so the two are the same thing; a reveal row is a 15px label centred
+  // in a 40px box, so half its air is already inside it and its box would read
+  // 10 where the eye sees 20. Two ways of buying the same gap — which is why
+  // this asks about the gap and not about a margin.
+  const air = await page.evaluate(() => {
+    const body = document.querySelector('[data-tw-editor="panel"] .bw-body');
+    const rows = Array.from(body.children).filter((n) => n.offsetParent);
+    const edge = (r, side) => {
+      const box = r.classList.contains('bw-reveal')
+        ? r.querySelector('.bw-lbl').getBoundingClientRect()
+        : r.getBoundingClientRect();
+      return box[side];
+    };
+    const out = [];
+    let prev = null;
+    for (const r of rows) {
+      if (r.classList.contains('has-rule')) {
+        const line = r.getBoundingClientRect().top +
+          parseFloat(getComputedStyle(r, '::before').top);
+        out.push([line - edge(prev, 'bottom'), edge(r, 'top') - line]);
+      }
+      prev = r;
+    }
+    return out;
+  });
+  check('every row stands 20px off its divider, on both sides',
+    air.length > 3 && air.every((pair) => pair.every((v) => Math.abs(v - 20) <= 2)),
+    air.map((p) => p.map((v) => Math.round(v)).join('/')).join(' '));
+
+  // A line the same colour as a field vanishes wherever it crosses one, which
+  // is most of its length — so this is the whole reason it is not the frame's
+  // #232323.
+  check('and is not the colour of the fields it runs past',
+    await page.evaluate(() => {
+      const p = document.querySelector('[data-tw-editor="panel"]');
+      const line = getComputedStyle(p.querySelector('.bw-body > .has-rule'), '::before');
+      const field = getComputedStyle(p.querySelector('.bw-field'));
+      return line.backgroundColor !== field.backgroundColor;
+    }),
+    await page.evaluate(() => getComputedStyle(
+      document.querySelector('[data-tw-editor="panel"] .bw-body > .has-rule'),
+      '::before').backgroundColor));
+
+  // gap only means something on a flex or grid container, so it is not offered
+  // on this one — nothing is hidden beyond reach, but nothing useless is added.
+  check('gap is not offered on a block element',
+    !(await panel.locator('[data-tw-reveal="gap"]').isVisible()));
+  // Escape first: clicking an element that is already selected is a no-op, so
+  // the panel would still be describing the block version of it.
+  await page.keyboard.press('Escape');
+  await page.locator('[data-eid="9"]').evaluate((el) => { el.className = 'p-4 flex'; });
+  await page.locator('[data-eid="9"]').click({ position: { x: 60, y: 20 } });
+  check('…and is, on a flex one',
+    await panel.locator('[data-tw-reveal="gap"]').isVisible());
+
+  // Clicked at the label end, which is the half of the row that used to do
+  // nothing at all.
+  const target = await panel.locator('[data-tw-reveal="m"]').boundingBox();
+  await page.mouse.click(target.x + 30, target.y + target.height / 2);
+  check('the + fills the row in where it already stood',
+    !(await panel.locator('[data-tw-reveal="m"]').isVisible()) &&
+    (await panel.locator('[data-tw-field="m-y"]').isVisible()));
+  check('revealing wrote nothing',
+    (await page.locator('[data-eid="9"]').getAttribute('class')) === 'p-4 flex',
+    await page.locator('[data-eid="9"]').getAttribute('class'));
+  const after = await order();
+  check('and the panel still reads in the same order',
+    after.join(' > ') ===
+      'Text > Padding > Margin > Radius > Gap > Typography > Background > Text color',
+    after.join(' > '));
 
   await page.screenshot({ path: `${__dirname}/sides.png` });
   await browser.close();

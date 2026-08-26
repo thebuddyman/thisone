@@ -18,14 +18,19 @@ Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
 ## Run it
 
 ```bash
-npm test                                   # 10 suites, ~70s
+npm test                                   # 11 suites, ~80s
 node cli.js --root ../uiux_experiment --check   # inspect a project
 node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
+node cli.js --root ../uiux_experiment --prompt  # …with the Prompt tab enabled
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                   # the standalone HTML demo
-node next/verify.js --root ../uiux_experiment   # 55 live checks against the real app
+node next/verify.js --root ../uiux_experiment   # 79 live checks against the real app
+node next/verify-prompt.js --root ../uiux_experiment  # 14 live checks, needs --prompt
 ```
+
+Without `--prompt` the route 404s and the overlay is told `promptEndpoint:null`,
+so the tab is never drawn. Two tabs on screen means the flag is on.
 
 `uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
 `tools/bw-loader.cjs`). `cli.js --unwire` removes it, byte-exactly.
@@ -36,16 +41,18 @@ node next/verify.js --root ../uiux_experiment   # 55 live checks against the rea
 
 | file | what it is |
 |---|---|
-| `editor.js` | the whole client overlay — panel, selection, all controls (~2600 lines) |
+| `editor.js` | the whole client overlay — panel, selection, all controls (~2900 lines) |
 | `server.js` | HTML mode: tags, serves, writes back |
 | `next/loader.cjs` | Turbopack loader — stamps `data-bw-loc="file:line:col:hash"` |
 | `next/jsx-adapter.js` | the writer: resolves a location, replaces or cuts a byte span |
 | `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights/radii |
 | `next/server.js` | the editor server for a Next project |
+| `next/claude.js` | the Prompt tab's backend — one headless `claude -p` per turn |
+| `next/verify-prompt.js` | live suite for the Prompt tab; spends real quota, not in `npm test` |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `assets/` | the panel's icons, exported from Figma and inlined verbatim |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
-| `test/` | 10 suites; `run.mjs` orchestrates |
+| `test/` | 11 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 `how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
@@ -85,10 +92,203 @@ the route's own rule and visibly shrink an element the moment it was touched,
 the same failure as the `px-6 md:px-12` bug. Rungs a route has never generated
 get a runtime rule from the server's ladder instead.
 
+**Radius is one field over four, not one view swapped for another.** Frame
+2:270: the box field across the full width with a 40x40 toggle beside it, and
+the four corners in a 2x2 grid underneath — top row then bottom, the order
+`border-radius` says them in. The corners sit *under* the summary rather than
+replacing it, which is where this parts from padding and margin: their toggle
+swaps two axes for four edges because `px-*` and `pt-*` are the same kind of
+thing, and here there is no middle level to swap to. The field above is the
+summary, and it earns its line while the four are open because when they
+disagree it is the only place all four are said at once.
+
+**Radius is spoken in pixels too, box and corners alike.** All five are the
+same field — `radiusField(target)`, `side: null` for the box — and all five
+show a bare number: 12, not `xl`, and no `12px` note beside it. The rung is
+still what gets written where one lands (`rounded-lg`, `rounded-tl-lg`), and
+anything else becomes `rounded-[13px]` with the snowflake on it, exactly as
+spacing does. The reason is the same reason spacing gives: `lg` is 12 here and
+8 somewhere else, so a token name makes you look it up before you can read your
+own element. The name survives in the tooltip and in the dropdown's filter.
+
+**`rounded-full` is the one rung with no length, so it keeps the symbol.**
+`calc(infinity * 1px)`, which computes to an eight-digit number no field should
+print. It shows `∞`, in the field and in the list, and the tooltip names the
+class.
+
+**Four corners that disagree are said in full, comma separated.** An axis shows
+`0, 8` for the same reason: one number would be a lie about the others, and
+naming the disagreement ("Mixed") or averaging it tells you less than the four
+values do. Typing one value over the list flattens all four; tabbing through it
+does not, because a comma list parses as nothing writable and the field puts
+itself back. Like the axis's pair, this is the state the unfolded view exists
+for — decided when the element is selected, so the toggle owns it after that.
+
+**Radius sits with padding and margin, not with typography.** It describes the
+same box they do. Appended straight after the margin section in the body build
+rather than at a fixed index, so it stays put as rows come and go. Gap follows
+it, which is the one oddity: the BOXES loop puts gap last, and gap shows on
+flex and grid containers only, so most selections never see the seam.
+
+**A property that is not set keeps its row, with a + in it.** Frame 4:407 draws
+Margin that way — a 40px line, the label on the left, a + in the same 40x40
+tile a section's toggle occupies — sitting in Margin's own slot between Padding
+and Typography. That placement is the point, and it is what the strip of chips
+at the foot of the panel got wrong: every unset property had been moved out of
+the order the panel otherwise reads in, so finding one meant knowing to look at
+the end, and revealing it made the layout jump as the row appeared somewhere
+else. A row already in place only fills in. Revealing still writes nothing.
+
+**The reveal row is a button, not a row with a button in it.** A 20px + is a
+small thing to hit for something this coarse, and the row has one meaning end
+to end — so the whole 312px takes the click and the label is part of the target
+rather than text sitting beside one. One element, so nothing is nested inside
+it: the tile at the right is a span drawn to look like the toggle it stands in
+for, and it lights on hover of the row, not of itself.
+
+**The hairlines are each row's own, and which row goes without one is decided
+in code.** Frame 4:407 puts a line edge to edge between rows, centred in the
+20px between them — at `#333333`, not the frame's `#232323`, because that is
+the same value as a field's background: every line that ran past a field
+disappeared into it and the rule only showed in the gaps. `#333333` is the
+panel's other hairline, the one around a dropdown, so it is a colour the design
+already uses for this job rather than an invented shade.
+
+**Every row stands 20px off its line, and the two kinds of row buy it
+differently.** The frame measures 20 on both sides — 167 to a Padding label at
+186.5, 280 to a Margin one at 299.5. A reveal row already has it: its 15px
+label is centred in a 40px box, so half the air is inside the box. An open row
+starts at its label with only the 10px half-gap above it, so it takes the other
+10 as `margin`, never `padding` — three suites measure those row boxes to the
+pixel (69 and 173 among them), and this is space around a row rather than part
+of one. `top` on the line is measured from the border box, so a row standing
+10px further off has its line drawn 10px further away. The first row on screen
+has no line to stand off from and the last has the footer: `has-rule` already
+names the first, and `markDividers` sets `is-last` beside it. It is drawn as the row's `::before`, 20px outside it
+on both sides, so it travels with the row — which means `.bw-body` needs
+`overflow-x:hidden`, because `overflow-y:auto` alone computes overflow-x to
+`auto` and hangs a scrollbar off that 20px. The top row must have no line, and
+`:first-child` cannot see that the rows above it are `display:none`, so
+`markDividers()` runs after every readout has decided who is on screen.
+
+**A section says whether it showed; its + row does not work it out again.**
+`shown[key]`, set by the section's own readout and read by the reveal row's —
+the row is appended after the section, so its readout runs after. The
+alternative was re-deriving each field's own visibility test in a second place,
+which is the shape of thing that drifts.
+
+**Typography reveals as one section, not as four fields.** The frame draws it
+as one thing, and a + standing in for a 124px field would be a control wider
+than what it offers. So the four `revealed.family/weight/font/align` keys
+became one `revealed.typography`, and the row offers the section.
+
+**The tab strip has no padding at its top, and 20 at its foot.** The 60px
+header already leaves 19px under the title it centres, so the strip's own 20
+made a 39px void between the title and the tabs where everything else in the
+panel sits 20 apart. The 20 below stays, so the tabs stand off their own rule
+the way a row stands off a divider — and `.bw-pform` is 20 all round for the
+same reason, where 12 had the composer crowding the line while sitting 20 off
+the sides.
+
+**The + is the export's too.** `assets/ic-plus.svg`, 20x20 on the frame's grid
+in the design's `#aaa`, replacing a 9x9 `currentColor` glyph drawn back when
+the export had no file for it. It sits in a `.bw-toggle` — the same tile and
+the same hover fill every section toggle uses — so the right-hand column holds
+still whichever of the two a row is showing.
+
+**The all-corners write clears every `rounded*` on the element.** Same rule as
+`px-*` over `pl-*`: leaving a more specific class in place means the field you
+just used does nothing. Picking `md` on an element wearing `rounded-tl-[3px]`
+has to take the corner with it, or `Mixed` stays `Mixed` and the pick reads as
+broken. The corners have fields of their own to put a value back into, which is
+what makes the clearing safe — the four-corner view is already open whenever
+they disagree.
+
+**A per-corner rung always needs a runtime rule, even where the whole-box one
+does not.** The rule that leaves a route's own `.rounded-lg` alone does not
+apply to `.rounded-tl-lg`: Tailwind has generated nothing for it whatever the
+route uses. So it gets one — built from the live value where there is one, so
+the corner lands on the same number the box rung does. On Cora, `2xl` on a
+corner previews at 21.6px, not the stock 16px, which is the live suite's
+assertion.
+
+**The corner icons are the export's, and the toggle wears the all-corners one
+twice.** `assets/ic-radius-{all,tl,tr,bl,br}.svg`: four brackets, the one the
+field owns lit and the other three stepped back to the export's `#414141`.
+Padding and margin have a distinct `Parts` glyph for the open state; radius has
+no such file in the frame, and drawing one would be inventing — so the toggle
+keeps the all-corners mark in both states and the pressed fill, which every
+toggle already has, is what says which state it is in. This replaced the
+hand-drawn `radius` glyph, which existed only because the export had no file
+for it and now does.
+
+**A list row is a list row: one size, one weight, whatever it names.** The
+size list used to set each rung's name at the size it names and the weight
+list to set each name in the weight it names, in the element's own face. Both
+had to be capped to keep a row a row — so they stopped drawing the real value
+exactly where the values got interesting — and the number on the right was
+carrying the truth the whole time. It now carries it alone. The one specimen
+that stays is the family list, because a typeface is the one value here whose
+*name* is not the point.
+
+**The weight list says what it ships by what it lists.** The caption above it
+("5 of 9 shipped by this font") named a fact the rows already made plain: a
+weight the font does not have is not offered, and one that is set but not
+shipped is kept on its own row labelled `faux`.
+
+**The palette is a grid of colour, not a list of names.** Nine swatches to a
+row inside the popover's own 8px, which puts a swatch at 16px — what a 220px
+popover has room for with nine on a line. A name needs a row each and turns
+two dozen colours into a scroll; the tooltip carries it, and a ramp's tooltip
+says it opens rather than applies, because clicking it does. The Theme and
+Palette captions take a line of their own rather than a cell, so the ordering
+that put project tokens first is still legible. The shade view underneath
+already worked this way.
+
+**Revealing a colour writes white; revealing anything else writes nothing.**
+The one exception to the rule above it, and for the reason the colour rows hide
+at all: a padding field with no class still tells you the element renders 0,
+where a colour field with no class is a dash and an empty swatch. So the + puts
+a value there, and white is the one value that is white on every route rather
+than a guess at the project's palette. It lands as `bg-white` / `text-white` —
+a token, not `#FFF`, so it reads as a token in the field — and `ensurePreviewRule`
+gives it a rule on a route that has never generated one.
+
+**The rung dropdown is a list of lengths, and nothing else.** It used to draw
+a corner at true scale beside each row, capped so a row stayed a row — and the
+cap was the tell: past it every rung drew the same quarter circle, so the
+preview stopped distinguishing exactly where the values got interesting. It
+used to name the rung too. Both are gone, and the row is `12px` the way the
+spacing list's row is `16px`. `tokenList` already filtered on the token as well
+as the label, so typing `xl` still finds it.
+
 **Font sizes and weights come from the server, not the page.** Opposite of
 colours, because Tailwind v4 emits utilities *and* theme variables on demand — a
 route using two sizes exposes exactly two. The full ladder only exists in
 `theme.css`.
+
+**Font *families* come from the page, like colours — and the read is itself
+the membership test.** A family is only offered if the route generated a
+`.font-<name>` rule that sets `font-family`. `.font-medium` sets `font-weight`
+and carries no family, so it can never enter the map and can never be stripped
+by a family write: the `/^font-/` trap below is disarmed by construction rather
+than by a second regex. It also means no rule is ever added to preview one —
+the utility is in the list *because* the page already has it, which is the
+opposite of the `px-6 md:px-12` failure. On `uiux_experiment` this finds four
+on Cora, one of them the project's own (`accent` → Square Peg): a bundled list
+of web fonts would offer faces the page cannot render and miss that one.
+
+**A family declaration is not always a stack.** `@theme inline` bakes the value
+in, but a plain `@theme` emits `font-family:var(--font-sans)` — and
+`var(--font-sans)` is not the name of a typeface, which is what the panel
+showed at first. The chain is followed by painting it onto a probe rather than
+by parsing, because a var may point at another var and only the cascade knows.
+The probe sits inside a host wearing a sentinel family: a var resolving to
+nothing is invalid at computed-value time and *inherits*, so without the
+sentinel a dead token would report whatever the panel happens to inherit as
+though the element rendered in it. Measured on the real app: `/` gives
+`var(--font-geist-sans)` → Geist, volt/polaris/meridian give `var(--font-sans)`
+→ `ui-sans-serif`, Cora needs no resolving at all.
 
 **`cn()` is edited by delta, not by snapshot.** The rendered class string is the
 union of every argument, so writing it into argument one would duplicate what the
@@ -100,7 +300,10 @@ captured at selection.
 change (150 and 438 uses at risk). Same for colours: `text-lg` is a size,
 `text-clay` a colour. `gap-` needs a lookahead because `gap-x-4` starts with it.
 `rounded-` is the same trap twice over: `rounded-sm` is a rung, `rounded-s` is
-the two start corners, and `rounded-t-lg` is neither.
+the two start corners, and `rounded-t-lg` is neither. Four levels wear the one
+word now — the box, the edges, the corners, the logical forms — and `radiusOn`
+separates them by matching the base whole and then testing the tail for
+membership, so `rounded` can never swallow `rounded-tl-lg`.
 `text-` is the trap three ways over once alignment exists: `text-lg` is a size,
 `text-clay` a colour, `text-center` an alignment. Each is matched by an exact
 set, so setting one leaves the other two alone.
@@ -196,6 +399,51 @@ cannot back up is a lie. Half steps count too: `py-2.5` and friends are 97 of
 the 802 spacing classes in `uiux_experiment`, and an integers-only pattern read
 every one of them as unset.
 
+**The colour field wears its swatch the size the frame draws it.** Frame
+4:551: 20x20 at a 3px radius on the 12px gutter, name 8px after it, so the
+value starts at 40 — the same place a spacing field's value starts behind its
+20px mark, which is why the two rows line up. Sized on `.bw-color .bw-chip`
+rather than on `.bw-chip`, because the same class draws the swatches in the
+dropdown list and the frame keeps those small.
+
+**A colour with nothing set stands in for itself, like every other optional
+row.** Background and Text color were the last two always on show, and an
+element that sets neither got two controls describing nothing: a dash and an
+empty checkerboard swatch. They now hide behind the + row, on `revealed.bg` and
+`revealed.text`. The four `pickColor` helpers across the suites open that row
+first when it is showing, which is what a person does.
+
+**A colour set by a `style` attribute is read, and refused.** 714 elements in
+uiux_experiment carry a `style` prop and 263 of them set a colour — this is an
+idiom, not an edge. There is nothing in the class list to read, so the panel
+called such an element unset, drew a dash and an empty swatch, and once the
+colour rows learned to hide, offered a + for a colour plainly on screen. It now
+reads `el.style.color` / `el.style.backgroundColor`, paints the swatch with
+what is actually computed, and prints the hex. And it stops there: an inline
+declaration outranks every class, so a class written here would be inert — the
+field disables itself and the title says where the colour comes from. Same rule
+as `px-*` clearing `pl-*`, met from the other side. Every *other* field has the
+same blind spot against an inline style; only colour is handled.
+
+**What you can do to a colour lives in the list, not in the field.** The field
+used to grow a small unlink button under the cursor, beside the value — which
+reads as "delete this" whatever its icon says — and removing a colour had no
+home at all: the palette could only ever put one on. Since a revealed row now
+starts at white, that meant a colour you could add and not take off. Both
+actions are named rows under the swatches, under *both* views, because a token
+colour opens straight into its own shade grid and actions only on the palette
+would be actions you never see. Removing also sets `revealed`, or the row would
+have nothing to show, fold back to its + and take the field out from under the
+cursor that just used it — and that + writes white.
+
+**A hex colour is a literal, and this was the one field that never said so.**
+Every other value in the panel that is not a token on a scale is italic, a
+shade back, and carries the snowflake; an arbitrary colour showed the hex at
+full contrast with nothing to mark it. It now takes `is-custom` and the
+snowflake from the same condition — `kind === 'arbitrary'` — which is what the
+cross-field assertion below requires, and the snowflake sits where a unit sits
+so the chevron takes its place on hover exactly as elsewhere.
+
 **Italic means one thing: this value is a literal.** It used to mean "inherited
 from a broader class", which put top and bottom into italic the moment you typed
 a vertical value — two unrelated ideas wearing one style. Inherited keeps the
@@ -203,6 +451,91 @@ dimmed colour, which is the half of that pair that reads as "not this element's
 own". A literal is italic and a shade back (`#b4b4b4`), and carries the
 snowflake: the two are set from the same condition and a test asserts they never
 disagree on any field.
+
+**Typography is one section, not three rows.** Frame `1:3`: the family across
+the full width, weight and size sharing the line below it, the alignment
+segment below that — 40px rows, 12px apart, 8px under the label, 173px in
+total, which the live suite asserts to the pixel. Three labels became one
+because they name one thing, and because a 124px field cannot afford a label
+beside it. Each field still decides its own visibility exactly as it did when
+it owned a row, and the weight/size pair collapses to a single column rather
+than leaving a hole.
+
+**These fields are bare — no leading mark — and that is why.** Two of them
+share one 260px line, so a 20px icon with its 10px margins would eat a third
+of what each is left with. The dropdowns that still have a row to themselves —
+radius, the two colours — keep their marks. The one exception is the family's
+`Ag`, which is not an icon but the face itself, set in the face: a typeface is
+the one value in this panel whose *name* is not the point.
+
+**A family is named by its typeface, with the token beside it.** `font-sans`
+is Euclid Circular B here and Inter somewhere else; "sans" is only the slot
+holding it. Both are shown — face on the left, token on the right — because
+which slot it came from is real information too. Only the *first* entry of the
+stack is ever named: the rest are understudies the page uses when the first is
+missing, so on `ui-monospace, "Cascadia Code"` naming Cascadia Code would name
+the wrong font.
+
+**The focus ring is an outline, not an inset shadow.** A child's background
+paints over its parent's inset shadow, and the token button fills its field
+edge to edge — so the ring on an open dropdown was being drawn the whole time
+and hidden under `.bw-ctoken:hover`, which is exactly where the cursor is after
+the click that opened it. `outline` is painted over descendants; at
+`outline-offset:-1px` it lands where the shadow did and follows the same 8px
+radius.
+
+**A generic is not a typeface, so the name is measured — by painting it.**
+`ui-sans-serif` is a request, the platform answers it, and CSS never says
+what it answered. So the answer is drawn and compared: render a probe string
+in the stack, render it again in each candidate face, hash the *bitmaps*.
+The same move as the colours, for the same reason — the serialised value does
+not tell you what you will see. Bitmaps rather than widths because the pairs
+that matter are the metric-compatible clones: Arial and Liberation Sans are
+designed to measure identically and to draw differently. A candidate that is
+not installed falls through a bogus second entry onto the browser default,
+which is what the control measures, so a missing font is skipped rather than
+matched and can never be named.
+
+**Verified that the canvas answers the same question the page does.** Measured
+both ways across fourteen stacks: the DOM's width groups and the canvas's ink
+groups partition identically, so the fingerprint is representative. That check
+also turned up the thing worth knowing — this Chromium supports **none** of
+`ui-sans-serif` / `ui-serif` / `ui-monospace`, in CSS or canvas. They fall
+straight through, which is why the same `ui-monospace` leads to Menlo on volt
+(via `SFMono-Regular, Menlo`) and to Courier on Cora (via the default
+`monospace`), and why printing that keyword was naming the one string
+guaranteed *not* to be on screen.
+
+**Where measuring cannot name it, the fallback is stated, never invented.**
+macOS draws `ui-sans-serif` with `.AppleSystemUIFont`, which no addressable
+family matches — the installed "SF Pro" is present and measurably different,
+being an optical variant Chromium does not use here. But matching `system-ui`
+*proves* it is the platform UI font, so a small table then says what that font
+is called (macOS SF Pro, Windows Segoe UI, Android Roboto; desktop Linux has
+no one answer and gets none). The cascade is measured → placed → the first
+name the author actually wrote in the stack → the token, each tier less
+certain than the last, and the tooltip carries the true stack throughout.
+
+**A family names itself in its own face — in the list and in the field.** The
+specimen and the label are one object, which is how any type picker worth
+using shows a font, and the field keeps the face after you pick from it. This
+needs headroom the panel's own type does not: `.bw-cname` is 15px/**1** with
+`overflow:hidden` for the ellipsis, which clips both axes, so a script face
+loses its ascenders and tail to it — `is-face` buys line-height 1.6 and leaves
+the size at the frame's 15px, because the field sits beside `400` and `16px`.
+
+**Two `margin-left:auto` in one row split the free space between them.** The
+note carried one and the chevron carried another, which stranded `inherited`
+halfway across a wide field instead of against the chevron. The name takes the
+slack now (`flex:1`) and the note sits at its natural width. `flex:1` on that
+name then needed `text-align:left`, because the token is a `<button>` and a
+button centres its text — invisible while the span was auto-width, obvious the
+moment it owned the whole field.
+
+**`flex:1` on a `.bw-field` means *height* once the field is in a column.**
+The family field collapsed from 40px to the 15px of its own line box. The two
+in the pair below it are grid items, which ignore `flex` — which is exactly
+why only one of the three broke, and why it looked like a family-only bug.
 
 **Icons are the exported files, inlined byte-for-byte — never redrawn.** They
 live in `assets/` and are pasted into `ICONS` exactly as exported, keeping their
@@ -245,6 +578,62 @@ nothing re-renders — has its DOM updated by hand.
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
 
+**The Prompt tab runs its own session, because the one in VSCode cannot be
+driven from outside.** This was tried first and the extension refuses it by
+name: `claude-vscode.editor.open` does take an `initialPrompt`, but `createPanel`
+answers a session that is already open with *"Session is already open. Your
+prompt was not applied — enter it manually"*, and even on the new-session path
+the webview only calls `setInputText` — a prefill, never a submit. The websocket
+advertised in `~/.claude/ide/<port>.lock` is the extension serving *terminal*
+CLI sessions, and its whole method surface is `get_current_selection`,
+`selection_changed`, `at_mentioned`, `openDiff`, `executeCode`: nothing there
+submits a turn. So the editor spawns `claude -p` itself, which it can finish a
+turn with. Re-check this against the extension bundle before trying again.
+
+**A turn is a child process, not a daemon.** `--resume` carries the conversation
+forward, so there is no long-lived process to supervise, no stdin protocol to
+keep in sync, and a hung turn is ended by killing a pid. Measured: the second
+turn of a session costs about a tenth of the first, because the prompt cache
+does the work a persistent process would have been kept alive for.
+
+**What the panel reports after a turn is seconds and the plan's five-hour
+window — never dollars.** `claude -p` authenticates with the OAuth credentials
+already on the machine, the same ones the CLI and the extension use, so a turn
+draws on the subscription's rolling windows. `total_cost_usd` in the result
+envelope is an equivalent computed at list prices, not a charge anyone is
+billed; printing it beside a subscription turn is a plausible-looking lie. The
+real number is in `rate_limit_event.unifiedWindows.five_hour.utilization`.
+
+**The prompt points at the element rather than describing it.** The loader has
+already stamped `file:line:col` on it, so the preamble can name the file, the
+line, the tag and the current className — which is the whole reason this beats
+typing the same sentence into a terminal. Where one location renders several
+elements the count goes in too, since that is the case the person cannot see.
+
+**A pending edit refuses the turn.** Class changes live in the DOM until Save;
+Claude reads the file off disk. A turn started with edits pending reasons about
+a version of the file that does not exist, and its write silently drops them.
+The refusal names the count and says why.
+
+**The fence is a deny list, not an allow list.** `--allowed-tools` is the
+auto-approve list — passing it an empty string still leaves every tool available.
+What keeps Bash out of the session is `--disallowed-tools`, and the network
+tools go with it so a prompt typed into a web page cannot reach off the machine.
+
+**`/prompt` is opt-in where `/edit` is not.** They wear the same lock — same
+origin check, same token, same 415 — but they are not the same kind of route.
+`/edit` replaces a byte span in a `.tsx` under the root and `safeResolve` is what
+makes that true; `/prompt` hands a sentence to a coding agent, and no amount of
+path checking bounds what comes out. Same gate, categorically larger blast
+radius, so it is off unless asked for and the tab is not drawn without it.
+
+**The tabs are the panel's top edge, and a drag handle like the rest of the
+chrome.** They sit above the header rather than inside it because the header
+folds away with the selection and the tabs must not: switching to Prompt is
+exactly what you do when nothing is selected. For the same reason `data-tw-idle`
+now means "the editor controls have nothing to show", not "the panel is empty" —
+folding the body on the Prompt tab would fold away the tab just switched to.
+
 ---
 
 ## Measured facts about these codebases
@@ -256,6 +645,11 @@ These drove the design; re-check them if the target changes.
 | static `className="…"` | 1372 | 1956 (86%) |
 | `cn()` | 0 | 47 |
 | template literals | 26 | 217 (7.3%) |
+| `style={{ }}` sites | **714** | — |
+| &nbsp;&nbsp;static `color: "…"` | **381** | — |
+| &nbsp;&nbsp;static `background(Color): "…"` | **176** | — |
+| &nbsp;&nbsp;static `fontSize: "…"` | 78 | — |
+| &nbsp;&nbsp;dynamic `color: {expr}` | 35 | — |
 | **stock Tailwind palette colours** | **0** | **0** |
 | semantic/project colour tokens | 63 | 19 |
 | arbitrary `rgb()` colours | — | **608** |
@@ -277,27 +671,43 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
 
 ## Known gaps, ranked
 
-1. **Blast radius — warned about on removal only.** Editing an element inside a
+1. **Inline `style={{ }}` is invisible to the editor, and it is not rare.**
+   Measured on `uiux_experiment` only after a locked Text color row prompted
+   the question: **714** `style={{` sites against 1336 `className="`, carrying
+   **381** static `color`, 176 `background`, 78 `fontSize`. Every one of those
+   colours is refused, and correctly — an inline declaration outranks every
+   class, so writing `text-slate-600` would change the file and nothing on
+   screen — but refusing 381 of them is a coverage hole, not a corner case.
+   **91% are static string literals in an object literal**, the same shape the
+   byte-span writer already replaces for `className`; the 35 `{expr}` ones
+   would be refused by name the way `cn()` and `cva()` are. The guard is also
+   per-property and only the colour rows have it: the Size field on an element
+   whose `style` sets `fontSize` still writes `text-3xl` to the file and
+   previews nothing. Verified on `meridian/design-system/page.tsx:61`.
+2. **Blast radius — warned about on removal only.** Editing an element inside a
    shared component changes every instance. Measured: cora 42% of elements,
    polaris 72%, volt **78%**, worst case one location rendering 19 elements.
    Removal now counts `[data-bw-loc^="file:line:col:"]`, ghosts all of them and
    says "renders 19 elements … removes all 19" before you can save. **Class and
    text edits still say nothing** — same one-line count, same place to put it.
-2. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
+3. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
    safely editable; the delta mechanism from `cn()` already does the hard part.
-3. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
+4. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
    and only refuses at save. The panel should say so up front. On Cora only
    25.7% of elements have writable text; 59.6% are `mixed-content`.
-4. **Packaging** — not installable by anyone else. Largest remaining chunk, and
+5. **Packaging** — not installable by anyone else. Largest remaining chunk, and
    only worth it if other people will use it.
-5. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
+6. **HSV colour picker** — the detached/hex path shows a read-only hex. gw-web
    is 608 arbitrary colours, so "detached" is the norm there.
-6. **Per-corner radius is read but never written.** `rounded-l-[2px]` and
-   friends are left exactly as authored — membership matching means they are
-   never mistaken for a rung — and the Radius row appends `+n` and names them
-   in its tooltip so it never shows one radius while the element means two.
-   Only 5 sites across both codebases, so a per-corner mode is not yet earned.
-7. **A rung a route has never used previews at the stock value.** Cora derives
+7. **Logical radius utilities are read but never written.** `rounded-s-lg`,
+   `rounded-ss-*` and friends depend on writing direction, so they are left
+   exactly as authored — membership matching means they are never mistaken for
+   a rung — and the Radius field appends `+n` and names them in its tooltip so
+   it never shows one radius while the element means two. Zero sites across
+   both codebases. The four *physical* corners do have fields now; the
+   *physical* edges (`rounded-l-[2px]`) have none, but are read into the two
+   corners they paint and cleared by an all-corners write.
+8. **A rung a route has never used previews at the stock value.** Cora derives
    its ladder from `--radius: 0.75rem`, so `rounded-3xl` should be 26.4px, but
    Tailwind generated no rule for it and the fallback says 24px. The multiplier
    is not inferable from the rungs that do exist — cora's live/stock ratios run
@@ -319,6 +729,20 @@ components are capitalised so "host element" means something else.
 is not on a clock: a `waitForTimeout(2500)` before the two HMR assertions in
 `verify.js` failed about one run in five, and passing four times in a row is not
 evidence. Poll for the result and then assert on it.
+
+**`req.on('close')` is not "the client went away".** On a Node request it fires
+as soon as the body has been read, which for `/prompt` is a moment *after* every
+turn starts — so the abort handler killed each turn within milliseconds and
+reported it as `claude exited null`, a signal death wearing a crash's clothes.
+`res.on('close')` is the one that means the client disconnected. Guard it with a
+`settled` flag either way, or the normal `res.end()` re-enters it.
+
+**One `npm test` at a time.** Every browser suite shares one `server.js` on port
+3131, and the suites run sequentially against it. A second run cannot bind the
+port, dies, and leaves its suites talking to the *first* run's server — whose
+fixture is a different temp file, so `/edit` answers 409 stale-hash. Symptoms
+wander between suites and look like flakiness in whatever was touched last;
+they were 11/11 both before and after, with nothing else running.
 
 **Stale servers give misleading results.** Three times a `lsof | kill` did not
 take, the new server died with `EADDRINUSE`, and an old one kept serving. Always
@@ -381,18 +805,40 @@ positive.
 
 ## Test discipline
 
-`npm test` runs 10 suites: 3 pure-unit (`00`, `05`, `06`) and 7 browser suites
+`npm test` runs 11 suites: 3 pure-unit (`00`, `05`, `06`) and 8 browser suites
 against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
 
-`next/verify.js` is the live suite: 55 checks against the real Next app,
+`next/verify.js` is the live suite: 79 checks against the real Next app,
 including refusals, security (401/403/415), and byte-exact restore of every file
 it touches. The radius block runs against `experiments/cora/login` specifically
 because Cora redefines the radius ladder — every number it asserts would be
 wrong if the overlay read `--radius-*` instead of the generated rule. The
 removal block runs against `volt/design-system` for the opposite reason: one
 line there renders 19 elements, which is the case the warning exists for.
+The per-corner block is on Cora too, and asserts 21.6px: a corner rung built
+from the stock ladder instead would say 16px beside three 12px corners.
+
+`test/02-spacing-sides.js` also owns the reveal rows: that every property has
+one whether or not it is set, in the order the panel reads in, that the + sits
+in the same column a section toggle does, that gap is offered on a flex element
+and not on a block one, and that revealing writes nothing.
+
+`test/10-radius-corners.js` covers the seam the live suite cannot reach
+cheaply — a corner overriding the box, the box clearing the corners, one value
+typed into the box flattening all four, a comma list surviving a tab through
+it, stepping below the first rung dropping the class rather than pinning a
+zero, the view opening by itself on an element authored per-corner, and the
+class reaching disk beside the box rung with nothing else on the line moved.
+Its last selection clicks the card at x=120, not the corner: by then the card
+wears a 16px radius and (3,3) is outside the arc, on the `<main>` behind it.
+
+`next/verify-prompt.js` is the Prompt tab's live suite: 14 checks, ending in a
+real turn that edits `cora/login/page.tsx` and a byte-exact restore. It is
+deliberately **not** part of `npm test` — the rest of the suite is offline and
+deterministic, and a turn that calls a model is neither, and spends real quota.
+Run it by hand, with the server started `--prompt`.
 
 Every change here has ended with a real edit to a real file and a byte-level diff
 assertion. Keep that bar.
