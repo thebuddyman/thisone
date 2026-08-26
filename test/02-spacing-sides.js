@@ -51,7 +51,23 @@ function check(name, pass, detail) {
   await field('p-x').locator('[data-tw-spacing-open]').click();
   // Read as the panel shows them — pixel lengths, not scale numbers.
   const RUNGS = await page.locator('[data-tw-spacing] .bw-sizename').allTextContents();
+
+  // The field whose list is open says so. data-tw-field sits on the .bw-field
+  // itself for some rows and on a wrapper for others, so find it either way —
+  // tying the ring to the row lit every dropdown except the spacing ones.
+  const ringOf = () => page.evaluate(() => {
+    const n = document.querySelector('[data-tw-field="p-x"]');
+    const box = n.classList.contains('bw-field') ? n : n.querySelector('.bw-field');
+    return getComputedStyle(box).boxShadow;
+  });
+  const ringOpen = await ringOf();
+  check('the field lights up while its list is open',
+    ringOpen.includes('rgb(223, 126, 70)'), ringOpen);
+
   await page.locator('[data-tw-pop] .bw-x').click();
+  const ringShut = await ringOf();
+  check('and goes dark again when it closes',
+    !ringShut.includes('rgb(223, 126, 70)'), ringShut);
   // Deselect before the suite's own first click: a live selection puts the
   // delete handle on the card's corner, and it dodges the tall panel onto
   // exactly the spot the click below aims at.

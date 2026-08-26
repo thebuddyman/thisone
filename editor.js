@@ -1383,8 +1383,11 @@
       P + ' .bw-field:focus-within,' + P + ' .bw-seg:focus-within,',
       // Two forms because two things anchor a popover: a row that holds one
       // field, and — since typography put three on one row — a field itself.
+      // Not .bw-row.is-open: a spacing field anchors its list to the .bw-input
+      // wrapper, not to the row, so tying the ring to the row lit every
+      // dropdown except the ones that just grew a chevron.
       P + ' .bw-field.is-open,',
-      P + ' .bw-row.is-open .bw-field{box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
+      P + ' .is-open .bw-field{box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       P + ' .bw-text:focus{outline:none;box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       both(' .bw-search-in') + '{caret-color:' + FOCUS + '}',
       P + ' .bw-open{flex:0 0 auto;align-self:center;display:flex;align-items:center;',
@@ -1456,6 +1459,10 @@
       P + ' .bw-ctoken:hover{background:#2b2b2b}',
       // No mark to indent past, so the value sits at the frame's 12px gutter.
       P + ' .bw-ctoken.is-bare{padding-left:12px;gap:8px}',
+      // Not an icon: this is the face itself, set in the face, which is why it
+      // is the one thing in a bare field that comes before the value.
+      P + ' .bw-famsample{flex:0 0 auto;font:15px/1 serif;color:var(--bw-fg)}',
+      P + ' .bw-famsample.is-unset{color:var(--bw-faint)}',
       // The chevron: 8x5, 12px in from the right, on every field that opens a list.
       P + ' .bw-chev{flex:0 0 auto;display:flex;align-items:center;margin-left:auto}',
       P + ' .bw-chev svg{display:block}',
@@ -1466,8 +1473,10 @@
       both(' .bw-snow svg') + '{display:block}',
       PP + ' .bw-customtag{display:flex;align-items:center;gap:6px}',
       PP + ' .bw-custom .bw-sizename{font-style:italic;color:' + LITERAL + '}',
-      P + ' .bw-cname{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);overflow:hidden;',
-      '  text-overflow:ellipsis;white-space:nowrap}',
+      // min-width:0, or overflow:hidden has no width to work against and
+      // "Euclid Circular B" pushes the token straight out of the field.
+      P + ' .bw-cname{min-width:0;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);',
+      '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
       P + ' .bw-alpha{flex:0 0 auto;display:flex;align-items:center;gap:1px;',
       '  padding-left:4px;border-left:1px solid var(--bw-hair)}',
@@ -2129,14 +2138,74 @@
   // ------------------------------------------------------------- font family
 
   /**
-   * The name a designer would recognise, out of a CSS font-family stack: the
-   * first entry, unquoted. On this project `font-sans` resolves to Aspekta,
-   * and Aspekta is the answer to "what typeface is this" — `sans` is only the
-   * token that happens to hold it. The token is shown beside it, not instead.
+   * The stack a declaration really means.
+   *
+   * A generated utility does not always carry one. `@theme inline` bakes the
+   * value into the rule, but a plain `@theme` emits `font-family:var(--font-
+   * sans)` instead — and "var(--font-sans)" is not the name of a typeface.
+   * The chain is followed by painting it onto a probe rather than by parsing,
+   * because a var may point at another var and the cascade is the only thing
+   * that knows the answer. pxOfToken resolves font sizes the same way.
+   *
+   * The probe sits in a host wearing a sentinel family: a var that resolves
+   * to nothing is invalid at computed-value time and inherits, so without the
+   * sentinel a dead token would report whatever the page happens to inherit
+   * as though the element rendered in it.
    */
-  function familyLabel(stack) {
-    if (!stack) return '';
-    return String(stack).split(',')[0].trim().replace(/^["']|["']$/g, '');
+  var SENTINEL = 'BwUnresolvedFamily';
+  var familyCache = {};
+  function resolveFamily(decl) {
+    if (!decl) return '';
+    if (String(decl).indexOf('var(') === -1) return String(decl);
+    if (familyCache[decl] !== undefined) return familyCache[decl];
+    var host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-9999px;top:-9999px;font-family:' + SENTINEL;
+    var probe = document.createElement('span');
+    probe.style.fontFamily = decl;
+    host.appendChild(probe);
+    document.body.appendChild(host);
+    var out = getComputedStyle(probe).fontFamily;
+    host.remove();
+    familyCache[decl] = (out && out !== SENTINEL && out.indexOf('var(') === -1) ? out : '';
+    return familyCache[decl];
+  }
+
+  /** The first entry of a stack, unquoted. */
+  function firstFamily(stack) {
+    return String(stack || '').split(',')[0].trim().replace(/^["']|["']$/g, '');
+  }
+
+  // The families CSS defines rather than ships. A stack leading with one of
+  // these names no typeface at all — it asks the platform for whatever it has
+  // — so there is no face to show, and saying `ui-sans-serif` in a field
+  // whose job is to name a typeface answers a question nobody asked.
+  var GENERIC_FAMILY = {
+    'ui-sans-serif': 1, 'ui-serif': 1, 'ui-monospace': 1, 'ui-rounded': 1,
+    'system-ui': 1, 'sans-serif': 1, serif: 1, monospace: 1, cursive: 1,
+    fantasy: 1, math: 1, emoji: 1, fangsong: 1,
+  };
+
+  /**
+   * The typeface a stack actually names, or '' when it names none.
+   *
+   * Only the FIRST entry counts. The rest are fallbacks the page reaches for
+   * when the first is missing, so on `ui-monospace, "Cascadia Code"` the face
+   * in use is the platform's, and naming Cascadia Code would be naming the
+   * understudy.
+   */
+  function familyFace(stack) {
+    var first = firstFamily(resolveFamily(stack));
+    return GENERIC_FAMILY[first.toLowerCase()] ? '' : first;
+  }
+
+  /**
+   * What a token is called on screen: its typeface where it has one — on this
+   * project `font-sans` is Aspekta, and Aspekta is the answer to "what is
+   * this" — and its own name where it does not.
+   */
+  function familyName(token) {
+    return familyFace(FAMILIES[token]) ||
+      token.charAt(0).toUpperCase() + token.slice(1);
   }
 
   /**
@@ -2176,9 +2245,13 @@
   var STOCK_FAMILY = { sans: 1, serif: 1, mono: 1 };
 
   function familyTokens() {
-    var project = Object.keys(FAMILIES).filter(function (t) { return !STOCK_FAMILY[t]; });
+    // A token whose var resolves to nothing is dropped: it would preview as
+    // whatever the row happens to inherit. One that resolves to a generic is
+    // kept — `font-sans` meaning the platform's sans is a real answer.
+    var all = Object.keys(FAMILIES).filter(function (t) { return !!resolveFamily(FAMILIES[t]); });
+    var project = all.filter(function (t) { return !STOCK_FAMILY[t]; });
     project.sort();
-    var stock = ['sans', 'serif', 'mono'].filter(function (t) { return FAMILIES[t]; });
+    var stock = ['sans', 'serif', 'mono'].filter(function (t) { return all.indexOf(t) !== -1; });
     return project.concat(stock);
   }
 
@@ -2592,6 +2665,12 @@
       placePopover(anchor);
     });
     d.token.setAttribute('data-tw-family-open', '');
+    // The same specimen the list shows, kept after you pick from it: a face is
+    // the one value in this panel whose name is not the point — Aspekta tells
+    // you nothing about Aspekta, and two letters of it tell you everything.
+    var sample = el('span', 'bw-famsample', 'Ag');
+    sample.setAttribute('data-tw-family-sample', '');
+    d.token.insertBefore(sample, d.name);
 
     d.sync = function () {
       var state = readFontFamily(selected);
@@ -2604,17 +2683,26 @@
       d.field.style.display = show ? '' : 'none';
       if (!show) return false;
 
+      // Set from the declaration, not from the resolved stack: a var resolves
+      // against wherever it is painted, and the panel is on the same page.
+      sample.style.fontFamily =
+        state.kind === 'token' ? (FAMILIES[state.name] || '') : (state.stack || '');
+      sample.className = 'bw-famsample' + (state.kind === 'token' ? '' : ' is-unset');
+
       if (state.kind === 'token') {
-        d.name.textContent = familyLabel(state.stack) || state.name;
+        var shown = familyName(state.name);
+        d.name.textContent = shown;
         d.name.className = 'bw-cname';
-        d.note.textContent = state.name;
-        d.token.title = state.cls + ' \u2014 ' + state.stack;
+        // The token, unless it is already what the value says — a field
+        // reading "Sans  sans" says one thing twice.
+        d.note.textContent = shown.toLowerCase() === state.name ? '' : state.name;
+        d.token.title = state.cls + ' \u2014 ' + (resolveFamily(state.stack) || state.stack);
       } else {
-        d.name.textContent = familyLabel(state.stack) || '\u2014';
+        d.name.textContent = familyFace(state.stack) || firstFamily(state.stack) || '\u2014';
         d.name.className = 'bw-cname is-unset';
         d.note.textContent = state.stack ? 'inherited' : '';
         d.token.title = 'not set \u2014 rendering in ' +
-          (state.stack || 'the browser default');
+          (resolveFamily(state.stack) || 'the browser default');
       }
       return true;
     };
@@ -2816,6 +2904,7 @@
     var utils = discoverUtilities();
     renderable = utils;
     FAMILIES = utils.family;
+    familyCache = {}; // a client-routed page can redefine what --font-* means
     // Union of what bg-* and text-* can each render; the picker offers names,
     // and ensurePreviewRule fills any gap for the specific prefix in use.
     var live = {};
@@ -3210,12 +3299,13 @@
         var sample = el('span', 'bw-sizesample', 'Ag');
         sample.style.cssText = 'font-size:16px;font-family:' + FAMILIES[t];
         item.appendChild(sample);
-        item.appendChild(el('span', 'bw-sizename', familyLabel(FAMILIES[t]) || t));
-        item.appendChild(el('span', 'bw-sizepx', t));
+        var label = familyName(t);
+        item.appendChild(el('span', 'bw-sizename', label));
+        item.appendChild(el('span', 'bw-sizepx', label.toLowerCase() === t ? '' : t));
         if (currentF.kind === 'token' && currentF.name === t) {
           item.setAttribute('aria-current', 'true');
         }
-        item.title = 'font-' + t + ' \u2014 ' + FAMILIES[t];
+        item.title = 'font-' + t + ' \u2014 ' + (resolveFamily(FAMILIES[t]) || FAMILIES[t]);
         item.addEventListener('click', function () {
           setFontFamily(selected, 'font-' + t);
           closePopover();
