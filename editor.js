@@ -1427,9 +1427,15 @@
       P + ' .is-open .bw-field{outline:1px solid ' + FOCUS + ';outline-offset:-1px}',
       P + ' .bw-text:focus{outline:none;box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       both(' .bw-search-in') + '{caret-color:' + FOCUS + '}',
-      P + ' .bw-open{flex:0 0 auto;align-self:center;display:flex;align-items:center;',
-      '  justify-content:center;width:20px;height:100%;margin-right:12px;border-radius:4px}',
-      P + ' .bw-open svg{display:block}',
+      // The chevron takes the right-hand slot out of flow, so the info that
+      // lives there — a unit, a rung name, "inherited", the snowflake — keeps
+      // the space and the two simply swap. Both end 12px from the edge, so
+      // nothing shifts as one replaces the other.
+      P + ' .bw-field{position:relative}',
+      P + ' .bw-open,' + P + ' .bw-chev{position:absolute;right:12px;top:50%;margin:0;',
+      '  transform:translateY(-50%);display:flex;align-items:center;width:auto;height:auto}',
+      P + ' .bw-open svg,' + P + ' .bw-chev svg{display:block}',
+      P + ' .bw-field > .bw-snow{margin-right:12px}',
       // The chevron is an affordance, not information: it says "this opens" to
       // a cursor that is already here. Hidden by opacity rather than display so
       // the value never shifts as it comes and goes, and kept for focus and
@@ -1440,6 +1446,11 @@
       P + ' .bw-field:focus-within .bw-chev,' + P + ' .bw-field:focus-within .bw-open,',
       P + ' .bw-field.is-open .bw-chev,' + P + ' .bw-field.is-open .bw-open,',
       P + ' .is-open .bw-chev,' + P + ' .is-open .bw-open{opacity:1}',
+      // …and the information it displaces steps back while it is there.
+      P + ' .bw-field:hover .bw-unit,' + P + ' .bw-field:hover .bw-snow,',
+      P + ' .bw-field:focus-within .bw-unit,' + P + ' .bw-field:focus-within .bw-snow,',
+      P + ' .bw-field.is-open .bw-unit,' + P + ' .bw-field.is-open .bw-snow,',
+      P + ' .is-open .bw-unit,' + P + ' .is-open .bw-snow{opacity:0}',
       P + ' .bw-spin{flex:0 0 20px;display:flex;flex-direction:column;align-self:stretch;',
       '  padding-right:8px}',
       P + ' .bw-step{flex:1;display:flex;align-items:center;justify-content:center;',
