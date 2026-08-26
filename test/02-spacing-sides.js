@@ -41,6 +41,9 @@ function check(name, pass, detail) {
   const read = async k => (await field(k).locator('input').inputValue()).trim() || '—';
   // computed, not inline: the panel is styled by a scoped stylesheet
   const style = async k => field(k).locator('input').evaluate(el => getComputedStyle(el).fontStyle);
+  const colour = async k => field(k).locator('input').evaluate(el => getComputedStyle(el).color);
+  // --bw-faint, #858585: what a value the element does not own is dimmed to.
+  const FAINT = 'rgb(133, 133, 133)';
 
   // The ladder, read out of the panel's own dropdown rather than written down
   // here — it has moved once already and every number below follows from it.
@@ -90,12 +93,17 @@ function check(name, pass, detail) {
     (await shown()).join(','));
   check('horizontal reads the value inherited from p-4', (await read('p-x')) === '16',
     await read('p-x'));
-  check('inherited value is rendered italic', (await style('p-x')) === 'italic');
+  // Italic is reserved for a literal value now; inherited is only dimmed.
+  check('an inherited value is dimmed, and upright',
+    (await colour('p-x')) === FAINT && (await style('p-x')) === 'normal',
+    `${await colour('p-x')} / ${await style('p-x')}`);
 
   // the axis input writes px-*, touching only left and right
   const hx = await stepped('p-x', 'up', 'horizontal stepped one rung');
   check('horizontal is now explicit (upright)', (await style('p-x')) === 'normal');
-  check('vertical still inherited from p-4', (await read('p-y')) === '16' && (await style('p-y')) === 'italic');
+  check('vertical still inherited from p-4',
+    (await read('p-y')) === '16' && (await colour('p-y')) === FAINT,
+    `${await read('p-y')} / ${await colour('p-y')}`);
   check('only left/right changed',
     (await pad()) === `16px ${px(hx)} 16px ${px(hx)}`, await pad());
   check('the axis class was added, p-4 not evicted',
@@ -109,12 +117,13 @@ function check(name, pass, detail) {
     (await shown()).includes('p-t') && !(await shown()).includes('p-x'), (await shown()).join(','));
   check('toggling wrote nothing', /(?:^| )p-4(?: |$)/.test(await card.getAttribute('class')));
   check('left inherits from the axis class we just set',
-    (await read('p-l')) === hx && (await style('p-l')) === 'italic');
+    (await read('p-l')) === hx && (await colour('p-l')) === FAINT);
 
   // bump only the top
   const pt = await stepped('p-t', 'up', 'T stepped one rung');
   check('T is now explicit (upright)', (await style('p-t')) === 'normal');
-  check('right still inherits from the axis', (await read('p-r')) === hx && (await style('p-r')) === 'italic');
+  check('right still inherits from the axis',
+    (await read('p-r')) === hx && (await colour('p-r')) === FAINT);
   check('only padding-top changed',
     (await pad()) === `${px(pt)} ${px(hx)} 16px ${px(hx)}`, await pad());
   check('the per-side class was added alongside p-4 and the axis',
@@ -140,7 +149,7 @@ function check(name, pass, detail) {
   check('B walked down to 0', (await read('p-b')) === '0', `${await read('p-b')} after ${guard} steps`);
   await minus('p-b').click();
   check('below zero cleared the pb override',
-    (await read('p-b')) === '16' && (await style('p-b')) === 'italic', await read('p-b'));
+    (await read('p-b')) === '16' && (await colour('p-b')) === FAINT, await read('p-b'));
   check('pb-* gone from class string', !/(?:^| )pb-/.test(await card.getAttribute('class')), await card.getAttribute('class'));
   check('computed bottom back to inherited 16px',
     (await pad()) === `${px(pt)} ${px(hx)} 16px ${px(pl)}`, await pad());
@@ -228,9 +237,15 @@ function check(name, pass, detail) {
   // Deselect before every re-click: a live selection parks the delete handle on
   // the element's corner, which is the spot these clicks aim at.
   const reselect = async (cls) => {
-    await page.keyboard.press('Escape');
+    // A background click deselects; Escape would too, but with nothing selected
+    // Escape steps out one more layer and leaves edit mode entirely — after
+    // which every field is hidden and each check silently measures nothing.
+    await page.locator('body').click({ position: { x: 5, y: 5 } });
     await h2b.evaluate((el, c) => { el.className = c; }, cls);
     await h2b.click({ position: { x: 3, y: 3 } });
+    if ((await panel.getAttribute('data-tw-idle')) !== null) {
+      throw new Error('reselect(' + cls + ') selected nothing — the checks below would be meaningless');
+    }
   };
   await reselect('text-2xl font-bold pt-5 pb-2 pl-6 pr-6');
   check('uneven edges open the four-edge view by themselves',
@@ -284,6 +299,30 @@ function check(name, pass, detail) {
     (await h2b.evaluate(el => getComputedStyle(el).paddingRight)) === '32px',
     await h2b.evaluate(el => getComputedStyle(el).paddingLeft + '/' + getComputedStyle(el).paddingRight));
   await page.keyboard.press('Escape');
+
+  // ---- a snowflake and italic mean the same thing, and never disagree ----
+  await reselect('text-2xl font-bold py-[13px] px-4');
+  const marked = await page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('[data-tw-editor="panel"] [data-tw-field]').forEach((r) => {
+      if (!r.getBoundingClientRect().height) return;
+      const txt = r.querySelector('input.bw-val, .bw-cname');
+      if (!txt) return;
+      const snow = r.querySelector('.bw-snow');
+      out.push({
+        field: r.getAttribute('data-tw-field'),
+        snow: !!(snow && snow.offsetParent !== null),
+        italic: getComputedStyle(txt).fontStyle === 'italic',
+      });
+    });
+    return out;
+  });
+  check('a literal value is snowflaked AND italic',
+    marked.some((m) => m.field === 'p-y' && m.snow && m.italic),
+    JSON.stringify(marked.find((m) => m.field === 'p-y')));
+  check('the two never disagree on any field',
+    marked.every((m) => m.snow === m.italic),
+    JSON.stringify(marked.filter((m) => m.snow !== m.italic)));
 
   // ---- an unset side reads 0, not a dash ----
   //

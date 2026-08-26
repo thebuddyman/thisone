@@ -178,6 +178,12 @@
   // into the theme: they have no --radius-* variable anywhere, so the two ends
   // of the ladder are completed here rather than shipped by the server.
   var RADII = Object.assign({ none: '0px', full: 'calc(infinity * 1px)' }, CFG.radii || {});
+
+  // Families are read off the page, never off a config or a webfont service:
+  // the only families offered are the ones this route already generated a
+  // utility rule for, which is the same question colours answer — what can
+  // this page actually render. Filled by buildColorModel.
+  var FAMILIES = {};
   var RADIUS_TOKENS = Object.keys(RADII).sort(function (a, b) {
     var ia = RADIUS_ORDER.indexOf(a), ib = RADIUS_ORDER.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
@@ -1166,6 +1172,9 @@
   var RAISED = '#2b2b2b';   // a list row under the cursor
   var SELECTED = '#353535'; // the one that is actually set
   var FOCUS = '#df7e46';    // the field you are working in
+  // A literal value reads a shade back from a token: still legible, but not
+  // claiming the same standing as something on the scale.
+  var LITERAL = '#b4b4b4';
   var BRAND = '#d97959';  // --primary from the template
   var DANGER = '#dc2828'; // --destructive
   var OKGREEN = '#2f9e64';
@@ -1372,6 +1381,9 @@
       // whose list is open, which is focus even though the caret has moved into
       // the popover.
       P + ' .bw-field:focus-within,' + P + ' .bw-seg:focus-within,',
+      // Two forms because two things anchor a popover: a row that holds one
+      // field, and — since typography put three on one row — a field itself.
+      P + ' .bw-field.is-open,',
       P + ' .bw-row.is-open .bw-field{box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       P + ' .bw-text:focus{outline:none;box-shadow:inset 0 0 0 1px ' + FOCUS + '}',
       both(' .bw-search-in') + '{caret-color:' + FOCUS + '}',
@@ -1385,7 +1397,16 @@
       P + ' .bw-step{border-radius:3px}',
       P + ' .bw-step:hover{background:var(--bw-hover);color:var(--bw-fg)}',
       P + ' .bw-step:active{background:var(--bw-press)}',
-      P + ' .bw-val.is-inherited{color:var(--bw-faint);font-style:italic}',
+      // Italic means one thing across the whole panel: this value is a literal,
+      // not a token on a scale. It used to mean "inherited from a broader
+      // class", which put top and bottom in italic the moment you typed a
+      // vertical value — two unrelated ideas wearing one style. Inherited keeps
+      // the dimmed colour, which is the half of that pair that reads as
+      // "not this element's own".
+      // is-jit first: an inherited literal is dimmer still, and at equal
+      // specificity the later rule is the one that wins.
+      P + ' .bw-val.is-jit{font-style:italic;color:' + LITERAL + '}',
+      P + ' .bw-val.is-inherited{color:var(--bw-faint)}',
       P + ' .bw-val.is-unset{color:var(--bw-faint)}',
 
       /* spacing: label, a 2-up grid of inputs, then the per-side toggle */
@@ -1397,6 +1418,15 @@
       '  {background:var(--bw-sunken)}',
       P + ' .bw-seg{flex:0 0 auto;display:flex;align-items:center;gap:14px;',
       '  height:40px;padding:0 6px;border-radius:8px;background:var(--bw-sunken)}',
+      // 6+28+14+28+14+28+6 is the frame's 124px exactly, which only holds if
+      // the column above it does not stretch it — a flex column stretches its
+      // children on the cross axis by default, and that is the width here.
+      P + ' .bw-stack > .bw-seg{align-self:flex-start}',
+      // And the reason the family field needs this: .bw-field carries flex:1,
+      // which in a column is flex-basis:0 on the HEIGHT. It collapsed the
+      // 40px field to the 15px of its own line box. The two in the pair below
+      // are grid items, which ignore flex, which is why only this one broke.
+      P + ' .bw-stack > .bw-field{flex:0 0 auto}',
       P + ' .bw-segbtn{width:28px;height:28px;border-radius:3px;display:flex;',
       '  align-items:center;justify-content:center}',
       P + ' .bw-segbtn:hover{background:rgba(255,255,255,.06)}',
@@ -1424,6 +1454,8 @@
       P + ' .bw-ctoken{flex:1;min-width:0;display:flex;align-items:center;gap:10px;',
       '  height:100%;padding:0 12px 0 0;overflow:hidden}',
       P + ' .bw-ctoken:hover{background:#2b2b2b}',
+      // No mark to indent past, so the value sits at the frame's 12px gutter.
+      P + ' .bw-ctoken.is-bare{padding-left:12px;gap:8px}',
       // The chevron: 8x5, 12px in from the right, on every field that opens a list.
       P + ' .bw-chev{flex:0 0 auto;display:flex;align-items:center;margin-left:auto}',
       P + ' .bw-chev svg{display:block}',
@@ -1433,6 +1465,7 @@
       both(' .bw-snow') + '{flex:0 0 auto;display:flex;align-items:center}',
       both(' .bw-snow svg') + '{display:block}',
       PP + ' .bw-customtag{display:flex;align-items:center;gap:6px}',
+      PP + ' .bw-custom .bw-sizename{font-style:italic;color:' + LITERAL + '}',
       P + ' .bw-cname{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);overflow:hidden;',
       '  text-overflow:ellipsis;white-space:nowrap}',
       P + ' .bw-cname.is-unset{color:var(--bw-faint)}',
@@ -1453,6 +1486,10 @@
       '  display:none;flex-direction:column;overflow:hidden;background:var(--bw-card);',
       '  color:var(--bw-fg);border:0;border-radius:12px;',
       '  box-shadow:var(--bw-shadow);user-select:none}',
+      // Family names are the longest label any of these lists carries — a rung
+      // is `lg`, a hue is `clay`, but a face is "Euclid Circular B". 260px is
+      // the frame's own panel width, and only the family list asks for it.
+      PP + '.is-wide{width:260px}',
       PP + ' .bw-pop-h{display:flex;align-items:center;gap:6px;height:60px;',
       '  padding:0 10px 0 20px;flex:0 0 auto;border-bottom:1px solid ' + RULE + '}',
       PP + ' .bw-pop-h strong{flex:1;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted);',
@@ -1486,13 +1523,16 @@
       PP + ' .bw-nosample{display:none}',
       PP + ' .bw-radsample{flex:0 0 26px;height:20px;margin-right:18px;box-sizing:border-box;' +
         'border-top:1.5px solid var(--bw-fg);border-left:1.5px solid var(--bw-fg)}',
-      PP + ' .bw-sizename{flex:1;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
-      PP + ' .bw-sizepx{font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
+      // min-width:0 or flex:1 will not shrink below the text: "Euclid Circular
+      // B" pushed its token clean off the right edge of the list.
+      PP + ' .bw-sizename{flex:1;min-width:0;font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg);',
+      '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      PP + ' .bw-sizepx{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       PP + ' [data-tw-size]{align-items:baseline}',
       PP + ' [data-tw-radius]{align-items:center}',
       PP + ' .bw-hue{border-radius:8px}',
       PP + ' [aria-current="true"]{background:' + SELECTED + '}',
-      P + ' .bw-cname.is-custom{color:var(--bw-fg)}',
+      P + ' .bw-cname.is-custom{color:' + LITERAL + ';font-style:italic}',
       PP + ' .bw-shade-n{font:9px/1 ' + UI_MONO + ';color:#fff;mix-blend-mode:difference}',
 
       /* swatches */
@@ -1696,10 +1736,11 @@
           // Upright, not italic: two real values are not one inherited one.
           // An edge with no class of its own still renders something, and
           // ', 8' reads as a missing number rather than a zero.
-          snow.style.display = one.arbitrary || two.arbitrary ? '' : 'none';
+          var jit = one.arbitrary || two.arbitrary;
+          snow.style.display = jit ? '' : 'none';
           readout.value = edgeText(oneText, prefix, pair[0]) + ', ' +
             edgeText(twoText, prefix, pair[1]);
-          readout.className = 'bw-val';
+          readout.className = 'bw-val' + (jit ? ' is-jit' : '');
           readout.title = opts.name + ': ' + (one.from || 'not set') + ' and ' +
             (two.from || 'not set') + ' \u2014 typing one value sets both';
           return;
@@ -1731,7 +1772,9 @@
       // so it is obvious which classes this element actually owns.
       snow.style.display = state.arbitrary ? '' : 'none';
       readout.value = spacingText(state);
-      readout.className = 'bw-val' + (state.source === 'explicit' ? '' : ' is-inherited');
+      readout.className = 'bw-val' +
+        (state.source === 'explicit' ? '' : ' is-inherited') +
+        (state.arbitrary ? ' is-jit' : '');
       readout.title = state.source === 'explicit'
         ? opts.name + ': ' + state.from
         : opts.name + ': inherited from ' + state.from;
@@ -1893,15 +1936,20 @@
         return !boxVisible(selected, box) && boxApplies(selected, box);
       }).map(function (box) { return { key: box.prefix, label: box.label }; });
 
-      // Font size hides on elements with no text of their own, but a wrapper
-      // may legitimately set it to cascade — so keep it one click away.
-      if (selected && !hasOwnText(selected) && !revealed.font &&
-          readFontSize(selected).kind === 'none') {
-        missing.push({ key: 'font', label: 'Font size' });
+      // The typography fields hide on elements with no text of their own, but
+      // a wrapper may legitimately set any of them to cascade — so each stays
+      // one click away. Listed in the order they appear in the section.
+      if (selected && !hasOwnText(selected) && !revealed.family &&
+          familyTokens().length && readFontFamily(selected).kind !== 'token') {
+        missing.push({ key: 'family', label: 'Font family' });
       }
       if (selected && !hasOwnText(selected) && !revealed.weight &&
           readFontWeight(selected).kind !== 'token') {
         missing.push({ key: 'weight', label: 'Weight' });
+      }
+      if (selected && !hasOwnText(selected) && !revealed.font &&
+          readFontSize(selected).kind === 'none') {
+        missing.push({ key: 'font', label: 'Font size' });
       }
       if (selected && !hasOwnText(selected) && !revealed.align &&
           readAlign(selected).kind !== 'token') {
@@ -1934,59 +1982,72 @@
 
   // ------------------------------------------------------- other controls
 
-  function fontRow() {
-    var row = el('div', 'bw-row');
-    row.setAttribute('data-tw-field', 'font');
-    row.setAttribute('data-tw-optional', 'font');
-    row.appendChild(el('span', 'bw-lbl', 'Font size'));
-
+  /**
+   * A field that opens a list, with no leading icon.
+   *
+   * Bare because the frame's typography fields are bare, and because two of
+   * them now share one 260px line: a 20px mark with its 10px margins would eat
+   * a third of the 124px each is left with. The dropdowns that still have a
+   * row to themselves — radius, the two colours — keep their marks.
+   */
+  function dropField(key, open) {
     var field = el('div', 'bw-field bw-color');
-    var token = el('button', 'bw-ctoken');
-    token.setAttribute('data-tw-font-open', '');
-    var mark = el('span', 'bw-ico');
-    mark.innerHTML = ICONS.font;
+    field.setAttribute('data-tw-field', key);
+    field.setAttribute('data-tw-optional', key);
+    var token = el('button', 'bw-ctoken is-bare');
     var name = el('span', 'bw-cname', '\u2014');
     var note = el('span', 'bw-unit', '');
-    token.appendChild(mark);
     token.appendChild(name);
     token.appendChild(note);
     token.appendChild(chevron());
     field.appendChild(token);
-    row.appendChild(field);
+    // The field is what the popover anchors to and what lights up, not the row
+    // it sits in: three of these share a row now, so lighting the row would
+    // claim all three were open.
+    token.addEventListener('click', function () { open(field); });
+    return { field: field, token: token, name: name, note: note };
+  }
 
-    token.addEventListener('click', function () { openSizePopover(row); });
+  function sizeField() {
+    var d = dropField('font', function (anchor) { openSizePopover(anchor); });
+    d.token.setAttribute('data-tw-font-open', '');
 
-    readouts.push(function () {
-      var show = hasOwnText(selected) || revealed.font ||
-        readFontSize(selected).kind !== 'none';
-      row.style.display = show ? '' : 'none';
-      if (!show) return;
-
+    d.sync = function () {
+      // Font size hides on elements with no text of their own, but a wrapper
+      // may legitimately set it to cascade — so it stays one click away.
       var state = readFontSize(selected);
+      var show = hasOwnText(selected) || revealed.font || state.kind !== 'none';
+      d.field.style.display = show ? '' : 'none';
+      if (!show) return false;
+
+      // Pixels lead and the rung is the note beside them, which is the frame's
+      // "24" and the same call the spacing fields already make: nobody should
+      // have to know what lg is worth to know how big this is.
       if (state.kind === 'scale') {
-        name.textContent = state.name.replace('text-', '');
-        name.className = 'bw-cname';
-        note.textContent = pxOfToken(state.name) || '';
-        token.title = state.name;
+        var px = pxOfToken(state.name);
+        d.name.textContent = px || state.name.replace('text-', '');
+        d.name.className = 'bw-cname';
+        d.note.textContent = state.name.replace('text-', '');
+        d.token.title = state.cls + (px ? ' \u2014 ' + px : '');
       } else if (state.kind === 'px') {
         // Not a token. Say so rather than dressing it up as one — picking from
         // the list is how you get back onto the scale.
-        name.textContent = state.px + state.unit;
-        name.className = 'bw-cname is-custom';
+        d.name.textContent = state.px + state.unit;
+        d.name.className = 'bw-cname is-custom';
         var near = nearestToken(state.px);
-        note.textContent = near && near.d > 0 ? 'near ' + near.name : '';
-        note.appendChild(snowflake());
-        token.title = state.cls + ' \u2014 not a scale token' +
+        d.note.textContent = near && near.d > 0 ? near.name : '';
+        d.note.appendChild(snowflake());
+        d.token.title = state.cls + ' \u2014 not a scale token' +
           (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
       } else {
-        name.textContent = state.px ? state.px + 'px' : '\u2014';
-        name.className = 'bw-cname is-unset';
-        note.textContent = state.px ? 'inherited' : '';
-        token.title = 'not set \u2014 rendering at ' + state.px + 'px';
+        d.name.textContent = state.px ? state.px + 'px' : '\u2014';
+        d.name.className = 'bw-cname is-unset';
+        d.note.textContent = state.px ? 'inherited' : '';
+        d.token.title = 'not set \u2014 rendering at ' + state.px + 'px';
       }
-    });
-
-    return row;
+      return true;
+    };
+    return d;
   }
 
   /**
@@ -2063,6 +2124,62 @@
     if (cls) el.classList.add(cls);
     markDirty(el, 'classes');
     refresh();
+  }
+
+  // ------------------------------------------------------------- font family
+
+  /**
+   * The name a designer would recognise, out of a CSS font-family stack: the
+   * first entry, unquoted. On this project `font-sans` resolves to Aspekta,
+   * and Aspekta is the answer to "what typeface is this" — `sans` is only the
+   * token that happens to hold it. The token is shown beside it, not instead.
+   */
+  function familyLabel(stack) {
+    if (!stack) return '';
+    return String(stack).split(',')[0].trim().replace(/^["']|["']$/g, '');
+  }
+
+  /**
+   * Membership, never /^font-/ — the same rule weights are matched by, and
+   * for the same 150-and-438-uses reason. FAMILIES holds only names whose
+   * generated rule sets font-family, so `font-medium` can neither be read as
+   * a family nor stripped by one.
+   */
+  function readFontFamily(el) {
+    if (!el) return { kind: 'none', stack: '' };
+    var classes = classesOf(el);
+    for (var i = classes.length - 1; i >= 0; i--) {
+      var name = classes[i].indexOf('font-') === 0 ? classes[i].slice(5) : null;
+      if (name && FAMILIES[name]) {
+        return { kind: 'token', name: name, stack: FAMILIES[name], cls: classes[i] };
+      }
+    }
+    return { kind: 'none', stack: getComputedStyle(el).fontFamily };
+  }
+
+  function setFontFamily(el, cls) {
+    classesOf(el).forEach(function (c) {
+      if (c.indexOf('font-') === 0 && FAMILIES[c.slice(5)]) el.classList.remove(c);
+    });
+    // No preview rule, and none is needed: a family is in FAMILIES only
+    // because the page had already generated its rule. That is the whole
+    // point of reading them off the page — nothing here can be invented, so
+    // nothing here can preview as blank the way an invented class would.
+    if (cls) el.classList.add(cls);
+    markDirty(el, 'classes');
+    refresh();
+  }
+
+  // sans/serif/mono are Tailwind's own; anything else is the project's, and
+  // goes first for the reason the colour list does — these codebases speak
+  // their own vocabulary and reach for the stock names close to never.
+  var STOCK_FAMILY = { sans: 1, serif: 1, mono: 1 };
+
+  function familyTokens() {
+    var project = Object.keys(FAMILIES).filter(function (t) { return !STOCK_FAMILY[t]; });
+    project.sort();
+    var stock = ['sans', 'serif', 'mono'].filter(function (t) { return FAMILIES[t]; });
+    return project.concat(stock);
   }
 
   // ------------------------------------------------------------ border radius
@@ -2276,56 +2393,39 @@
     placePopover(anchor);
   }
 
-  function weightRow() {
-    var row = el('div', 'bw-row');
-    row.setAttribute('data-tw-field', 'weight');
-    row.setAttribute('data-tw-optional', 'weight');
-    row.appendChild(el('span', 'bw-lbl', 'Weight'));
-
-    var field = el('div', 'bw-field bw-color');
-    var token = el('button', 'bw-ctoken');
-    token.setAttribute('data-tw-weight-open', '');
-    var mark = el('span', 'bw-ico');
-    mark.innerHTML = ICONS.weight;
-    var name = el('span', 'bw-cname', '\u2014');
-    var note = el('span', 'bw-unit', '');
-    token.appendChild(mark);
-    token.appendChild(name);
-    token.appendChild(note);
-    token.appendChild(chevron());
-    field.appendChild(token);
-    row.appendChild(field);
-
-    token.addEventListener('click', function () {
+  function weightField() {
+    var d = dropField('weight', function (anchor) {
       if (!WEIGHT_TOKENS.length) return;
       popState.prefix = 'weight';
       popState.hue = null;
-      popState.anchor = row;
+      popState.anchor = anchor;
       renderPopover();
       popover.style.display = 'flex';
-      placePopover(row);
+      placePopover(anchor);
     });
+    d.token.setAttribute('data-tw-weight-open', '');
 
-    readouts.push(function () {
+    d.sync = function () {
       var state = readFontWeight(selected);
       var show = hasOwnText(selected) || revealed.weight || state.kind === 'token';
-      row.style.display = show ? '' : 'none';
-      if (!show) return;
+      d.field.style.display = show ? '' : 'none';
+      if (!show) return false;
 
       if (state.kind === 'token') {
-        name.textContent = state.name;
-        name.className = 'bw-cname';
-        note.textContent = state.value;
-        token.title = state.cls;
+        // Verbatim, not capitalised: this is the word that goes into the file.
+        d.name.textContent = state.name;
+        d.name.className = 'bw-cname';
+        d.note.textContent = state.value;
+        d.token.title = state.cls;
       } else {
-        name.textContent = state.value || '\u2014';
-        name.className = 'bw-cname is-unset';
-        note.textContent = state.value ? 'inherited' : '';
-        token.title = 'not set \u2014 rendering at ' + state.value;
+        d.name.textContent = state.value || '\u2014';
+        d.name.className = 'bw-cname is-unset';
+        d.note.textContent = state.value ? 'inherited' : '';
+        d.token.title = 'not set \u2014 rendering at ' + state.value;
       }
-    });
-
-    return row;
+      return true;
+    };
+    return d;
   }
 
   /**
@@ -2392,7 +2492,7 @@
           : 'No radius set \u2014 click to pick one';
       } else {
         name.textContent = state.name;
-        name.className = 'bw-cname';
+        name.className = 'bw-cname' + (state.kind === 'arbitrary' ? ' is-custom' : '');
         note.textContent = state.kind === 'token' ? pxOfRadius(state.name)
           : state.kind === 'legacy'
             ? Math.round(measureRadius(liveRadii().DEFAULT || '0.25rem')) + 'px'
@@ -2445,13 +2545,10 @@
     refresh();
   }
 
-  function alignRow() {
-    var row = el('div', 'bw-row');
-    row.setAttribute('data-tw-field', 'align');
-    row.setAttribute('data-tw-optional', 'align');
-    row.appendChild(el('span', 'bw-lbl', 'Align'));
-
+  function alignField() {
     var seg = el('div', 'bw-seg');
+    seg.setAttribute('data-tw-field', 'align');
+    seg.setAttribute('data-tw-optional', 'align');
     var buttons = ALIGNS.map(function (a) {
       var b = el('button', 'bw-segbtn');
       b.setAttribute('data-tw-align', a.name);
@@ -2461,23 +2558,105 @@
       seg.appendChild(b);
       return { name: a.name, node: b };
     });
-    row.appendChild(seg);
+
+    return {
+      node: seg,
+      sync: function () {
+        var state = readAlign(selected);
+        var show = hasOwnText(selected) || revealed.align || state.kind === 'token';
+        seg.style.display = show ? '' : 'none';
+        if (!show) return false;
+        buttons.forEach(function (b) {
+          // Pressed means the class is on THIS element. An alignment the
+          // element merely inherits is named in the tooltip, not claimed.
+          var on = state.kind === 'token' && state.name === b.name;
+          b.node.setAttribute('aria-pressed', on ? 'true' : 'false');
+          b.node.title = on
+            ? state.cls + ' \u2014 click to clear'
+            : 'Align ' + b.name +
+              (state.kind === 'none' && state.name ? ' (inheriting ' + state.name + ')' : '');
+        });
+        return true;
+      },
+    };
+  }
+
+  function familyField() {
+    var d = dropField('family', function (anchor) {
+      if (!familyTokens().length) return;
+      popState.prefix = 'family';
+      popState.hue = null;
+      popState.anchor = anchor;
+      renderPopover();
+      popover.style.display = 'flex';
+      placePopover(anchor);
+    });
+    d.token.setAttribute('data-tw-family-open', '');
+
+    d.sync = function () {
+      var state = readFontFamily(selected);
+      // A page that generated no family utility gets no field — an empty list
+      // behind a chevron is worse than no chevron. Otherwise the weight rule,
+      // for the weight reason: a wrapper with no text of its own can still set
+      // a family that cascades, so it waits in the Add strip rather than gone.
+      var show = familyTokens().length > 0 &&
+        (hasOwnText(selected) || revealed.family || state.kind === 'token');
+      d.field.style.display = show ? '' : 'none';
+      if (!show) return false;
+
+      if (state.kind === 'token') {
+        d.name.textContent = familyLabel(state.stack) || state.name;
+        d.name.className = 'bw-cname';
+        d.note.textContent = state.name;
+        d.token.title = state.cls + ' \u2014 ' + state.stack;
+      } else {
+        d.name.textContent = familyLabel(state.stack) || '\u2014';
+        d.name.className = 'bw-cname is-unset';
+        d.note.textContent = state.stack ? 'inherited' : '';
+        d.token.title = 'not set \u2014 rendering in ' +
+          (state.stack || 'the browser default');
+      }
+      return true;
+    };
+    return d;
+  }
+
+  /**
+   * Typography, as one section — the shape of the frame: the family across the
+   * full width, weight and size sharing the line below it, the alignment
+   * segment below that. Three labels became one because they name one thing,
+   * and because at 124px a field cannot afford a label of its own beside it.
+   */
+  function typographySection() {
+    var row = el('div', 'bw-row');
+    row.setAttribute('data-tw-section', 'typography');
+    row.appendChild(el('span', 'bw-lbl', 'Typography'));
+
+    var stack = el('div', 'bw-stack');
+    var family = familyField();
+    var weight = weightField();
+    var size = sizeField();
+    var align = alignField();
+
+    var pair = el('div', 'bw-pair');
+    pair.appendChild(weight.field);
+    pair.appendChild(size.field);
+
+    stack.appendChild(family.field);
+    stack.appendChild(pair);
+    stack.appendChild(align.node);
+    row.appendChild(stack);
 
     readouts.push(function () {
-      var state = readAlign(selected);
-      var show = hasOwnText(selected) || revealed.align || state.kind === 'token';
-      row.style.display = show ? '' : 'none';
-      if (!show) return;
-      buttons.forEach(function (b) {
-        // Pressed means the class is on THIS element. An alignment the element
-        // merely inherits is named in the tooltip instead of being claimed.
-        var on = state.kind === 'token' && state.name === b.name;
-        b.node.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.node.title = on
-          ? state.cls + ' \u2014 click to clear'
-          : 'Align ' + b.name +
-            (state.kind === 'none' && state.name ? ' (inheriting ' + state.name + ')' : '');
-      });
+      // Each field still decides for itself exactly as it did when it owned a
+      // row. The section shows when any of them does, and the pair drops to a
+      // single column rather than leaving a hole where the other one was.
+      var f = family.sync();
+      var w = weight.sync();
+      var z = size.sync();
+      var a = align.sync();
+      pair.className = 'bw-pair' + (w && z ? '' : w || z ? ' is-single' : ' is-hidden');
+      row.style.display = (f || w || z || a) ? '' : 'none';
     });
 
     return row;
@@ -2557,7 +2736,7 @@
    * about, which is what will render rather than what is declared.
    */
   function discoverUtilities() {
-    var found = { bg: {}, text: {}, radius: {} };
+    var found = { bg: {}, text: {}, radius: {}, family: {} };
 
     function walk(rules) {
       for (var i = 0; i < rules.length; i++) {
@@ -2582,6 +2761,13 @@
           if (r && rule.style.borderRadius) {
             found.radius[r[1] || 'DEFAULT'] = rule.style.borderRadius;
           }
+
+          // Families, and the read is itself the membership test that the
+          // font- trap demands: .font-medium sets font-weight and carries no
+          // font-family, so it can never land here, while .font-sans and a
+          // project's own .font-aspekta both do. Nothing else needs a guard.
+          var f = /^\.font-([a-zA-Z][a-zA-Z0-9-]*)$/.exec(sel);
+          if (f && rule.style.fontFamily) found.family[f[1]] = rule.style.fontFamily;
         }
 
         if (rule.cssRules && rule.cssRules.length) walk(rule.cssRules);
@@ -2629,6 +2815,7 @@
 
     var utils = discoverUtilities();
     renderable = utils;
+    FAMILIES = utils.family;
     // Union of what bg-* and text-* can each render; the picker offers names,
     // and ensurePreviewRule fills any gap for the specific prefix in use.
     var live = {};
@@ -2987,6 +3174,7 @@
 
   function renderPopover() {
     markOpenAnchor();
+    popover.classList.toggle('is-wide', popState.prefix === 'family');
     popover.innerHTML = '';
     var head = el('div', 'bw-pop-h');
 
@@ -2999,6 +3187,7 @@
     }
     head.appendChild(el('strong', null,
       popState.prefix === 'font' ? 'Font size'
+        : popState.prefix === 'family' ? 'Font family'
         : popState.prefix === 'weight' ? 'Weight'
         : popState.prefix === 'radius' ? 'Radius'
         : popState.prefix === 'spacing' ? popState.spacing.name
@@ -3010,6 +3199,33 @@
     popover.appendChild(head);
 
     var body = el('div', 'bw-pop-body');
+
+    if (popState.prefix === 'family') {
+      var currentF = readFontFamily(selected);
+      familyTokens().forEach(function (t) {
+        var item = el('button', 'bw-hue');
+        item.setAttribute('data-tw-family', t);
+        // Each sample set in its own family: the list is the only place the
+        // difference between two of them is visible before you commit.
+        var sample = el('span', 'bw-sizesample', 'Ag');
+        sample.style.cssText = 'font-size:16px;font-family:' + FAMILIES[t];
+        item.appendChild(sample);
+        item.appendChild(el('span', 'bw-sizename', familyLabel(FAMILIES[t]) || t));
+        item.appendChild(el('span', 'bw-sizepx', t));
+        if (currentF.kind === 'token' && currentF.name === t) {
+          item.setAttribute('aria-current', 'true');
+        }
+        item.title = 'font-' + t + ' \u2014 ' + FAMILIES[t];
+        item.addEventListener('click', function () {
+          setFontFamily(selected, 'font-' + t);
+          closePopover();
+        });
+        body.appendChild(item);
+      });
+      popover.appendChild(body);
+      if (popState.anchor) placePopover(popState.anchor);
+      return;
+    }
 
     if (popState.prefix === 'weight') {
       var currentW = readFontWeight(selected);
@@ -3280,9 +3496,7 @@
     body.appendChild(textRow());
     BOXES.forEach(function (box) { body.appendChild(boxSection(box)); });
     body.appendChild(addRow());
-    body.appendChild(fontRow());
-    body.appendChild(weightRow());
-    body.appendChild(alignRow());
+    body.appendChild(typographySection());
     body.appendChild(radiusRow());
     body.appendChild(colorRow('bg', 'Background'));
     body.appendChild(colorRow('text', 'Text color'));

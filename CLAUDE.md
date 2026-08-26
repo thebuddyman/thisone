@@ -11,7 +11,7 @@ Two modes share one client:
   location; `next/server.js` runs as a separate process and writes the `.tsx`.
 
 Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
-20 commits, working tree clean, `npm test` green.
+21 commits, `npm test` green.
 
 ---
 
@@ -195,6 +195,14 @@ own CSS has put something there, it shows that instead, because a `0` the panel
 cannot back up is a lie. Half steps count too: `py-2.5` and friends are 97 of
 the 802 spacing classes in `uiux_experiment`, and an integers-only pattern read
 every one of them as unset.
+
+**Italic means one thing: this value is a literal.** It used to mean "inherited
+from a broader class", which put top and bottom into italic the moment you typed
+a vertical value — two unrelated ideas wearing one style. Inherited keeps the
+dimmed colour, which is the half of that pair that reads as "not this element's
+own". A literal is italic and a shade back (`#b4b4b4`), and carries the
+snowflake: the two are set from the same condition and a test asserts they never
+disagree on any field.
 
 **Icons are the exported files, inlined byte-for-byte — never redrawn.** They
 live in `assets/` and are pasted into `ICONS` exactly as exported, keeping their
