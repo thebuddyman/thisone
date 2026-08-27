@@ -113,26 +113,27 @@ const CORNERS = ['tl', 'tr', 'bl', 'br'];
       return (await name()) === '3, 12, 12, 12';
     })(), await name());
 
-  // ---- stepping
-  await corner('tr').focus();
-  await corner('tr').press('ArrowDown');
-  await corner('tr').blur();
+  // ---- stepping: a pixel a press, ten with Shift held
+  const nudge = async (key) => {
+    await corner('tr').focus();
+    await corner('tr').press(key);
+    await corner('tr').blur();
+  };
+  await nudge('ArrowDown');
   const stepped = await read('tr');
-  check('an arrow steps a corner down the ladder from where it renders',
-    Number(stepped) < 12 && /rounded-tr-/.test(await card.getAttribute('class')),
+  check('an arrow steps a corner down one pixel from where it renders',
+    stepped === '11' && /rounded-tr-/.test(await card.getAttribute('class')),
     `${stepped} — ${await card.getAttribute('class')}`);
+  await nudge('Shift+ArrowUp');
+  check('Shift is ten of them', (await read('tr')) === '21', await read('tr'));
+  await nudge('Shift+ArrowDown');
+  check('…both ways', (await read('tr')) === '11', await read('tr'));
 
   let guard = 0;
-  while ((await read('tr')) !== '0' && guard++ < 20) {
-    await corner('tr').focus();
-    await corner('tr').press('ArrowDown');
-    await corner('tr').blur();
-  }
+  while ((await read('tr')) !== '0' && guard++ < 20) await nudge('ArrowDown');
   check('walked the corner down to 0', (await read('tr')) === '0', `after ${guard} steps`);
-  await corner('tr').focus();
-  await corner('tr').press('ArrowDown');
-  await corner('tr').blur();
-  check('below the first rung the override is dropped, not pinned at zero',
+  await nudge('ArrowDown');
+  check('below zero the override is dropped, not pinned there',
     !/rounded-tr-/.test(await card.getAttribute('class')), await card.getAttribute('class'));
   check('…and the corner falls back to the box radius, dimmed again',
     (await read('tr')) === '12' && (await colour('tr')) === FAINT, await read('tr'));

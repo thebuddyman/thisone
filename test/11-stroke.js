@@ -123,24 +123,72 @@ function check(name, pass, detail) {
   check('the page draws it — Tailwind generated nothing for this one',
     (await drawn()) === '3px dashed rgb(0, 0, 0)', await drawn());
 
-  // ---- the arrows walk the ladder, and step off the end of it ----
+  // ---- the arrows count pixels, and step off the bottom ----
   await width.focus();
   await width.press('ArrowDown');
-  check('stepping down from a value off the ladder lands on the rung below',
+  check('an arrow steps the width down one pixel',
     (await width.inputValue()) === '2', await width.inputValue());
   await width.press('ArrowDown');
   check('…and again', (await width.inputValue()) === '1', await width.inputValue());
   check('1 is written `border`, the bare utility these codebases actually use',
     (await cls()).split(/\s+/).includes('border'), await cls());
   await width.press('ArrowUp');
-  check('up from the bare border is the next rung, not border-1',
+  check('up from the bare border is 2, written as the rung and not border-1',
     (await cls()).includes('border-2') && !(await cls()).split(/\s+/).includes('border'),
     await cls());
+  await width.press('Shift+ArrowUp');
+  check('Shift is ten of them, and a width off the rungs goes arbitrary',
+    (await width.inputValue()) === '12' && (await cls()).includes('border-[12px]'),
+    `${await width.inputValue()} — ${await cls()}`);
+  await width.press('Shift+ArrowDown');
+  check('…and back down again', (await width.inputValue()) === '2', await width.inputValue());
+  // Ten below 2 is not a reason to lose the stroke: the leap stops at zero,
+  // and pressing again on that zero is what takes the class off.
+  await width.press('Shift+ArrowDown');
+  check('a leap that would go under zero stops at zero',
+    (await width.inputValue()) === '0' && (await cls()).includes('border-0'),
+    `${await width.inputValue()} — ${await cls()}`);
+  await width.press('ArrowDown');
+  check('…and pressing again on that zero drops the width class',
+    !/(?:^| )border(?:-0|-\[)?(?: |$)/.test(await cls()), await cls());
+  await width.press('ArrowUp');
+  check('and up from nothing is 1 again', (await cls()).split(/\s+/).includes('border'), await cls());
 
   // ---- a box colour takes the edge with it ----
   await reselect('bg-white rounded-xl shadow m-12 p-4 border border-b-red-500');
   check('a per-side colour shows the section by itself',
     await row.isVisible());
+  await panel.locator('[data-tw-color-open="border"]').click();
+  // The stroke's colour is the same object the two colour rows are, box and
+  // all — not just the same field. The width test used to name bg and text
+  // only, so `border` reached the colour body and opened it at a list's 220
+  // with the eleven-square grid built for 322 spilling out the side. Measured
+  // against text's own popover rather than against 322, because the number is
+  // the grid's and either could move.
+  const popBox = async () => pop.evaluate((e) => {
+    const g = e.querySelector('.bw-swatches');
+    return {
+      w: Math.round(e.getBoundingClientRect().width),
+      sw: Math.round(e.querySelector('.bw-swatch').getBoundingClientRect().width),
+      cols: getComputedStyle(g).gridTemplateColumns.split(' ').length,
+      picker: !!e.querySelector('.bw-sv'),
+      overflows: g.scrollWidth > g.clientWidth,
+    };
+  });
+  const strokePop = await popBox();
+  await page.keyboard.press('Escape');
+  const textReveal = panel.locator('[data-tw-reveal="text"]');
+  if (await textReveal.isVisible()) await textReveal.click();
+  await panel.locator('[data-tw-color-open="text"]').click();
+  const textPop = await popBox();
+  check('the stroke opens the same colour dropdown the text row does',
+    JSON.stringify(strokePop) === JSON.stringify(textPop),
+    `stroke ${JSON.stringify(strokePop)} vs text ${JSON.stringify(textPop)}`);
+  check('and its swatch grid is not clipped by the box around it',
+    strokePop.picker && !strokePop.overflows && strokePop.cols === 11,
+    JSON.stringify(strokePop));
+  await page.keyboard.press('Escape');
+
   await panel.locator('[data-tw-color-open="border"]').click();
   await pop.locator('[data-tw-hue="emerald"]').click();
   await page.locator('[data-tw-pop-shade] [data-tw-shade="500"]').click();

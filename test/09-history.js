@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 
 /**
- * Nudge a spacing field by one rung.
+ * Nudge a spacing field by one pixel.
  *
  * The stepper buttons are gone — the field takes a typed value and a chevron
  * opens the token list — but the arrow keys still step, which is what these

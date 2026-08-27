@@ -121,6 +121,48 @@ because a field that prints a value and then refuses it cannot round-trip what
 it is showing you. Every other rung is still a bare number, and the tooltip
 still names the class.
 
+**An arrow is a pixel, and Shift is ten of them.** Every length in the panel —
+padding, margin, gap, radius, stroke width — prints pixels, so the arrows
+count pixels. They used to walk the ladder underneath instead, which made them
+the one control here whose presses were unevenly sized: 6 to 8 was a press and
+64 to 80 was a press, on a field showing the pixels either way, so what a press
+was worth could only be found out by pressing it. The ladder has not gone
+anywhere — a step writes the rung where one lands and `p-[17px]` where none
+does, which is exactly what typing 17 does, so the two ways into a field agree,
+and the rungs themselves are what the chevron beside it opens. Opacity already
+counted this way and now merely says so: one and ten, in whatever unit the
+field prints. `full` is the one value with no length to count from, so the one
+press it takes is down, onto the tallest rung that is a number — up from it
+would be a step past infinity.
+
+**A press counts from the pixels on screen, and `1.5rem` is not 1.5 of them.**
+A field can be showing a literal in some other unit — it has to keep the unit
+or it says nothing — and `parseFloat` off that text reads 1.5, which stepped a
+24px padding to 2.5px. The step now takes the number the field prints only
+where that number is pixels, and what the element renders where it is not. A
+comma pair still steps from the first of its numbers, because that is the one
+the press is against.
+
+**A step is the panel writing the value, not the typist typing it.** Every
+readout leaves a focused field alone so `refresh()` cannot rewrite a word
+mid-typing, and that guard was swallowing the marking a step had just earned:
+an arrow that took a value off the ladder left the snowflake and the italic
+behind until the field was blurred, so `17` sat there in an upright hand
+looking like a rung. `stepping` says who wrote it and `typing()` reads it, so
+the readouts are let through for the one case where the answer is "the panel".
+Each stepper used to put its own new value in by hand for the same reason;
+letting the readout run is that, the marking and the placeholder in one, and
+the four hand-written assignments are gone.
+
+**A leap that would go under zero stops at zero; a press on that zero is what
+drops the class.** Ten below the bottom is still a number the field can show,
+and losing the class outright is not what holding Shift asked for. Dropping is
+otherwise unchanged, and it is still the only way back to an inherited value or
+to a clean class string — what has changed is that reaching zero and leaving it
+are two presses rather than one. The spacing one now marks the element dirty as
+well, which it never had: the class came off the page and the save that would
+have written it was never told.
+
 **Four corners that disagree are said in full, comma separated.** An axis shows
 `0, 8` for the same reason: one number would be a lie about the others, and
 naming the disagreement ("Mixed") or averaging it tells you less than the four
@@ -171,7 +213,9 @@ Tailwind ships and the one these codebases use — 101 sites against zero for
 every numbered width put together. The ladder is 0, 1, 2, 4, 8 and anything off
 it becomes `border-[3px]` with the snowflake, exactly as spacing and radius do.
 There is no dropdown behind the width field because the frame draws none: the
-chevron is on Solid beside it and the ladder lives in the arrow keys.
+chevron is on Solid beside it, and the arrows count pixels like every other
+length here — which costs this field nothing, since 0, 1, 2, 4 and 8 are all
+inside eight presses of each other.
 
 **Revealing a stroke writes one, where revealing a padding writes nothing.**
 The sharper version of the colour rows' reason. A padding field with no class
@@ -1399,15 +1443,20 @@ that `border-collapse` offers a + like any unset row rather than a stroke,
 that a box colour takes `border-b-red-500` with it, that revealing writes
 exactly `border border-solid border-black` and the page draws it on a fixture
 that has generated no such rule, that a rung is written as the rung and 3px is
-not, that the arrows walk the ladder and step off the bottom of it by dropping
-the class, that the minus takes all three classes at once, and that what is
-left reaches disk with nothing else on the line moved. Its selections click the
+not, that an arrow is a pixel and Shift is ten of them, that a leap under zero
+stops at zero and the press after it drops the class, that the minus takes all
+three classes at once, and that what is left reaches disk with nothing else on
+the line moved. Its selections click the
 card at x=120: the delete handle for the live selection sits on the element's
 top-left corner and swallows a click at (3,3), and it closes the panel with the
 header's × rather than Escape, because by then the caret is in a field and
 Escape belongs to the field it is in.
 
-`test/02-spacing-sides.js` also owns the reveal rows: that every property has
+`test/02-spacing-sides.js` owns the two cross-cutting halves of the steppers,
+because spacing is where both were found: that a `1.5rem` literal steps from
+the 24 it renders rather than the 1.5 it says, and that a step off the ladder
+is italic and snowflaked while the field still holds focus. It also owns the
+reveal rows: that every property has
 one whether or not it is set, in the order the panel reads in, that the + sits
 in the same column a section toggle does, and that revealing writes nothing.
 It owns the "could this do anything" rule too: gap offered on a flex container
@@ -1439,8 +1488,9 @@ compares colour by painting it, never as a string — the same green arrives as
 `test/10-radius-corners.js` covers the seam the live suite cannot reach
 cheaply — a corner overriding the box, the box clearing the corners, one value
 typed into the box flattening all four, a comma list surviving a tab through
-it, stepping below the first rung dropping the class rather than pinning a
-zero, the view opening by itself on an element authored per-corner, and the
+it, a corner counted a pixel at a time and ten at a time, stepping below zero
+dropping the class rather than pinning it there, the view opening by itself on
+an element authored per-corner, and the
 class reaching disk beside the box rung with nothing else on the line moved.
 Its last selection clicks the card at x=120, not the corner: by then the card
 wears a 16px radius and (3,3) is outside the arc, on the `<main>` behind it.

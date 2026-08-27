@@ -908,8 +908,8 @@
   function scaleValue(classes, token) {
     // Half steps count: py-2.5, mt-0.5 and friends are 97 of the 802 spacing
     // classes in uiux_experiment, and an integers-only pattern read every one
-    // of them as unset. Stepping from one lands on the nearest rung, which is
-    // what nearestIndex already does for a hand-written p-5.
+    // of them as unset. The arrows step off the pixel count either way, so a
+    // hand-written p-2.5 counts up from the 10 it renders.
     var rung = new RegExp('^' + token + '-(\\d+(?:\\.\\d+)?)$');
     var arbitrary = new RegExp('^' + token + '-\\[([^\\]]+)\\]$');
     // Last match wins, mirroring how a duplicated class would land in the DOM.
@@ -1044,45 +1044,106 @@
   }
 
   /**
-   * Nearest slot on the scale, so a hand-written p-5 still steps sensibly and a
-   * typed 7 lands somewhere real. Ties round up (7 → 8), which is what people
-   * expect from a number field; `<=` is what makes the later slot win.
+   * What an arrow moves a length by, and what Shift moves it by.
+   *
+   * Padding, margin, gap, radius and stroke width are all spoken in pixels, so
+   * an arrow is worth a pixel and Shift is worth ten of them — each field
+   * counts in the unit it prints. They used to walk the ladder underneath
+   * instead, which made the arrows the one control here whose presses were
+   * unevenly sized: 6 to 8 was a press and 64 to 80 was a press, on a field
+   * showing pixels either way, so what a press was worth could only be learnt
+   * by pressing it.
+   *
+   * The ladder has not gone anywhere. A step writes the rung where one lands
+   * and an arbitrary value where none does — exactly what typing the same
+   * number does, so the two ways into a field agree — and the rungs
+   * themselves are what the chevron beside it opens. Stroke width has no
+   * chevron and now has no ladder in its arrows either, which costs it
+   * nothing: 0, 1, 2, 4 and 8 are all inside eight presses of each other.
    */
-  function nearestIndex(value) {
-    var best = 0;
-    for (var i = 1; i < SPACING.length; i++) {
-      if (Math.abs(SPACING[i] - value) <= Math.abs(SPACING[best] - value)) best = i;
-    }
-    return best;
+  var LENGTH_STEP = 1;
+  var LENGTH_LEAP = 10;
+
+  /**
+   * Where a press lands, or null for "take the class off".
+   *
+   * A leap that would go under zero stops at zero rather than dropping the
+   * class: ten below the bottom is still a number the field can show, and
+   * losing the class outright is not what holding Shift asked for. Pressing
+   * down again on a zero the element owns is what drops it — the one way
+   * back to an inherited value, or to a clean class string.
+   */
+  function stepLength(from, dir, leap) {
+    var next = from + dir * (leap ? LENGTH_LEAP : LENGTH_STEP);
+    if (next >= 0) return next;
+    return from > 0 ? 0 : null;
   }
 
-  function stepSpacing(prefix, side, dir) {
+  /**
+   * The pixel count a press counts from: the number the field is showing where
+   * that number is pixels, and what the element renders where it is not.
+   *
+   * A field can be showing `1.5rem` — a literal in a unit it has to keep, or it
+   * says nothing — and parseFloat off that is 1.5, which stepped a 24px padding
+   * to 2.5px. The rendered value is the same length said in the unit the arrows
+   * count in. A comma pair says its first number first, which is the one the
+   * press is against, so the match stops at the comma rather than reading past
+   * it.
+   */
+  function stepFrom(shown, rendered) {
+    var m = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*(?:,|$)/.exec(shown == null ? '' : String(shown));
+    return m ? Number(m[1]) : (rendered || 0);
+  }
+
+  /**
+   * A step is the panel writing the value, not the typist typing it.
+   *
+   * Every readout leaves a focused field alone so refresh() cannot rewrite a
+   * word mid-typing — and that guard was also swallowing the marking a step had
+   * just earned: an arrow that took a value off the ladder left the snowflake
+   * and the italic behind until the field was blurred, so 17 sat there looking
+   * like a rung. `stepping` says who wrote it, and the readouts are let through
+   * for the one case where the answer is "the panel". Each stepper used to put
+   * its new value in by hand for the same reason; letting the readout run is
+   * that, and the marking, and the placeholder, in one.
+   */
+  var stepping = false;
+  function withStep(fn) {
+    stepping = true;
+    try { fn(); } finally { stepping = false; }
+  }
+  function typing(input) {
+    return !stepping && document.activeElement === input;
+  }
+
+  /**
+   * Step a spacing field by a pixel, or by ten with Shift held.
+   *
+   * `shown` is the field's own text, because the field is what is on screen:
+   * an axis whose two edges disagree says `0, 8` and has no class of its own
+   * to read, and a value typed and not yet committed is the one the arrow is
+   * being pressed against. parseFloat takes the first number of a pair, which
+   * is the first thing the field says — the rule the radius box already
+   * steps by. Where it says nothing at all, the step comes off what the side
+   * renders today.
+   */
+  function stepSpacing(prefix, side, dir, leap, shown) {
     if (!selected) return;
     var state = readSpacing(selected, prefix, side);
-    var pattern = familyRe(prefix, side);
-    // An arbitrary value steps from wherever it actually sits on the ladder.
-    var from = state.value === null ? null
-      : state.arbitrary ? parseFloat(state.value) / (pxOfSpacing(1) || 4)
-      : state.value;
-    var index = from === null ? -1 : nearestIndex(from);
-    var next;
+    var here = stepFrom(shown, computedSpacing(selected, prefix, side));
 
-    if (state.source === 'explicit') {
-      next = index + dir;
-      // Stepping below zero drops the class entirely rather than pinning a 0,
-      // which is the only way back to an inherited (or clean) class string.
-      if (next < 0) {
-        stripFamily(selected, pattern);
-        refresh();
-        return;
-      }
-    } else {
-      // Inherited or unset: step away from whatever the side renders as today.
-      next = (index === -1 ? 0 : index) + dir;
+    var next = stepLength(here, dir, leap);
+    if (next === null) {
+      // Below zero the class comes off rather than pinning a 0 the element
+      // never asked for, which is the only way back to an inherited (or clean)
+      // class string. Nothing of its own to take off means nothing to do.
+      if (state.source !== 'explicit') return;
+      stripFamily(selected, familyRe(prefix, side));
+      markDirty(selected, 'classes');
+      refresh();
+      return;
     }
-
-    next = Math.max(0, Math.min(SPACING.length - 1, next));
-    setSpacing(prefix, side, String(SPACING[next]));
+    setSpacing(prefix, side, suffixForPx(next));
   }
 
   /**
@@ -2384,12 +2445,16 @@
       else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
       else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
-        stepSpacing(prefix, side, e.key === 'ArrowUp' ? 1 : -1);
-        // refresh() leaves a focused input alone so it never fights the typist.
-        // Stepping IS the panel changing the value, so it has to put the new
-        // one in by hand — otherwise the blur that follows commits the stale
-        // text back and the step silently undoes itself.
-        readout.value = spacingText(readSpacing(selected, prefix, side));
+        // The placeholder is where an unset field keeps the number the page
+        // renders, so a step off it counts from what is on screen either way.
+        // withStep lets this field's own readout through the focus guard, so
+        // the new value, its marking and its placeholder all land together —
+        // and the blur that follows commits what is on screen rather than the
+        // stale text a skipped readout would have left there.
+        withStep(function () {
+          stepSpacing(prefix, side, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey,
+            readout.value || readout.placeholder);
+        });
       }
     });
     readout.addEventListener('blur', commit);
@@ -2402,7 +2467,7 @@
     row.appendChild(field);
 
     readouts.push(function () {
-      if (document.activeElement === readout) return; // don't fight the typist
+      if (typing(readout)) return; // don't fight the typist
       var state = readSpacing(selected, prefix, side);
 
       var pair = PAIR[side];
@@ -3858,11 +3923,10 @@
       else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
       else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
-        stepRadius(side, e.key === 'ArrowUp' ? 1 : -1);
-        // refresh() leaves a focused input alone so it never fights the typist,
-        // so a step has to put its own value in — otherwise the blur that
-        // follows commits the stale text back and undoes it.
-        readout.value = fieldText();
+        var val = readout.value;
+        withStep(function () {
+          stepRadius(side, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey, val);
+        });
       }
     });
     readout.addEventListener('blur', commit);
@@ -3881,7 +3945,7 @@
     }
 
     readouts.push(function () {
-      if (document.activeElement === readout) return; // don't fight the typist
+      if (typing(readout)) return; // don't fight the typist
       var state = readRadiusField(selected, side);
       note.textContent = '';
 
@@ -3970,29 +4034,45 @@
     return cornerText(el, CORNERS[0].side);
   }
 
+  /** The tallest rung that is a length — what `full` steps down onto. */
+  function tallestRadiusPx() {
+    var top = 0;
+    RADIUS_TOKENS.forEach(function (t) {
+      var px = radiusPx(t);
+      if (px !== Infinity && px > top) top = px;
+    });
+    return top;
+  }
+
   /**
-   * Step a radius field along the ladder. An arbitrary value steps from
-   * wherever it actually sits on it, and stepping below the first rung drops
-   * the class rather than pinning a zero — the only way back to an inherited
-   * one, or to a clean class string.
+   * Step a radius field by a pixel, or by ten with Shift held — the same press
+   * a spacing field takes, on a field printing the same unit.
+   *
+   * `shown` is the field's own text, so the box steps from the first of four
+   * that disagree rather than from a class it has not got, and a value typed
+   * and not yet committed is the one the arrow is pressed against. Stepping
+   * below zero drops the class rather than pinning a zero — the only way back
+   * to an inherited one, or to a clean class string.
    */
-  function stepRadius(side, dir) {
+  function stepRadius(side, dir, leap, shown) {
     if (!selected) return;
     var state = readRadiusField(selected, side);
-    // parseFloat off the field's own text, so the box steps from the first of
-    // four that disagree rather than from a class it does not have.
-    var here = parseFloat(side ? cornerText(selected, side) : boxText(selected)) || 0;
-    var index = -1;
-    for (var i = 0; i < RADIUS_TOKENS.length; i++) {
-      var px = radiusPx(RADIUS_TOKENS[i]);
-      if (px === Infinity) continue;
-      if (index === -1 ||
-          Math.abs(px - here) <= Math.abs(radiusPx(RADIUS_TOKENS[index]) - here)) {
-        index = i;
-      }
+    var text = shown === undefined
+      ? (side ? cornerText(selected, side) : boxText(selected))
+      : shown;
+
+    // `full` is the one rung with no length to count from — calc(infinity *
+    // 1px) — so the one press it can take is down, onto the tallest rung that
+    // is a number. Up from it would be a step past infinity.
+    if (/^\s*full\s*$/i.test(String(text))) {
+      if (dir < 0) writeRadius(side, radiusSuffixForPx(tallestRadiusPx()));
+      return;
     }
-    var next = index + dir;
-    if (next < 0) {
+
+    var here = stepFrom(text, computedCorner(selected, side || CORNERS[0].side));
+
+    var next = stepLength(here, dir, leap);
+    if (next === null) {
       if (state.source === 'explicit') {
         stripFamily(selected, side
           ? new RegExp('^rounded-' + side + '(?:-|$)') : FAMILY.radiusAny);
@@ -4000,11 +4080,7 @@
       }
       return refresh();
     }
-    // `full` is on the ladder but is not a length, so stepping stops below it:
-    // there is nothing between it and the rung before.
-    var last = RADIUS_TOKENS.length - 1;
-    while (last > 0 && radiusPx(RADIUS_TOKENS[last]) === Infinity) last--;
-    writeRadius(side, RADIUS_TOKENS[Math.min(next, last)]);
+    writeRadius(side, radiusSuffixForPx(next));
   }
 
   /**
@@ -4779,11 +4855,11 @@
     refresh();
   }
 
-  // What an arrow moves an opacity by, and what Shift moves it by. Opacity is
-  // the one value in this panel with no ladder to walk: every integer from 0
-  // to 100 is writable and means something, so the arrows count percent rather
-  // than step between rungs the way spacing and radius do. One to land on the
-  // exact number, ten to cross the range in ten presses.
+  // What an arrow moves an opacity by, and what Shift moves it by — the same
+  // one and ten every length in the panel steps by, counted in percent here
+  // because percent is what this field prints. Every integer from 0 to 100 is
+  // writable and means something, so one lands on the exact number and ten
+  // crosses the range in ten presses.
   var ALPHA_STEP = 1;
   var ALPHA_LEAP = 10;
 
@@ -5689,14 +5765,12 @@
     /**
      * Count the opacity up or down — by one, or by ten with Shift held.
      *
-     * The arrows step *from where the value is* rather than onto a rung,
-     * which is what parts this from every other stepper in the panel: spacing
-     * and radius walk a ladder because only the rungs have classes behind
-     * them, where `/37` is as writable as `/40` and as legible. So a press is
-     * a percent and Shift is ten of them — 37 goes to 38 or to 47, never to a
-     * number the person did not ask for. It reads the field rather than the
-     * class because the field is what is on screen: a value typed and not yet
-     * committed is the one the arrow is being pressed against.
+     * A press is a percent and Shift is ten of them — 37 goes to 38 or to 47,
+     * never to a number the person did not ask for. The same press every
+     * length in the panel takes, counted in the unit the field prints. It
+     * reads the field rather than the class because the field is what is on
+     * screen: a value typed and not yet committed is the one the arrow is
+     * being pressed against.
      */
     function stepAlpha(dir, leap) {
       var info = readColor(selected, prefix);
@@ -5865,9 +5939,12 @@
   // label already removes a stroke outright, which is the honest way to say it.
   // A stroke that is authored with one still shows it, so it can be got off.
   var BORDER_OFF = ['hidden', 'none'];
-  // 1 is written `border`, never `border-1`: the bare utility is what Tailwind
-  // ships and what these codebases actually use — 101 sites on uiux_experiment
-  // against zero for every numbered width put together.
+  // The widths Tailwind ships a utility for, which is all this list decides
+  // now the arrows count pixels: a width that lands on one is written as the
+  // class and anything else becomes border-[3px], the way spacing and radius
+  // do. 1 is written `border`, never `border-1` — the bare utility is what
+  // Tailwind ships and what these codebases actually use, 101 sites on
+  // uiux_experiment against zero for every numbered width put together.
   var BORDER_WIDTHS = [0, 1, 2, 4, 8];
 
   var BORDER_W_RE = /^border(?:-(0|[1-9][0-9]*))?$/;
@@ -6052,8 +6129,10 @@
    * The width field: a plain number, no mark and no list.
    *
    * Frame 7:687 gives it neither — the chevron is on Solid beside it and not
-   * here — so it is typed and stepped, and the ladder lives in the arrow keys
-   * rather than behind a control. Pixels, like every other length in the panel.
+   * here — so it is typed and stepped, with nothing behind it to pick from.
+   * Pixels, like every other length in the panel, and the arrows count them:
+   * 0, 1, 2, 4 and 8 are inside eight presses of each other, so a ladder in
+   * the keys bought this field nothing a plain count does not.
    */
   function borderWidthField() {
     var field = el('div', 'bw-field is-plain');
@@ -6092,23 +6171,23 @@
       setBorderWidth(px, arb);
     }
 
-    function step(dir) {
+    /**
+     * A pixel a press, ten with Shift — the same step every length in this
+     * panel takes. Off the field's own text, so a width the page draws and
+     * this element does not own is counted from where it renders: that number
+     * lives in the placeholder rather than the value, and four sides that
+     * disagree are said in full, so parseFloat takes the first of them.
+     */
+    function step(dir, leap) {
       var state = readBorderWidth(selected);
-      var live = state.from !== null && state.px !== null ? state.px
-        : (computedBorder(selected) || [0])[0];
-      var i = BORDER_WIDTHS.indexOf(live);
-      // Off the ladder: step to the neighbouring rung rather than pretending
-      // the value was on it.
-      if (i === -1) {
-        for (i = 0; i < BORDER_WIDTHS.length && BORDER_WIDTHS[i] <= live; i++) {}
-        i = dir > 0 ? i - 1 : i;
-      }
-      var next = i + dir;
-      // Below the first rung the class comes off, the way a radius rung does
-      // rather than pinning a zero the element never asked for.
-      if (next < 0) return setBorderWidth(null, null);
-      if (next >= BORDER_WIDTHS.length) return;
-      setBorderWidth(BORDER_WIDTHS[next], null);
+      var here = stepFrom(readout.value || readout.placeholder,
+        (computedBorder(selected) || [0])[0]);
+      var next = stepLength(here, dir, leap);
+      // Below zero the class comes off, the way a radius rung does rather than
+      // pinning a zero the element never asked for. With nothing of its own to
+      // take off there is nothing to do.
+      if (next === null) return state.from === null ? undefined : setBorderWidth(null, null);
+      setBorderWidth(next, null);
     }
 
     readout.addEventListener('keydown', function (e) {
@@ -6116,11 +6195,7 @@
       else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
       else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
-        step(e.key === 'ArrowUp' ? 1 : -1);
-        // Stepping IS the panel changing the value, so it puts the new one in
-        // by hand: refresh() leaves a focused input alone, and the blur that
-        // followed would otherwise commit the stale text and undo the step.
-        readout.value = borderWidthText(readBorderWidth(selected));
+        withStep(function () { step(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); });
       }
     });
     readout.addEventListener('blur', commit);
@@ -6129,7 +6204,7 @@
     return {
       field: field,
       sync: function () {
-        if (document.activeElement === readout) return; // don't fight the typist
+        if (typing(readout)) return; // don't fight the typist
         var state = readBorderWidth(selected);
         if (state.from !== null) {
           readout.placeholder = '—';

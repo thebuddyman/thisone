@@ -2,16 +2,17 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 
 /**
- * Nudge a spacing field by one rung.
+ * Nudge a spacing field by a pixel — or by ten, with Shift held.
  *
  * The stepper buttons are gone — the field takes a typed value and a chevron
  * opens the token list — but the arrow keys still step, which is what these
  * checks are really about.
  */
-async function step(panel, field, dir) {
+async function step(panel, field, dir, leap) {
   const input = panel.locator(`[data-tw-field="${field}"] input`);
+  const key = dir === 'down' ? 'ArrowDown' : 'ArrowUp';
   await input.focus();
-  await input.press(dir === 'down' ? 'ArrowDown' : 'ArrowUp');
+  await input.press(leap ? `Shift+${key}` : key);
   await input.blur();
 }
 const INDEX = process.env.TW_EDITOR_FILE;
@@ -36,8 +37,8 @@ function check(name, pass, detail) {
   const panel = page.locator('[data-tw-editor="panel"]');
   const field = k => panel.locator(`[data-tw-field="${k}"]`);
   // Address the spinner by role, not DOM order — position changed once already.
-  const minus = k => ({ click: () => step(panel, k, 'down') });
-  const plus = k => ({ click: () => step(panel, k, 'up') });
+  const minus = (k, leap) => ({ click: () => step(panel, k, 'down', leap) });
+  const plus = (k, leap) => ({ click: () => step(panel, k, 'up', leap) });
   const read = async k => (await field(k).locator('input').inputValue()).trim() || '—';
   // computed, not inline: the panel is styled by a scoped stylesheet
   const style = async k => field(k).locator('input').evaluate(el => getComputedStyle(el).fontStyle);
@@ -81,19 +82,22 @@ function check(name, pass, detail) {
   await page.keyboard.press('Escape');
   check('the dropdown offers a ladder of pixel values',
     RUNGS.length > 4 && RUNGS.every(v => /^\d+px$/.test(v)), RUNGS.join(','));
-  // The dropdown spells the unit out; the panel's own fields do not.
-  const LADDER = RUNGS.map(v => v.replace('px', ''));
-  const next = (v, d = 1) =>
-    LADDER[Math.max(0, Math.min(LADDER.length - 1, LADDER.indexOf(v) + d))];
-  const prev = (v) => next(v, -1);
   // The field speaks the same language the box model does, so these compare directly.
   const px = (v) => v + 'px';
-  /** Step a field and assert it landed on the neighbouring rung. */
-  const stepped = async (k, dir, label) => {
+  /**
+   * Step a field and assert it counted, in pixels, off what it was showing.
+   *
+   * The arrows walked the ladder above until they counted pixels instead, so
+   * this used to derive its expectation from RUNGS. A press is a pixel now
+   * whatever rung the value is nearest, which is a number this test can simply
+   * say — and the rung the class lands on is the same one typing that number
+   * would land on, which is what the checks below the arithmetic are about.
+   */
+  const stepped = async (k, dir, label, leap) => {
     const before = await read(k);
-    await (dir === 'up' ? plus(k) : minus(k)).click();
+    await (dir === 'up' ? plus(k, leap) : minus(k, leap)).click();
     const after = await read(k);
-    const want = String(dir === 'up' ? next(before) : prev(before));
+    const want = String(Number(before) + (dir === 'up' ? 1 : -1) * (leap ? 10 : 1));
     check(label, after === want, `${before} → ${after} (expected ${want})`);
     return after;
   };
@@ -122,8 +126,16 @@ function check(name, pass, detail) {
     `${await colour('p-x')} / ${await style('p-x')}`);
 
   // the axis input writes px-*, touching only left and right
-  const hx = await stepped('p-x', 'up', 'horizontal stepped one rung');
-  check('horizontal is now explicit (upright)', (await style('p-x')) === 'normal');
+  const hx = await stepped('p-x', 'up', 'horizontal stepped one pixel');
+  // The axis reads through its two edges whenever they agree, so it says what
+  // they say and stays dimmed: neither edge owns a class of its own. What the
+  // step put on the element is the class check below. What it can say here is
+  // that a pixel off the ladder is written as a literal and marked as one —
+  // the italic and the snowflake, set from the one condition.
+  check('a pixel step off the ladder is marked the literal it is',
+    (await style('p-x')) === 'italic' &&
+    await field('p-x').locator('.bw-snow').isVisible(),
+    await style('p-x'));
   check('vertical still inherited from p-4',
     (await read('p-y')) === '16' && (await colour('p-y')) === FAINT,
     `${await read('p-y')} / ${await colour('p-y')}`);
@@ -131,7 +143,10 @@ function check(name, pass, detail) {
     (await pad()) === `16px ${px(hx)} 16px ${px(hx)}`, await pad());
   check('the axis class was added, p-4 not evicted',
     /(?:^| )p-4(?: |$)/.test(await card.getAttribute('class')) &&
-    /(?:^| )px-[\d.]+(?: |$)/.test(await card.getAttribute('class')),
+    // A pixel off a rung usually lands between two of them, so the class is
+    // the rung where one is there and px-[17px] where none is — the same two
+    // shapes typing the number would write.
+    /(?:^| )px-(?:[\d.]+|\[[\d.]+px\])(?: |$)/.test(await card.getAttribute('class')),
     await card.getAttribute('class'));
 
   // reveal the four edges
@@ -143,20 +158,21 @@ function check(name, pass, detail) {
     (await read('p-l')) === hx && (await colour('p-l')) === FAINT);
 
   // bump only the top
-  const pt = await stepped('p-t', 'up', 'T stepped one rung');
-  check('T is now explicit (upright)', (await style('p-t')) === 'normal');
+  const pt = await stepped('p-t', 'up', 'T stepped one pixel');
+  check('T is now this element’s own, not dimmed',
+    (await colour('p-t')) !== FAINT, await colour('p-t'));
   check('right still inherits from the axis',
     (await read('p-r')) === hx && (await colour('p-r')) === FAINT);
   check('only padding-top changed',
     (await pad()) === `${px(pt)} ${px(hx)} 16px ${px(hx)}`, await pad());
   check('the per-side class was added alongside p-4 and the axis',
-    /(?:^| )pt-[\d.]+(?: |$)/.test(await card.getAttribute('class')),
+    /(?:^| )pt-(?:[\d.]+|\[[\d.]+px\])(?: |$)/.test(await card.getAttribute('class')),
     await card.getAttribute('class'));
 
   // per-side left/right/bottom are independent
-  await stepped('p-l', 'up', 'L stepped one rung');
-  const pl = await stepped('p-l', 'up', 'L stepped a second rung');
-  const pb = await stepped('p-b', 'down', 'B stepped down one rung');
+  await stepped('p-l', 'up', 'L stepped one pixel');
+  const pl = await stepped('p-l', 'up', 'L stepped a second pixel');
+  const pb = await stepped('p-b', 'down', 'B stepped down one pixel');
   check('each edge holds its own value, R still inherited',
     (await read('p-t')) === pt && (await read('p-r')) === hx,
     [await read('p-l'), await read('p-b'), await read('p-t'), await read('p-r')].join('/'));
@@ -164,12 +180,18 @@ function check(name, pass, detail) {
     (await pad()) === `${px(pt)} ${px(hx)} ${px(pb)} ${px(pl)}`, await pad());
 
   // stepping below zero clears the override and falls back to inherited
-  // Walk it down to zero, then once more: below zero drops the class.
+  // Walk it down to zero in tens, then once more: below zero drops the class.
   // Bounded: an unbounded wait on a value that never arrives hangs the whole
   // run instead of failing, which is exactly what a units mismatch did here.
+  const leapt = await stepped('p-b', 'down', 'Shift+arrow is ten of them', true);
   let guard = 0;
-  while ((await read('p-b')) !== '0' && guard++ < 30) await minus('p-b').click();
-  check('B walked down to 0', (await read('p-b')) === '0', `${await read('p-b')} after ${guard} steps`);
+  while ((await read('p-b')) !== '0' && guard++ < 30) await minus('p-b', true).click();
+  check('B walked down to 0', (await read('p-b')) === '0', `${leapt} → ${await read('p-b')} after ${guard} leaps`);
+  // A leap that would go under zero stops there rather than dropping the
+  // class: ten below the bottom is still a number the field can show, and
+  // losing the class outright is not what holding Shift asked for.
+  check('a leap that would go under zero stopped at zero, class intact',
+    /(?:^| )pb-/.test(await card.getAttribute('class')), await card.getAttribute('class'));
   await minus('p-b').click();
   check('below zero cleared the pb override',
     (await read('p-b')) === '16' && (await colour('p-b')) === FAINT, await read('p-b'));
@@ -182,7 +204,7 @@ function check(name, pass, detail) {
   check('margin axes read 48px, inherited from m-12', (await read('m-x')) === '48', await read('m-x'));
   check('margin toggles independently of padding', !(await shown()).includes('m-t'), (await shown()).join(','));
   await panel.locator('[data-tw-toggle="m"]').click();
-  const mt = await stepped('m-t', 'down', 'margin T stepped down one rung');
+  const mt = await stepped('m-t', 'down', 'margin T stepped down one pixel');
   check('the margin class applied, the left edge untouched at 12',
     (await card.evaluate(el => getComputedStyle(el).marginTop)) === px(mt) &&
     (await card.evaluate(el => getComputedStyle(el).marginLeft)) === '48px',
@@ -190,6 +212,14 @@ function check(name, pass, detail) {
     `left ${await card.evaluate(el => getComputedStyle(el).marginLeft)}`);
   check('padding untouched by margin edits',
     (await pad()) === `${px(pt)} ${px(hx)} 16px ${px(pl)}`, await pad());
+
+  // A leap lands off the ladder as readily as a step does, so this is also the
+  // check that an arbitrary length reaches the page: the class is in no source
+  // file, so if it renders, ensureSpacingRule wrote the rule for it.
+  const mtLeap = await stepped('m-t', 'up', 'margin T leapt ten with Shift held', true);
+  check('the leap reached the page',
+    (await card.evaluate(el => getComputedStyle(el).marginTop)) === px(mtLeap),
+    await card.evaluate(el => getComputedStyle(el).marginTop));
 
   // reads inherited values off px-*/py-* too
   await page.locator('[data-eid="9"]').evaluate(el => { el.className = 'text-2xl font-bold py-8 px-2'; });
@@ -217,9 +247,10 @@ function check(name, pass, detail) {
   const diskLine = fs.readFileSync(INDEX, 'utf8').split('\n').find(l => l.includes('rounded-xl'));
   const diskClasses = diskLine.match(/class="([^"]*)"/)[1];
   check('disk class string matches the live one', diskClasses === live, diskClasses);
+  const side = t => new RegExp(t + '-(?:[\\d.]+|\\[[\\d.]+px\\])');
   check('disk has the per-side classes',
-    /pt-[\d.]+/.test(diskClasses) && /pl-[\d.]+/.test(diskClasses) &&
-    /mt-[\d.]+/.test(diskClasses) && !/pb-/.test(diskClasses), diskClasses);
+    side('pt').test(diskClasses) && side('pl').test(diskClasses) &&
+    side('mt').test(diskClasses) && !/pb-/.test(diskClasses), diskClasses);
 
   await page.reload({ waitUntil: 'networkidle' });
   const card2 = page.locator('[data-eid="8"]');
@@ -364,6 +395,40 @@ function check(name, pass, detail) {
   check('the two never disagree on any field',
     marked.every((m) => m.snow === m.italic),
     JSON.stringify(marked.filter((m) => m.snow !== m.italic)));
+
+  // ---- a literal in another unit is stepped in pixels, not in its own number
+  //
+  // The field says `1.5rem`, because a literal in some other unit has to keep
+  // it or it says nothing — and parseFloat off that reads 1.5, which stepped a
+  // 24px padding to 2.5px. What the element renders is the same length said in
+  // the unit the arrows count in.
+  await reselect('text-2xl font-bold px-[1.5rem]');
+  const remPx = () => h2b.evaluate(el => getComputedStyle(el).paddingLeft);
+  check('a rem literal is shown as written, and renders 24',
+    (await read('p-x')) === '1.5rem' && (await remPx()) === '24px',
+    `${await read('p-x')} / ${await remPx()}`);
+  await plus('p-x').click();
+  check('an arrow steps it from the 24 it renders, not from the 1.5 it says',
+    (await read('p-x')) === '25' && (await remPx()) === '25px',
+    `${await read('p-x')} / ${await remPx()}`);
+
+  // ---- the marking lands with the step, not at the next blur ----
+  //
+  // Every readout leaves a focused field alone so refresh() cannot rewrite a
+  // word mid-typing, and that guard was swallowing the marking a step had just
+  // earned: 17 sat there in an upright hand, looking like a rung, until the
+  // field was blurred. The snowflake is checked for being in place rather than
+  // on screen — its slot is under the chevron for as long as the field has
+  // focus, which is the panel's rule for every field, not this one's business.
+  await reselect('text-2xl font-bold p-4');
+  const held = panel.locator('[data-tw-field="p-x"] input');
+  await held.focus();
+  await held.press('ArrowUp');
+  check('a step off the ladder is marked a literal while the field still holds focus',
+    (await held.evaluate(e => getComputedStyle(e).fontStyle)) === 'italic' &&
+    await field('p-x').locator('.bw-snow').isVisible(),
+    `${await held.getAttribute('class')} — ${await held.inputValue()}`);
+  await held.blur();
 
   // ---- an unset side reads 0, not a dash ----
   //

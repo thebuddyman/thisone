@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 
 /**
- * Nudge a spacing field by one rung.
+ * Nudge a spacing field by one pixel.
  *
  * The stepper buttons are gone — the field takes a typed value and a chevron
  * opens the token list — but the arrow keys still step, which is what these
@@ -100,13 +100,13 @@ function check(name, pass, detail) {
   const v0 = await padReadout.inputValue();
   check('horizontal padding reads the 16px that p-4 renders', v0 === '16', v0);
 
-  // bump horizontal twice; the ladder decides where it lands, not this test
+  // bump horizontal twice — a press is a pixel, on a field printing pixels
   await padPlus.click();
   const v1 = await padReadout.inputValue();
-  check('stepped up a rung', Number(v1) > Number(v0), `${v0} → ${v1}`);
+  check('stepped up a pixel', Number(v1) === Number(v0) + 1, `${v0} → ${v1}`);
   await padPlus.click();
   const v2 = await padReadout.inputValue();
-  check('stepped up another', Number(v2) > Number(v1), `${v1} → ${v2}`);
+  check('stepped up another', Number(v2) === Number(v1) + 1, `${v1} → ${v2}`);
 
   const padPx = await card.evaluate(el => {
     const c = getComputedStyle(el);
@@ -510,8 +510,12 @@ function check(name, pass, detail) {
   await card.click({ position: { x: 120, y: 6 } });
 
   const live = await card.getAttribute('class');
+  // The arrows count pixels, so the two presses above land between rungs as
+  // often as on one: px-5 and px-[18px] are the same statement in the two
+  // shapes this panel writes.
+  const AXIS = /(?:^| )px-(?:[\d.]+|\[[\d.]+px\])(?: |$)/;
   check('old bg-white stripped, no duplicates',
-    !live.includes('bg-white') && live.includes('bg-emerald-500') && /(?:^| )px-[\d.]+(?: |$)/.test(live), live);
+    !live.includes('bg-white') && live.includes('bg-emerald-500') && AXIS.test(live), live);
   check('unrelated classes preserved',
     live.includes('rounded-xl') && live.includes('shadow') && live.includes('m-12') && live.includes('p-4'), live);
 
@@ -527,7 +531,7 @@ function check(name, pass, detail) {
   const disk = fs.readFileSync(INDEX, 'utf8');
   const diskCard = disk.split('\n').find(l => l.includes('rounded-xl'));
   check('index.html on disk has new classes',
-    diskCard.includes('bg-emerald-500') && /px-[\d.]+/.test(diskCard), diskCard.trim());
+    diskCard.includes('bg-emerald-500') && AXIS.test(diskCard), diskCard.trim());
   check('no data-eid written to disk', !disk.includes('data-eid'));
   check('no editor script written to disk', !disk.includes('/editor.js'));
 
