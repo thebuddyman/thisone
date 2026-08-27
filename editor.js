@@ -631,7 +631,7 @@
   function updateModeToggle() {
     if (!modeToggle) return;
     modeToggle.setAttribute('aria-pressed', editing ? 'true' : 'false');
-    modeToggle.querySelector('.bw-label').textContent = editing ? 'Editing' : 'Edit';
+    modeToggle.querySelector('.bw-label').textContent = editing ? 'Editing' : 'Edit mode';
 
     // The badge stays in the row and collapses sideways instead of leaving it.
     //
@@ -644,6 +644,12 @@
     count.textContent = dirty.size ? String(dirty.size) : '';
     count.className = 'bw-count' + (dirty.size ? '' : ' is-empty');
     count.style.display = '';
+    // The badge is inset by the pill's own vertical padding on the three sides
+    // it touches, which is a padding-right the label's own 12px cannot be. It
+    // is said on the toggle rather than as a margin on the badge because the
+    // empty state has no badge to hang it off — see the rule.
+    if (dirty.size) modeToggle.setAttribute('data-tw-count', '');
+    else modeToggle.removeAttribute('data-tw-count');
 
     modeToggle.title = dirty.size
       ? dirty.size + ' unsaved change' + (dirty.size === 1 ? '' : 's') +
@@ -665,8 +671,7 @@
     modeToggle.setAttribute('data-tw-editor', 'toggle');
     modeToggle.setAttribute('data-tw-mode', '');
     modeToggle.setAttribute('aria-pressed', 'false');
-    modeToggle.appendChild(el('span', 'bw-dot'));
-    modeToggle.appendChild(el('span', 'bw-label', 'Edit'));
+    modeToggle.appendChild(el('span', 'bw-label', 'Edit mode'));
     modeToggle.appendChild(el('span', 'bw-count', ''));
     bindTheme(modeToggle);
     modeToggle.addEventListener('click', function (e) {
@@ -1587,12 +1592,23 @@
       //
       T + '{position:fixed;bottom:16px;right:16px;z-index:2147483646;display:flex;',
       '  box-sizing:border-box;',
-      '  align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;',
+      '  align-items:center;gap:7px;padding:7px 12px;border-radius:999px;',
       '  font:600 12px/1 ' + UI_FONT + ';cursor:pointer;border:1px solid var(--bw-border);',
       '  background:var(--bw-card);color:var(--bw-fg);box-shadow:0 2px 10px rgba(0,0,0,.16)}',
       T + '[aria-pressed="true"]{background:' + BRAND + ';border-color:' + BRAND + ';color:#fff}',
-      T + ' .bw-dot{width:7px;height:7px;border-radius:999px;background:var(--bw-faint)}',
-      T + '[aria-pressed="true"] .bw-dot{background:#fff}',
+      // A badge sits in the same 7px its own top and bottom stand in, so the
+      // three sides it touches are one measurement rather than 7, 7 and 12.
+      // The label keeps the 12: it is text on the pill's gutter, where the
+      // badge is an object inside it, and a 7px lead would put the word hard
+      // against the curve. With nothing to inset, the pill goes back to 12 on
+      // both sides — a bare word off-centre in its own pill.
+      T + '[data-tw-count]{padding-right:7px}',
+      // The label takes the slack so the badge is pinned to the right edge
+      // rather than pushed there by the word ahead of it. text-align comes
+      // with the flex:1, because this is a <button> and a button centres its
+      // text — invisible while the span is its own width, plain the moment it
+      // owns the row.
+      T + ' .bw-label{flex:1;text-align:left}',
       // min-width holds one digit's worth of room even while the badge is
       // empty, which is the slot the toggle's width is reserved against.
       //
@@ -2191,20 +2207,22 @@
       P + ' .bw-foot-row .bw-save{margin-left:auto}',
       // The same 40 the buttons beside it stand at, so the row has one height
       // rather than a tall pair and a short one centred against them.
-      P + ' .bw-save{height:40px;font:600 15px/1 ' + UI_FONT + ';color:#fff;background:var(--bw-brand);',
+      //
+      // Save and Send are one button in two places. They sit on different tabs
+      // and never share a screen, so a coral Save against a white Send was two
+      // treatments for the footer's one action — whichever tab you were on,
+      // the thing at the end of the panel was the same kind of thing. White is
+      // the pair's colour: the coral is the brand's, and it is already saying
+      // something else on this screen — the toggle, the ring around a held
+      // page, the badge counting what is pending. A button wearing it too made
+      // the accent the panel's ordinary furniture.
+      P + ' .bw-save{height:40px;font:400 15px/1 ' + UI_FONT + ';color:#171717;background:#fff;',
       '  border-radius:8px;padding:0 14px;box-shadow:0 1px 2px rgba(0,0,0,.08);white-space:nowrap}',
-      P + ' .bw-save:hover{filter:brightness(1.06)}',
+      // Darken rather than brighten: brightness(1.06) does nothing whatever to
+      // white, which is how the coral button's hover read on Send. And only
+      // while the button can be pressed — without the guard it lit a dead one.
+      P + ' .bw-save:hover:not(:disabled){filter:brightness(.92)}',
       P + ' .bw-save:disabled{background:var(--bw-sunken);color:var(--bw-faint);',
-      '  box-shadow:none;cursor:default}',
-      // Send is white, Save is the brand coral. They sit on different tabs and
-      // never share a screen, which is exactly why they should not look alike:
-      // one writes your pending edits, the other hands the file to Claude.
-      P + ' .bw-send{background:#fff;color:#171717}',
-      // .bw-save brightens on hover, which does nothing to white — and it has
-      // no :not(:disabled) guard, so it also lit a dead button. Darken, and
-      // only while the button can actually be pressed.
-      P + ' .bw-send:hover:not(:disabled){filter:brightness(.92)}',
-      P + ' .bw-send:disabled{background:var(--bw-sunken);color:var(--bw-faint);',
       '  box-shadow:none;cursor:default}',
       P + ' .bw-status{min-width:0;font:11px/1.35 ' + UI_FONT + ';color:var(--bw-muted);word-break:break-word}',
       P + ' .bw-status:empty{display:none}',
@@ -6268,7 +6286,7 @@
     // querySelector answers with whichever comes first in the DOM — which is
     // this hint. Sharing the name made every save look like it never landed.
     ui.phint.setAttribute('data-tw-phint', '');
-    ui.psend = el('button', 'bw-save bw-send', 'Send');
+    ui.psend = el('button', 'bw-save', 'Send');
     ui.psend.setAttribute('data-tw-send', '');
     ui.psend.addEventListener('click', sendPrompt);
     ui.pinput.addEventListener('input', syncSend);
