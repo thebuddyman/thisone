@@ -24,6 +24,64 @@ async function pickColor(panel, prefix, hue, shade) {
   await shades.locator(`[data-tw-shade="${shade}"]`).click();
 }
 
+
+/**
+ * Select the first element on a route that owns its own text, and open the
+ * typography section on it. Two blocks below need the same three steps and
+ * the same reason for them: a wrapper has no typography controls, only the +
+ * row standing in for them, and measuring a section that is correctly absent
+ * reads as a broken panel.
+ */
+async function selectTyped(page, panel, locPrefix, skip = 0) {
+  const cands = page.locator(`[data-bw-loc^="${locPrefix}"]`);
+  const total = await cands.count();
+  let seen = 0;
+  for (let i = 0; i < total; i++) {
+    const c = cands.nth(i);
+    const own = await c.evaluate((el) => {
+      for (const n of el.childNodes) {
+        if (n.nodeType === 3 && n.nodeValue.trim().length > 2) return true;
+      }
+      return false;
+    });
+    if (!own) continue;
+    // Skipping is how a caller forces a FRESH selection: discovery re-runs in
+    // select(), and re-clicking the element already selected is a no-op, so a
+    // stylesheet added since would never be read.
+    if (seen++ < skip) continue;
+    await c.scrollIntoViewIfNeeded();
+    await c.click({ force: true });
+    await page.waitForTimeout(300);
+    const reveal = panel.locator('[data-tw-reveal="typography"]');
+    if (await reveal.isVisible()) { await reveal.click(); await page.waitForTimeout(150); }
+    return c;
+  }
+  throw new Error('no element with its own text under ' + locPrefix);
+}
+
+/** Every generated .font-* rule and every --font-* theme key on this page. */
+const readFontSources = (page) => page.evaluate(() => {
+  const utils = {}, themeVars = {}, otherVars = {};
+  for (const sheet of document.styleSheets) {
+    let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+    const walk = (rs, inTheme) => { for (const r of rs) {
+      if (r.selectorText && r.style) {
+        const m = /^\.font-([a-zA-Z][a-zA-Z0-9-]*)$/.exec(r.selectorText);
+        if (m && r.style.fontFamily) utils[m[1]] = r.style.fontFamily;
+        for (let i = 0; i < r.style.length; i++) {
+          const prop = r.style[i];
+          if (prop.indexOf('--font-') !== 0 || prop.indexOf('--font-weight-') === 0) continue;
+          const bag = inTheme && r.selectorText.indexOf(':root') !== -1 ? themeVars : otherVars;
+          bag[prop.slice(7)] = r.style.getPropertyValue(prop).trim();
+        }
+      }
+      if (r.cssRules && r.cssRules.length) walk(r.cssRules, inTheme || r.name === 'theme');
+    } };
+    if (rules) walk(rules, false);
+  }
+  return { utils, themeVars, otherVars };
+});
+
 const path = require('path');
 
 const arg = (n, d) => {
@@ -442,8 +500,12 @@ function restore(g) {
     await page.waitForTimeout(150);
   }
 
-  // The frame: a full-width family field, weight and size sharing the line
-  // below it 12px apart, a 124-wide alignment segment under that.
+  // The frame: the family field across the stack, weight and size sharing the
+  // line below it 12px apart, the alignment segment on the weight field's own
+  // column under that. The
+  // stack stops 42px short of the panel's edge — the space a section toggle
+  // takes on every other row — so these three land on the padding row's
+  // columns rather than a tile wider than them.
   const geo = await panel.evaluate((p) => {
     const box = (sel) => {
       const el = p.querySelector('[data-tw-section="typography"] ' + sel);
@@ -460,7 +522,7 @@ function restore(g) {
     };
   });
   check('one section label, not three', geo.label === 'Typography', geo.label);
-  check('the family field spans the full width',
+  check('the family field spans the pair beneath it',
     geo.family.w === geo.weight.w + 12 + geo.size.w && geo.family.h === 40,
     `${geo.family.w} vs ${geo.weight.w}+12+${geo.size.w}, h${geo.family.h}`);
   check('weight and size share the next line, 12px apart',
@@ -470,8 +532,13 @@ function restore(g) {
     geo.weight.y - (geo.family.y + geo.family.h) === 12 &&
     geo.align.y - (geo.weight.y + geo.weight.h) === 12 && geo.align.h === 40,
     `${geo.weight.y - (geo.family.y + geo.family.h)} / ${geo.align.y - (geo.weight.y + geo.weight.h)}`);
-  check("the segment keeps the frame's 124px inside a stretching column",
-    geo.align.w === 124, String(geo.align.w));
+  // Not the frame's own 124: the segment asks for the pair's first column, so
+  // it stands on the weight field's two edges rather than 5px inside its
+  // right-hand one. A stretching column would give it all 270, which is the
+  // other way this goes wrong.
+  check('the segment is the column the weight field is, to the pixel',
+    geo.align.w === geo.weight.w && geo.align.x === geo.weight.x,
+    `${geo.align.w} at ${geo.align.x} vs ${geo.weight.w} at ${geo.weight.x}`);
 
   // ---- write a family, and prove exactly one token moved ----
   const famBefore = snapshot(CORA);
@@ -527,6 +594,217 @@ function restore(g) {
   }
   check('line count unchanged by the family write',
     famBefore.split('\n').length === famAfter.split('\n').length);
+
+  // ---- a family the page uses but has generated no utility for ----
+  //
+  // Every one of these routes applies its own faces the way this one does —
+  // `style={{ fontFamily: "var(--font-murmur)" }}` on the layout wrapper,
+  // inherited all the way down — so the class `font-murmur` appears nowhere
+  // in the source and Tailwind v4, which generates on demand, emits no rule
+  // for it. Reading families off generated rules alone therefore offered the
+  // three stock stacks the route barely uses and not the two it is drawn in.
+  //
+  // Murmur and not volt for the discovery half, and the reason is a trap:
+  // Tailwind's dev server KEEPS a utility once it has generated one, even
+  // after the class leaves the source again. So the route this suite writes
+  // to stops being a route with no utility the moment it has run once, and an
+  // assertion pinned there passes exactly once. Nothing below writes to
+  // murmur, so nothing below spends it.
+  await page.goto(APP + '/experiments/murmur/profile', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const murFonts = await readFontSources(page);
+  check('the route declares theme keys it has generated no utility for',
+    !!murFonts.themeVars.murmur && !murFonts.utils.murmur &&
+    !!murFonts.themeVars['murmur-display'] && !murFonts.utils['murmur-display'],
+    Object.keys(murFonts.themeVars).join(' ') + ' | utils ' + Object.keys(murFonts.utils).join(' '));
+  // The reason `@layer theme` is the test rather than the `:root` selector:
+  // next/font puts its own variables on a CSS-module class, and a
+  // `font-geist-mono` written from one would preview here through a runtime
+  // rule and generate nothing at all on the real build.
+  check("next/font's variables sit outside the theme layer",
+    !murFonts.themeVars['geist-mono'] && !!murFonts.otherVars['geist-mono'],
+    Object.keys(murFonts.otherVars).join(' ') || '(none)');
+
+  await selectTyped(page, panel, 'src/');
+  await panel.locator('[data-tw-family-open]').click();
+  await page.waitForTimeout(250);
+  const mpop = page.locator('[data-tw-pop]');
+  // face = note = tooltip, read in document order.
+  const rowsOf = (pop) => pop.locator('.bw-hue').evaluateAll((els) => els.map((e) => ({
+    token: e.getAttribute('data-tw-family'),
+    face: e.querySelector('.bw-sizename').textContent,
+    note: e.querySelector('.bw-sizepx').textContent,
+    title: e.getAttribute('title'),
+  })));
+  const murRows = await rowsOf(mpop);
+  const asText = murRows.map((r) => `${r.face}=${r.note}`).join(' ');
+  check('a var-only family is offered, named by the face it resolves to',
+    murRows.some((r) => r.token === 'murmur' && r.face === 'Inter') &&
+    murRows.some((r) => r.token === 'murmur-display' && r.face === 'Space Grotesk'), asText);
+  check('a variable outside the theme layer is offered by nobody',
+    !murRows.some((r) => /geist/.test(r.token)), murRows.map((r) => r.token).join(' '));
+  // The note is the CSS generic and never the project's own slot name, which
+  // is the one column that has to read the same whatever project this is
+  // pointed at. Ordered by that generic too, so like stands with like — the
+  // project's own token leading its run, since on murmur `sans` is a stock
+  // stack the route never draws in and `murmur` is the Inter it does.
+  const GENERICS = ['sans-serif', 'serif', 'monospace', 'cursive', 'fantasy'];
+  check('every note is one of the five CSS generics, and nothing else',
+    murRows.every((r) => GENERICS.includes(r.note)),
+    murRows.map((r) => r.note).join(' '));
+  check('the list is ordered by generic, project token leading its run',
+    asText === 'Inter=sans-serif Space Grotesk=sans-serif SF Pro=sans-serif ' +
+      'Georgia=serif Menlo=monospace', asText);
+  // The token is not lost by leaving the row — it is in the tooltip with the
+  // stack it resolves to, which is where this panel keeps the exact thing
+  // behind every value.
+  check('the tooltip still names the class and the stack behind it',
+    murRows.every((r) => r.title.indexOf('font-' + r.token + ' \u2014 ') === 0),
+    murRows.map((r) => r.title.slice(0, 24)).join(' | '));
+  // A row's mark stands on the popover's 20px gutter, where the header above
+  // it already stands.
+  const capX = await mpop.evaluate((p) => {
+    const base = p.getBoundingClientRect().left;
+    const tx = (e) => { const r = document.createRange(); r.selectNodeContents(e); return Math.round(r.getBoundingClientRect().left - base); };
+    return {
+      title: tx(p.querySelector('.bw-pop-h strong') || p.querySelector('.bw-search-in')),
+      spec: tx(p.querySelector('.bw-pop-body > .bw-hue .bw-sizesample')),
+    };
+  });
+  check('specimen and title stand on one gutter',
+    capX.spec === capX.title, JSON.stringify(capX));
+  await page.keyboard.press('Escape');
+
+  // The shelving rule is the CSS language's, not this project's, so it is
+  // tested with keys this project does not have. One resolves to a generic
+  // nobody here uses; the other resolves to no generic at all, and a stack
+  // that names none says nothing about what kind of type it is — so it is not
+  // offered rather than filed under a heading that would be a guess. That
+  // matters far past these three routes: the editor has to hold for projects
+  // nobody has measured, and a rule that guesses guesses differently in each.
+  await page.addStyleTag({ content:
+    '@layer theme { :root, :host {' +
+    '  --font-bwprobe-script: "Probe Script", cursive;' +
+    '  --font-bwprobe-nameonly: "Probe Face A", "Probe Face B";' +
+    '} }' });
+  // Discovery re-runs in select(), and re-clicking the element already
+  // selected does not re-enter it — so this asks for a different one.
+  await selectTyped(page, panel, 'src/', 1);
+  await panel.locator('[data-tw-family-open]').click();
+  await page.waitForTimeout(250);
+  const probeRows = await rowsOf(mpop);
+  const last = probeRows[probeRows.length - 1];
+  check('a generic this project never uses is still said in full',
+    last.token === 'bwprobe-script' && last.note === 'cursive',
+    probeRows.map((r) => r.token + '=' + r.note).join(' '));
+  check('a stack that names no generic is not offered at all',
+    !probeRows.some((r) => /nameonly/.test(r.token)),
+    probeRows.map((r) => r.token).join(' '));
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    for (const s of document.querySelectorAll('style')) {
+      if (s.textContent.indexOf('--font-bwprobe-') !== -1) s.remove();
+    }
+  });
+
+  // ---- and writing one, on the route this suite is allowed to touch ----
+  await page.goto(APP + '/experiments/volt/design-system', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const voltFonts = await readFontSources(page);
+  // Derived, never written down, for the dev-server reason above: whichever
+  // theme key still has no utility is the one worth writing, and if a
+  // previous run has spent them all the branch below asserts the other half
+  // of the same rule instead.
+  const varOnly = Object.keys(voltFonts.themeVars).filter((t) => !voltFonts.utils[t]);
+  const famTarget = varOnly.includes('volt-mono') ? 'volt-mono' : (varOnly[0] || 'volt-mono');
+  const famPreBuilt = !!voltFonts.utils[famTarget];
+  const voltEl = await selectTyped(page, panel, 'src/app/experiments/volt/design-system/page.tsx:');
+  await panel.locator('[data-tw-family-open]').click();
+  await page.waitForTimeout(250);
+  const vpop = page.locator('[data-tw-pop]');
+
+  const voltFileBefore = snapshot(VOLT);
+  await vpop.locator(`[data-tw-family="${famTarget}"]`).click();
+  await page.waitForTimeout(400);
+  // Against the stack the token resolves to, not against "it changed": which
+  // face a key lands on is the project's business, and a key that happens to
+  // name the face already inherited would make a changed/unchanged assertion
+  // vacuous without saying so.
+  const facePaint = await page.evaluate(([stack, sel]) => {
+    const el = document.querySelector(sel);
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:fixed;left:-9999px;font-family:' + stack;
+    document.body.appendChild(probe);
+    const want = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return { want, got: getComputedStyle(el).fontFamily };
+  }, [voltFonts.themeVars[famTarget], `[data-bw-loc="${await voltEl.getAttribute('data-bw-loc')}"]`]);
+  check('the family the token names is the family the element renders',
+    facePaint.got === facePaint.want, `${facePaint.got} vs ${facePaint.want}`);
+
+  // The rule the page does not have, and the rule it must not be given: a
+  // scoped copy over a utility the route already owns outranks that route's
+  // own responsive variants, which is the px-6 md:px-12 failure.
+  const dynFam = await page.evaluate((t) => {
+    const s = document.querySelector('style[data-tw-editor="dynamic"]');
+    return s ? Array.from(s.sheet.cssRules).map((r) => r.cssText)
+      .filter((x) => x.indexOf('font-' + t) !== -1) : [];
+  }, famTarget);
+  check(famPreBuilt
+    ? 'no runtime rule where the page already owns one'
+    : 'one runtime rule where the page owns none',
+    dynFam.length === (famPreBuilt ? 0 : 1),
+    `${famTarget}: ${dynFam.join(' | ').slice(0, 80) || '(none)'}`);
+  await panel.locator('[data-tw-family-open]').click();
+  await page.waitForTimeout(250);
+  await vpop.locator('[data-tw-family="sans"]').click();
+  await page.waitForTimeout(300);
+  const dynSans = await page.evaluate(() => {
+    const s = document.querySelector('style[data-tw-editor="dynamic"]');
+    return s ? Array.from(s.sheet.cssRules).map((r) => r.cssText)
+      .filter((x) => x.indexOf('font-sans') !== -1) : [];
+  });
+  check('a family the page generated is never given a scoped copy',
+    dynSans.length === 0, dynSans.join(' | ').slice(0, 80) || '(none)');
+  await panel.locator('[data-tw-family-open]').click();
+  await page.waitForTimeout(250);
+  await vpop.locator(`[data-tw-family="${famTarget}"]`).click();
+  await page.waitForTimeout(400);
+
+  await panel.locator('[data-tw-save]').click();
+  await page.waitForTimeout(1200);
+  check('the theme-key family write was not refused',
+    !/refus|cannot|failed/i.test(await panel.locator('[data-tw-status]').textContent()),
+    (await panel.locator('[data-tw-status]').textContent()).slice(0, 90));
+  const voltFileAfter = snapshot(VOLT);
+  const voltDiff = voltFileBefore.split('\n')
+    .map((l, i) => [i, l, voltFileAfter.split('\n')[i]])
+    .filter(([, a, b]) => a !== b);
+  check('exactly one line changed writing the theme-key family', voltDiff.length === 1,
+    voltDiff.map(([i]) => i + 1).join(',') || '(no line changed)');
+  if (voltDiff.length === 1) {
+    const list = (l) => (/className="([^"]*)"/.exec(l) || [, l])[1].trim().split(/\s+/);
+    const added = list(voltDiff[0][2]).filter((t) => !list(voltDiff[0][1]).includes(t));
+    check('the only token added on disk is the theme-key family',
+      added.join() === 'font-' + famTarget, '+' + added.join(' '));
+  }
+
+  // The assertion the whole second source rests on: a theme key really does
+  // become a utility once the class is in the source. Poll, never wait a fixed
+  // number of milliseconds — Turbopack's recompile is not on a clock.
+  const built = await page.waitForFunction((t) => {
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+      const walk = (rs) => { for (const r of rs) {
+        if (r.selectorText === '.font-' + t && r.style && r.style.fontFamily) return true;
+        if (r.cssRules && r.cssRules.length && walk(r.cssRules)) return true;
+      } return false; };
+      if (rules && walk(rules)) return true;
+    }
+    return false;
+  }, famTarget, { timeout: 20000 }).then(() => true).catch(() => false);
+  check('Tailwind generated the utility the theme key promised', built,
+    built ? 'font-' + famTarget : 'never appeared');
 
   await page.goto(APP + '/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);

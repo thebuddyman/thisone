@@ -25,7 +25,7 @@ node cli.js --root ../uiux_experiment --prompt  # …with the Prompt tab enabled
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                   # the standalone HTML demo
-node next/verify.js --root ../uiux_experiment   # 79 live checks against the real app
+node next/verify.js --root ../uiux_experiment   # 96 live checks against the real app
 node next/verify-prompt.js --root ../uiux_experiment  # 14 live checks, needs --prompt
 ```
 
@@ -475,6 +475,18 @@ Measured after placement rather than derived from the two headers, because the
 palette's body scrolls and only the laid-out box knows where its first square
 ended up.
 
+**A list row's text stands on that gutter too, and its fill overhangs.** The
+row's own 12px inset was measured from the body's 20, so reading down an open
+list "Search" sat at 21 and "0px" at 33, and the meta on the right ended at 187
+against the X's mark at 199 — 12px out at both ends on a surface whose entire
+content is one column of left-aligned text. The 12 is handed back on both
+sides rather than taken off the row: a row with no inset would put its fill
+hard against the border and its text on the gutter with nothing in between.
+What overhangs is the hover fill, which is the panel's own rule for a toggle
+tile read on a different surface — what you see of a control at rest is its
+mark, and the mark belongs on the gutter. Direct children of the body only, so
+`.bw-picker` and `.bw-swatches` keep the 20 the swatch grid is measured from.
+
 **A popover's content stands on the panel's 20px gutter, which is where its own
 header already stands.** The title starts at 20 and the close button's mark ends
 at 20 — a 40px tile holding a 20px glyph puts the glyph there and lets only the
@@ -585,15 +597,84 @@ route using two sizes exposes exactly two. The full ladder only exists in
 `theme.css`.
 
 **Font *families* come from the page, like colours — and the read is itself
-the membership test.** A family is only offered if the route generated a
+the membership test.** A family is offered if the route generated a
 `.font-<name>` rule that sets `font-family`. `.font-medium` sets `font-weight`
 and carries no family, so it can never enter the map and can never be stripped
 by a family write: the `/^font-/` trap below is disarmed by construction rather
-than by a second regex. It also means no rule is ever added to preview one —
-the utility is in the list *because* the page already has it, which is the
-opposite of the `px-6 md:px-12` failure. On `uiux_experiment` this finds four
+than by a second regex. On `uiux_experiment` this finds four
 on Cora, one of them the project's own (`accent` → Square Peg): a bundled list
 of web fonts would offer faces the page cannot render and miss that one.
+
+**…and from `--font-*` in `@layer theme`, which is the half the generated
+rules miss.** Tailwind v4 emits a utility only where the class is in the
+source, so a token applied exclusively through `var(--font-volt-mono)` — which
+is how every one of these projects wears its own face, on a `style={{ }}` at
+the layout wrapper, inherited all the way down — has no `.font-volt-mono` to
+be discovered by. Volt measured as three faces offered (sans/serif/mono,
+resolving to the stock stacks) and neither of the two the route is actually
+drawn in; murmur was the same with Inter. A theme key is still a writable
+token: the utility appears the moment the class does, which is what a theme
+key *means*, and the live suite asserts exactly that against the real build
+rather than assuming it — save `font-volt-mono`, poll, and `.font-volt-mono`
+is there.
+
+**The layer is the membership test, and the `:root` selector is not.**
+next/font declares `--font-geist-mono` on a CSS-module class
+(`.geist_mono_8d43a2aa-module__…`), not in `@theme` — so it is a plain custom
+property, and `font-geist-mono` would preview here through a runtime rule and
+generate *nothing* on the real build. Tailwind puts its own theme block in
+`@layer theme` and nothing else does, so walking with an `inTheme` flag and
+taking `--font-*` only inside it separates the two exactly. `--font-weight-*`
+is excluded by name: it is the same seam `font-` makes in a class list, one
+level down.
+
+**A family row's note is the CSS generic, never the project's slot name.**
+`meridian`, `meridian-mono`, `volt`, `murmur-display` are names one codebase
+invented, and they were sitting in the one column of this panel that ought to
+read the same whatever project the editor is pointed at. It now says
+`sans-serif`, `serif`, `monospace`, `cursive` or `fantasy` and nothing else —
+the platform's own vocabulary, which is the only thing here that means the
+same everywhere. The token is not lost by leaving the row: it is in the
+tooltip beside the stack it resolves to, which is where this panel keeps the
+exact thing behind every value. It also stopped the face being the half that
+truncated — `Geist Mono` clipped to `Geist M…` beside a full-width
+`meridian-mono`, which is the wrong half of a row whose job is to name a face.
+
+**The generic comes from the first keyword in the *resolved* stack.** First and
+not last, because Tailwind's own sans ends `…, "Noto Color Emoji"`, so reading
+from the end finds a face rather than a keyword. Whole comma-separated entries
+and never a substring, because `sans-serif` contains `serif` — the same trap
+the class prefixes make one level up. The resolved stack and not the
+declaration, since `.font-sans` is often just `var(--font-sans)` and a var says
+nothing about what it holds.
+
+**The list is ordered by that generic, with the project's own token leading its
+run — and there are no headings.** Ordering keeps like with like, so the sans
+faces stand together and the note down the right makes the runs legible without
+a caption over each. Leading the run: on volt `sans` is a stock stack the route
+never draws in and `volt` is the Geist it does. Nothing is dropped for being a
+duplicate — two sans faces are two things you can pick.
+
+**Five generics, and deliberately no sixth.** `serif`, `sans-serif`,
+`monospace`, `cursive`, `fantasy` are what CSS offers, so a face resolving to
+one of them can be named without guessing. A stack that names no generic at all
+— `"Some Face", "Some Fallback"` — says nothing about what kind of type it is,
+and an "other" is a label meaning "we could not tell". Such a token is **not
+offered**. This editor has to hold for projects nobody here has measured, and a
+rule that guesses guesses differently in each of them. The live suite pins both
+halves with keys these projects do not have: a `cursive` one is said in full, a
+name-only one is absent.
+
+**A family from a variable needs a preview rule; one from a utility must not
+get one.** The old note here said no rule is ever added — true while the map
+held only generated utilities, and false the moment it holds theme keys as
+well. `renderable.family` stays the record of what the page has already drawn
+and `FAMILIES` is a *copy* with the utilities merged over the variables, so
+`ensureFamilyRule` can skip by name: a scoped `[data-bw-edited].font-sans`
+over a route's own `.font-sans` is the `px-6 md:px-12` failure again. The
+utility also wins the merge on value, because under `@theme inline` it is the
+truer of the two — cora's `.font-mono` carries `ui-monospace, "Cascadia Code"`
+while the variable it was built from is not emitted at all.
 
 **A family declaration is not always a stack.** `@theme inline` bakes the value
 in, but a plain `@theme` emits `font-family:var(--font-sans)` — and
@@ -800,6 +881,14 @@ snowflake from the same condition — `kind === 'arbitrary'` — which is what t
 cross-field assertion below requires, and the snowflake sits where a unit sits
 so the chevron takes its place on hover exactly as elsewhere.
 
+**A literal font size wears the snowflake alone, not a nearest rung beside
+it.** The Size field was the one row naming the token it is nearest — `sm` in
+the note slot where `lg` sits on a row that really is set to `lg`, a shade away
+from claiming the element wears it. Radius and spacing take arbitrary values
+just as often and say nothing; this was the odd one out, and `nearestToken`
+had exactly one caller. The hint keeps the tooltip, where "nearest is sm at
+14px" costs nothing to read past.
+
 **Italic means one thing: this value is a literal.** It used to mean "inherited
 from a broader class", which put top and bottom into italic the moment you typed
 a vertical value — two unrelated ideas wearing one style. Inherited keeps the
@@ -809,13 +898,36 @@ snowflake: the two are set from the same condition and a test asserts they never
 disagree on any field.
 
 **Typography is one section, not three rows.** Frame `1:3`: the family across
-the full width, weight and size sharing the line below it, the alignment
+the row, weight and size sharing the line below it, the alignment
 segment below that — 40px rows, 12px apart, 8px under the label, 173px in
 total, which the live suite asserts to the pixel. Three labels became one
 because they name one thing, and because a 124px field cannot afford a label
 beside it. Each field still decides its own visibility exactly as it did when
 it owned a row, and the weight/size pair collapses to a single column rather
 than leaving a hole.
+
+**The section reserves the gutter its row has no toggle for.** Every other
+section ends in a 40x40 tile, so its stack stops 270px in and its pair is two
+129px columns. Typography has no tile — nothing about a family folds into
+anything — so its stack ran the full 312 and the two fields under it came out
+150 apiece: a family field a tile wider than the Padding above it, and a
+weight/size pair whose columns missed the padding pair's by 21px on a panel
+where those two rows sit four lines apart. `is-inset` is `margin-right:42px`,
+which is the 12px between a stack and a tile plus the 30 a tile takes off the
+flex line — its 40 less the 10 it hangs into the panel's gutter. Same
+arithmetic as the toggle's negative margin, read from the other side, so the
+column holds whether or not a row has anything to put in it.
+
+**The alignment segment is the pair's first column, not a width of its own.**
+6+28+14+28+14+28+6 is the frame's 124px exactly, and it sits directly under the
+weight field — so once that field settled on the padding row's 129 the segment
+stopped 5px inside a right edge it plainly lines up with. It asks for the
+column by name now (`calc((100% - 12px) / 2)`), because a flex column stretches
+its children and stretching gives it all 270. The 5px goes to its gutter rather
+than its gaps: the three 28px tiles keep the frame's 14px rhythm and the box
+around them widens, which is the half of a segment that is a container. The
+live suite asserts it against the weight field rather than against 124, since
+124 was only ever the number that column happened to be.
 
 **These fields are bare — no leading mark — and that is why.** Two of them
 share one 260px line, so a 20px icon with its 10px margins would eat a third
@@ -1251,13 +1363,33 @@ against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
 
-`next/verify.js` is the live suite: 79 checks against the real Next app,
+`next/verify.js` is the live suite: 96 checks against the real Next app,
 including refusals, security (401/403/415), and byte-exact restore of every file
 it touches. The radius block runs against `experiments/cora/login` specifically
 because Cora redefines the radius ladder — every number it asserts would be
 wrong if the overlay read `--radius-*` instead of the generated rule. The
 removal block runs against `volt/design-system` for the opposite reason: one
 line there renders 19 elements, which is the case the warning exists for.
+The family block is split across two routes, and the split is the point.
+**Murmur** carries the discovery half — that a `--font-*` in `@layer theme`
+with no generated utility is offered anyway (Inter, Space Grotesk), that
+next/font's variables, which live outside that layer, are offered by nobody,
+that every note is one of the five CSS generics and the ordering follows them,
+that the tooltip still carries the token, and — with two keys injected at
+runtime that these projects do not have — that a `cursive` face is said in full
+while a stack naming no generic is not offered at all. **Volt** carries the write half:
+pick, preview, save, and watch Tailwind generate the utility the theme key
+promised.
+
+They are split because of a trap. **Tailwind's dev server keeps a utility once
+it has generated one, even after the class leaves the source again** — so the
+route this suite writes to stops being a route with no utility the moment it
+has run once, and `!utils['volt-mono']` passed exactly once and never again.
+Nothing writes to murmur, so nothing spends it. Volt's own target is derived
+from the page rather than written down, and the rule it asserts flips with the
+state it finds: one runtime rule where the page owns none, *no* runtime rule
+where it already does — which is the shadowing guard, and worth asserting in
+its own right.
 The per-corner block is on Cora too, and asserts 21.6px: a corner rung built
 from the stock ladder instead would say 16px beside three 12px corners.
 

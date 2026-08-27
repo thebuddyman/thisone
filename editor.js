@@ -1807,6 +1807,15 @@
 
       /* spacing: label, a 2-up grid of inputs, then the per-side toggle */
       P + ' .bw-stack{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}',
+      // Typography's row is the one with no toggle at the end of it, so its
+      // stack would run the panel's full 312 where every other section's stops
+      // at 270 — a family field a tile wider than the Padding above it, and a
+      // weight/size pair of 150px columns standing beside their 129. The
+      // gutter is reserved instead of earned: 42 is the 12px between a stack
+      // and a tile plus the 30px a tile takes off the flex line, which is its
+      // 40 less the 10 it hangs into the panel's own gutter. Same arithmetic
+      // as the toggle's negative margin, read from the other side.
+      P + ' .bw-stack.is-inset{margin-right:42px}',
       // The frame puts this at the end of the padding row as a 40x40 tile.
       //
       // It hangs 10px into the panel's gutter, which is where the close button
@@ -1825,10 +1834,16 @@
       '  {background:var(--bw-sunken)}',
       P + ' .bw-seg{flex:0 0 auto;display:flex;align-items:center;gap:14px;',
       '  height:40px;padding:0 6px;border-radius:8px;background:var(--bw-sunken)}',
-      // 6+28+14+28+14+28+6 is the frame's 124px exactly, which only holds if
-      // the column above it does not stretch it — a flex column stretches its
-      // children on the cross axis by default, and that is the width here.
-      P + ' .bw-stack > .bw-seg{align-self:flex-start}',
+      // The segment is the pair's first column, not a width of its own: it
+      // sits under the weight field and the two are read as one edge, so 124
+      // — 6+28+14+28+14+28+6, the frame's own arithmetic — stopped 5px short
+      // of a field it is plainly lined up with. A flex column stretches its
+      // children across, which would give it all 270, so the column is asked
+      // for by name instead. The 5px it gains goes to its gutter and not to
+      // its gaps: the three tiles keep the frame's 14px rhythm and the box
+      // around them widens, which is the half of this that is a container.
+      P + ' .bw-stack > .bw-seg{align-self:flex-start;justify-content:center;',
+      '  width:calc((100% - 12px) / 2)}',
       // And the reason the family field needs this: .bw-field carries flex:1,
       // which in a column is flex-basis:0 on the HEIGHT. It collapsed the
       // 40px field to the 15px of its own line box. The two in the pair below
@@ -2046,6 +2061,20 @@
       // than as a padding. Aligning to the tile's own edge was the same miss
       // 10px further in: what you see of a button at rest is its mark.
       PP + ' .bw-pop-body{overflow-y:auto;padding:20px}',
+      // And a row's TEXT stands on that gutter too, not 12px inside it. The
+      // fill it wears under the cursor is what overhangs — the same rule the
+      // panel's toggle tiles follow, where what you see of a control at rest
+      // is its mark and only its hover fill hangs into the gutter. Read down
+      // an open list the two were plainly apart: "Search" at 21 and "0px" at
+      // 33, with the meta on the right ending at 187 against the X's mark at
+      // 199, on a surface whose whole content is one column of left-aligned
+      // text. The 12 is the row's own padding, so it is handed back on both
+      // sides rather than taken off it — a row with no inset would sit its
+      // fill hard against the border and its text on the gutter with nothing
+      // in between. Direct children only: `.bw-picker` and `.bw-swatches`
+      // keep the 20, and the swatch grid is measured from it.
+      PP + ' .bw-pop-body > .bw-hue,' + PP + ' .bw-pop-body > .bw-pop-empty',
+      '  {width:calc(100% + 24px);margin-left:-12px;margin-right:-12px}',
       // The same words in the same voice the popover's own title is set in —
       // 15px muted and capitalised, not a 9px letterspaced caption. Two type
       // styles for two headings on one surface was one style too many.
@@ -2850,8 +2879,16 @@
         // the list is how you get back onto the scale.
         d.name.textContent = state.px + state.unit;
         d.name.className = 'bw-cname is-custom';
+        // The snowflake alone, which is what every other literal in this panel
+        // wears. Naming the nearest rung beside it put a token in the value's
+        // own slot on the one row where the value is emphatically not that
+        // token — `sm` sitting where `lg` sits on the row above, a shade away
+        // from claiming the element is set to it. Radius and spacing take
+        // arbitrary values just as often and say nothing; this was the odd one
+        // out, and `nearestToken` had exactly one caller. The hint keeps the
+        // tooltip, where a nudge toward the scale costs nothing to read past.
         var near = nearestToken(state.px);
-        d.note.textContent = near && near.d > 0 ? near.name : '';
+        d.note.textContent = '';
         d.note.appendChild(snowflake());
         d.token.title = state.cls + ' \u2014 not a scale token' +
           (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
@@ -2991,6 +3028,40 @@
     'system-ui': 1, 'sans-serif': 1, serif: 1, monospace: 1, cursive: 1,
     fantasy: 1, math: 1, emoji: 1, fangsong: 1,
   };
+
+  /**
+   * What a generic keyword calls the stack it is in.
+   *
+   * The same set as above, read for what it says rather than tested for
+   * membership — math/emoji/fangsong are left out because no one picks a
+   * typeface by them, and a stack whose only generic is one of those falls
+   * through to `other` like a stack with no generic at all.
+   */
+  // The value is the CSS keyword itself, because the keyword is what goes on
+  // screen: a row's note says `sans-serif`, not `sans`, and not `meridian`.
+  // The platform's own vocabulary is the one thing that means the same in
+  // every project this editor is ever pointed at.
+  var GENERIC_GROUP = {
+    'ui-sans-serif': 'sans-serif', 'sans-serif': 'sans-serif',
+    'system-ui': 'sans-serif', 'ui-rounded': 'sans-serif',
+    'ui-serif': 'serif', serif: 'serif',
+    'ui-monospace': 'monospace', monospace: 'monospace',
+    cursive: 'cursive', fantasy: 'fantasy',
+  };
+
+  // The order the list is read in, and the whole vocabulary it can say: these
+  // five are what CSS itself offers, so the rule is the language's rather than
+  // any one project's. The first three are what every project has an answer
+  // for; cursive and fantasy exist so a face that is neither — Cora's Square
+  // Peg, the one token on that route the project actually wrote — keeps a row
+  // rather than being called something it is not.
+  //
+  // There is deliberately no sixth. A stack that names no generic at all says
+  // nothing about what kind of type it is, and an "other" is a label meaning
+  // "we could not tell" — so such a token is not offered. The editor has to
+  // hold for projects nobody here has seen, and a rule that guesses is one
+  // that guesses differently in each of them.
+  var FAMILY_GROUPS = ['sans-serif', 'serif', 'monospace', 'cursive', 'fantasy'];
 
   /**
    * Faces worth asking about when a stack resolves to a generic. Not a font
@@ -3180,13 +3251,43 @@
     classesOf(el).forEach(function (c) {
       if (c.indexOf('font-') === 0 && FAMILIES[c.slice(5)]) el.classList.remove(c);
     });
-    // No preview rule, and none is needed: a family is in FAMILIES only
-    // because the page had already generated its rule. That is the whole
-    // point of reading them off the page — nothing here can be invented, so
-    // nothing here can preview as blank the way an invented class would.
-    if (cls) el.classList.add(cls);
+    if (cls) {
+      ensureFamilyRule(cls);
+      el.classList.add(cls);
+    }
     markDirty(el, 'classes');
     refresh();
+  }
+
+  /**
+   * A family read off a generated utility needs no rule — the page has one
+   * already, which is the whole point of discovering them there. A family
+   * read off a theme variable has none, for the reason it was discovered that
+   * way: nothing in the source uses the class yet, so Tailwind generated
+   * nothing. It gets a runtime rule like an arbitrary colour does.
+   *
+   * No gate needed beyond the one below, and none possible to get wrong: a
+   * token that reached FAMILIES through `renderable.family` is skipped by
+   * name, so the scoped copy that would outrank a route's own responsive
+   * variants — the px-6 md:px-12 failure — can never be written.
+   */
+  function ensureFamilyRule(cls) {
+    var name = cls.indexOf('font-') === 0 ? cls.slice(5) : null;
+    if (!name || dynSeen[cls] || !FAMILIES[name]) return;
+    if (renderable.family && renderable.family[name]) return;
+    dynSeen[cls] = true;
+    if (!dynStyle) {
+      dynStyle = document.createElement('style');
+      dynStyle.setAttribute('data-tw-editor', 'dynamic');
+      document.head.appendChild(dynStyle);
+    }
+    var sel = (PREVIEW_ATTR ? '[' + PREVIEW_ATTR + ']' : '') + '.' + CSS.escape(cls);
+    try {
+      dynStyle.sheet.insertRule(
+        sel + '{font-family:' + FAMILIES[name] + '}', dynStyle.sheet.cssRules.length);
+    } catch (e) {
+      dynSeen[cls] = false;
+    }
   }
 
   // sans/serif/mono are Tailwind's own; anything else is the project's, and
@@ -3194,15 +3295,58 @@
   // their own vocabulary and reach for the stock names close to never.
   var STOCK_FAMILY = { sans: 1, serif: 1, mono: 1 };
 
+  /**
+   * What kind of face a token names, taken from the first generic keyword in
+   * the stack it resolves to. This is both the note on its row and the run it
+   * is sorted into.
+   *
+   * The FIRST, not the last: Tailwind's own sans ends
+   * `…, "Segoe UI Symbol", "Noto Color Emoji"`, so reading from the end finds
+   * a face rather than a keyword. Whole comma-separated entries, never a
+   * substring — `sans-serif` contains `serif`, which is the same trap the
+   * class prefixes make one level up.
+   *
+   * The resolved stack rather than the declaration, because `.font-sans` is
+   * often just `var(--font-sans)` and a var says nothing about what it holds.
+   * resolveFamily caches, so this costs one paint per distinct declaration.
+   */
+  function familyGroup(token) {
+    var parts = String(resolveFamily(FAMILIES[token]) || '').split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var g = GENERIC_GROUP[parts[i].trim().replace(/^["']|["']$/g, '').toLowerCase()];
+      if (g) return g;
+    }
+    return '';
+  }
+
   function familyTokens() {
     // A token whose var resolves to nothing is dropped: it would preview as
     // whatever the row happens to inherit. One that resolves to a generic is
     // kept — `font-sans` meaning the platform's sans is a real answer.
     var all = Object.keys(FAMILIES).filter(function (t) { return !!resolveFamily(FAMILIES[t]); });
-    var project = all.filter(function (t) { return !STOCK_FAMILY[t]; });
-    project.sort();
-    var stock = ['sans', 'serif', 'mono'].filter(function (t) { return all.indexOf(t) !== -1; });
-    return project.concat(stock);
+    var by = {};
+    all.forEach(function (t) {
+      // No generic, no row: see FAMILY_GROUPS. A stack ending in a face rather
+      // than a generic cannot be said to be a sans or a mono, and guessing is
+      // what makes a rule stop travelling between projects.
+      var g = familyGroup(t);
+      if (g) (by[g] = by[g] || []).push(t);
+    });
+    var out = [];
+    FAMILY_GROUPS.forEach(function (g) {
+      if (!by[g]) return;
+      // Within a run the project's own token leads, which is what the flat
+      // list used to say about the whole list and is the more useful half of
+      // it: on volt `sans` is a stock stack the route never draws in and
+      // `volt` is the Geist it does.
+      by[g].sort(function (a, b) {
+        var pa = STOCK_FAMILY[a] ? 1 : 0;
+        var pb = STOCK_FAMILY[b] ? 1 : 0;
+        return pa - pb || (a < b ? -1 : a > b ? 1 : 0);
+      });
+      out = out.concat(by[g]);
+    });
+    return out;
   }
 
   // ------------------------------------------------------------ border radius
@@ -4059,16 +4203,20 @@
 
   /**
    * Typography, as one section — the shape of the frame: the family across the
-   * full width, weight and size sharing the line below it, the alignment
-   * segment below that. Three labels became one because they name one thing,
-   * and because at 124px a field cannot afford a label of its own beside it.
+   * row, weight and size sharing the line below it, the alignment segment
+   * below that. Three labels became one because they name one thing, and
+   * because at a pair's width a field cannot afford a label beside it.
+   *
+   * `is-inset` because this row has no toggle at the end of it: without it the
+   * stack runs 42px past every other section's, so the family field and the
+   * pair under it would both be wider than the Padding row they sit beneath.
    */
   function typographySection() {
     var row = el('div', 'bw-row');
     row.setAttribute('data-tw-section', 'typography');
     row.appendChild(el('span', 'bw-lbl', 'Typography'));
 
-    var stack = el('div', 'bw-stack');
+    var stack = el('div', 'bw-stack is-inset');
     var family = familyField();
     var weight = weightField();
     var size = sizeField();
@@ -4162,9 +4310,10 @@
    * about, which is what will render rather than what is declared.
    */
   function discoverUtilities() {
-    var found = { bg: {}, text: {}, border: {}, radius: {}, family: {}, stroke: {} };
+    var found = { bg: {}, text: {}, border: {}, radius: {}, family: {},
+                  familyVar: {}, stroke: {} };
 
-    function walk(rules) {
+    function walk(rules, inTheme) {
       for (var i = 0; i < rules.length; i++) {
         var rule = rules[i];
 
@@ -4218,7 +4367,37 @@
           if (f && rule.style.fontFamily) found.family[f[1]] = rule.style.fontFamily;
         }
 
-        if (rule.cssRules && rule.cssRules.length) walk(rule.cssRules);
+        // The other half of what a family can be: a theme variable the page
+        // declares but has generated no utility for. Tailwind v4 emits a
+        // utility only where the class is in the source, so a token used
+        // exclusively through `var(--font-murmur)` — which is how every one of
+        // these projects applies its own face, on an inline style at the
+        // layout wrapper — has no `.font-murmur` to be discovered by. It is
+        // still a writable token: the utility appears the moment the class
+        // does, which is exactly what a theme key means.
+        //
+        // `@layer theme` is the membership test, and a strict one. Tailwind
+        // emits its own theme block into that layer and nothing else does:
+        // next/font's `--font-geist-mono` lives on a CSS-module class
+        // (`.geist_mono_8d43a2aa-module__…`), and writing `font-geist-mono`
+        // would preview here and generate nothing on the real build, since it
+        // is a plain custom property rather than a theme key. Measured on all
+        // three routes: the layer holds sans/serif/mono and the project's own,
+        // and next/font's two sit outside it.
+        if (inTheme && sel && rule.style && sel.indexOf(':root') !== -1) {
+          for (var v = 0; v < rule.style.length; v++) {
+            var prop = rule.style[v];
+            // --font-weight-* is the one other thing wearing this prefix, the
+            // same seam `font-` makes in a class list one level down.
+            if (prop.indexOf('--font-') !== 0 || prop.indexOf('--font-weight-') === 0) continue;
+            var stack = rule.style.getPropertyValue(prop).trim();
+            if (stack) found.familyVar[prop.slice(7)] = stack;
+          }
+        }
+
+        if (rule.cssRules && rule.cssRules.length) {
+          walk(rule.cssRules, inTheme || rule.name === 'theme');
+        }
       }
     }
 
@@ -4230,7 +4409,7 @@
       } catch (e) {
         continue; // cross-origin; nothing readable and nothing we own
       }
-      if (rules) walk(rules);
+      if (rules) walk(rules, false);
     }
     return found;
   }
@@ -4263,7 +4442,15 @@
 
     var utils = discoverUtilities();
     renderable = utils;
-    FAMILIES = utils.family;
+    // A copy, and the generated utility last: `renderable.family` stays the
+    // record of what the page has already drawn, which is what decides
+    // whether a preview rule would be shadowing one of its own. Under
+    // `@theme inline` the utility is also the truer of the two — cora's
+    // `.font-mono` carries `ui-monospace, "Cascadia Code"` while the variable
+    // it was built from is not emitted at all.
+    FAMILIES = {};
+    Object.keys(utils.familyVar).forEach(function (t) { FAMILIES[t] = utils.familyVar[t]; });
+    Object.keys(utils.family).forEach(function (t) { FAMILIES[t] = utils.family[t]; });
     familyCache = {}; // a client-routed page can redefine what --font-* means
     faceInk = {};     // and a webfont that arrives late draws differently
     // Union of what bg-*, text-* and border-* can each render; the picker
@@ -4872,7 +5059,17 @@
         var label = el('span', 'bw-sizename is-face', familyName(t));
         label.style.fontFamily = FAMILIES[t];
         item.appendChild(label);
-        item.appendChild(el('span', 'bw-sizepx', t));
+        // The note says what KIND of face this is, in CSS's own words — not
+        // which slot of this project's theme it came out of. `meridian` and
+        // `meridian-mono` are names one codebase invented, and they were
+        // sitting in the one column that ought to read the same whatever
+        // project the editor is pointed at. The token is not lost: it is in
+        // the tooltip below, with the stack it resolves to, which is where
+        // the rest of this panel keeps the exact thing behind a value.
+        //
+        // The list is still ordered by that kind, so the sans faces stand
+        // together and the runs are legible without a heading over each.
+        item.appendChild(el('span', 'bw-sizepx', familyGroup(t)));
         if (currentF.kind === 'token' && currentF.name === t) {
           item.setAttribute('aria-current', 'true');
         }
