@@ -5021,23 +5021,42 @@
     setTimeout(function () { query.focus(); }, 0);
   }
 
+  /**
+   * Every popover that is a LIST names itself here. Anything else is a
+   * colour, which is what the body falls through to — so this one map is
+   * where "is this a colour" is decided, rather than a second enumeration
+   * beside it.
+   *
+   * It was a second enumeration, and it drifted the moment the stroke section
+   * reused colorField: `border` reached the colour body and was correctly
+   * titled Color, while the width test still named bg and text only. So the
+   * stroke's picker opened at the list's 220px with the eleven-square grid
+   * built for 322 spilling out the side of it. A colour row added next year
+   * gets the right box by construction now; a new list has to be registered,
+   * and the place it registers is the place its title already lives.
+   */
+  var POP_TITLES = {
+    font: 'Font size', family: 'Font family', weight: 'Weight',
+    radius: 'Radius', strokeStyle: 'Stroke style',
+  };
+  // spacing names itself from the field that opened it, so it is the one list
+  // whose title cannot sit in the map.
+  function popIsColor() {
+    return !!popState.prefix && popState.prefix !== 'spacing' && !POP_TITLES[popState.prefix];
+  }
+
   function renderPopover() {
     markOpenAnchor();
     popover.classList.toggle('is-wide', popState.prefix === 'family');
-    // Both colour views are the grid, so both get the width the grid needs.
-    popover.classList.toggle('is-swatches',
-      popState.prefix === 'bg' || popState.prefix === 'text');
+    // Every colour view is the same grid, so every one gets the width the
+    // grid needs — see POP_TITLES for why this is not a list of prefixes.
+    popover.classList.toggle('is-swatches', popIsColor());
     popover.innerHTML = '';
     var head = el('div', 'bw-pop-h');
 
     head.appendChild(el('strong', null,
-      popState.prefix === 'font' ? 'Font size'
-        : popState.prefix === 'family' ? 'Font family'
-        : popState.prefix === 'weight' ? 'Weight'
-        : popState.prefix === 'radius' ? 'Radius'
-        : popState.prefix === 'strokeStyle' ? 'Stroke style'
-        : popState.prefix === 'spacing' ? popState.spacing.name
-        : 'Color'));
+      popState.prefix === 'spacing' ? popState.spacing.name
+        : POP_TITLES[popState.prefix] || 'Color'));
     var shut = el('button', 'bw-x');
     shut.innerHTML = ICONS.close;
     shut.addEventListener('click', closePopover);
