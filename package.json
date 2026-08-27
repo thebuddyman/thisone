@@ -1,9 +1,24 @@
 {
   "name": "bw-pl-browsereditor",
   "version": "0.1.0",
-  "private": true,
   "description": "Proof of concept: visual Tailwind editor with write-back to source",
   "main": "server.js",
+  "files": [
+    "cli.js",
+    "server.js",
+    "detect.js",
+    "editor.js",
+    "index.html",
+    "next/loader.cjs",
+    "next/server.js",
+    "next/jsx-adapter.js",
+    "next/palette.js",
+    "next/claude.js",
+    "next/colors.json",
+    "next/font-weights.json",
+    "next/radii.json",
+    "next/text-sizes.json"
+  ],
   "exports": {
     "./loader": "./next/loader.cjs",
     "./package.json": "./package.json"
@@ -24,5 +39,8 @@
   },
   "bin": {
     "bw-edit": "./cli.js"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   }
 }

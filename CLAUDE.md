@@ -1209,6 +1209,31 @@ string — a `replace` that does not match fails silently, reporting success
 while the project still carries the block. It matches by marker and names any
 file it could not take the block out of.
 
+**The allowlist names files, not directories, and `assets/` is not on it.**
+`files` in package.json used to be absent, so npm fell back to `.gitignore` and
+shipped everything it does not hide: 69 files, 257kB, carrying 200kB of
+Playwright suites nobody installing can run, both live `verify` scripts, the
+unreachable `astro-locator.mjs`, and a 110kB handover document. It is 15 files
+and 143kB now. Naming each file rather than `"next"` is the point of the
+exercise: a directory entry is not an allowlist, and the next dev-only script to
+land in `next/` would join the tarball silently the way `verify-prompt.js` did.
+The failure it trades for is the loud one — a *runtime* file left off the list
+does not resolve, and the first install test says so.
+
+`assets/` is off it because nothing at runtime reads the files: the icons are
+inlined into `editor.js` byte-for-byte, and the one thing that opens the SVGs is
+`test/12-icons.js`, which does not ship either. Shipping them without their
+guard would put a second copy of every icon in the tarball with nothing
+checking that it still matches the one being drawn — which is the exact drift
+that suite exists to catch, moved somewhere it cannot be caught.
+
+**`engines` is Next's floor, not the language's.** Nothing in this code needs
+more than Node 14 — `fs.rmSync` is the newest thing in it — so a floor derived
+from the source would say `>=14` and be useless as a signal. `>=20.9.0` is what
+`next` itself declares, and this tool is only interesting attached to such a
+project. A floor is a claim about where it is known to work, and that is the
+number the claim is worth making at.
+
 **A free port is an answer about the past, so `dev` retries the pair.** The
 probe asks "is this free", and the answer is about the moment it was asked, not
 about the moment the child binds. `--wire` rewrites next.config.ts, Next fully
@@ -1475,8 +1500,11 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    run at a time. On Cora 59.6% of elements were `mixed-content`, most of which
    this reaches.
 5. **Packaging** — the three things that only bite once it is a *dependency*
-   are done (see below); what is left is a `files` allowlist, dropping
-   `private: true`, `engines`, a README, and one install test against a fresh
+   are done (see below), and the tarball is now an allowlist: 15 files, 143kB,
+   `private: true` gone, `engines` at `>=20.9.0`. What is left is a README, a
+   `.` entry in `exports` — `main: server.js` is decorative today, since an
+   `exports` map with no `.` makes `require('bw-pl-browsereditor')` throw
+   `ERR_PACKAGE_PATH_NOT_EXPORTED` — and one install test against a fresh
    `create-next-app`. Still only worth finishing if other people will use it.
 6. **The hex is still read-only as *text*.** The picker sets it and the opacity
    field sets its alpha, but there is nowhere to paste `#3f6212` into. gw-web is
