@@ -8,7 +8,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { detect, detectWiring } = require('../detect');
+const { detect, detectWiring, whyItDied } = require('../detect');
 
 const results = [];
 const check = (name, pass, detail) => {
@@ -225,6 +225,40 @@ run(['--root', cached, '--unwire']);
 check('unwiring drops it too — a running server would keep resolving a loader '
   + 'that is no longer there',
   !fs.existsSync(path.join(cached, '.next/dev')));
+
+// ------------------------------------------- why a dev server gave up
+//
+// Only one of these three is worth another port, and getting it wrong is what
+// turned one clear failure into six restarts that could never succeed. Verbatim
+// output from Next 16.3.3, captured from the run that found this.
+const DUPLICATE = `✓ Running next.config.ts took 57ms
+▲ Next.js 16.3.3 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.1.213:3002
+✓ Ready in 888ms
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3001
+- PID:          17944
+- Dir:          /tmp/my-app
+`;
+let d = whyItDied(DUPLICATE);
+check('a second dev server for the same directory is named as that',
+  d.kind === 'duplicate', d.kind);
+// Our own child prints its banner before it discovers the conflict, so reading
+// from the top of the buffer reports the port that FAILED (3002) rather than
+// the one to go to (3001). That is what the first version did.
+check('...and points at the server already running, not the one that just failed',
+  d.at === 'http://localhost:3001', d.at);
+check('...and carries the pid, because the fix is to kill it',
+  d.pid === '17944', d.pid);
+
+d = whyItDied('Error: listen EADDRINUSE: address already in use :::3001');
+check('a taken port is the one case worth another port', d.kind === 'port-taken', d.kind);
+
+d = whyItDied('SyntaxError: Unexpected token in next.config.ts');
+check('anything else stops rather than cycling through ports',
+  d.kind === 'unknown', d.kind);
 
 // A block this version cannot match must be named, not silently skipped. An
 // older release wrote a different snippet, and a replace that does not match

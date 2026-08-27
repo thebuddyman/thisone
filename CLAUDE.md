@@ -1221,6 +1221,24 @@ neither can be told later — so a failure on either side retires *both* and the
 next pair is tried. Retrying one half alone would leave the other holding a
 number its partner no longer has.
 
+**A child that died is not proof that its port was taken.** Next refuses a
+second dev server for the same *directory*, whatever port it is offered: it
+starts, prints "Another next dev server is already running", and exits. Treating
+every exit as a port collision turned that one clear failure into four restarts
+that could not possibly succeed, each printing a full editor banner, and a
+closing message blaming a restart loop. The tail of the child's output is read
+now and the reason named — `duplicate` stops and quotes the running server,
+`port-taken` is the only one worth another port, anything else stops and shows
+what the app said. `whyItDied` lives in `detect.js` because it is pure string
+work and `cli.js` executes on require, so it could not be tested where it was
+first written. Its fixtures are verbatim Next 16.3.3 output.
+
+**Read that complaint from the complaint, not from the top of the buffer.** Our
+own child prints its banner — `- Local: http://localhost:3002` — a moment before
+it discovers the conflict, so a search across the whole tail names the port that
+just failed instead of the server to go to. The first version told the user to
+visit the wrong one.
+
 **"Something answered" has to mean a web server, not an open socket.** The
 readiness check connected and called that success, which a process squatting on
 a port satisfies happily while never replying — so it reported success against

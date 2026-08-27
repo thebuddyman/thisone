@@ -183,4 +183,27 @@ function detectWiring(plan) {
   };
 }
 
-module.exports = { detect, detectWiring, detectTailwind };
+/**
+ * Why did the app give up, and is another port going to help?
+ *
+ * Three answers, and only one of them is worth retrying. Pure string work, kept
+ * out of the spawn loop so it can be tested without starting a dev server.
+ */
+function whyItDied(out) {
+  if (/Another .* dev server is already running/i.test(out)) {
+    // Read from the complaint onwards, not from the top of the buffer: our own
+    // child prints its banner — `- Local: http://localhost:3002` — a moment
+    // before it discovers the conflict, so a search over the whole tail reports
+    // the port that failed instead of the one to go to.
+    const said = out.slice(out.search(/Another .* dev server is already running/i));
+    return {
+      kind: 'duplicate',
+      at: (said.match(/Local:\s+(\S+)/) || [])[1],
+      pid: (said.match(/PID:\s+(\d+)/) || [])[1],
+    };
+  }
+  if (/EADDRINUSE/.test(out)) return { kind: 'port-taken' };
+  return { kind: 'unknown' };
+}
+
+module.exports = { detect, detectWiring, detectTailwind, whyItDied };

@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { createRequire } = require('module');
-const { detect, detectWiring } = require('./detect');
+const { detect, detectWiring, whyItDied } = require('./detect');
 
 const HERE = __dirname;
 const MARK = 'bw-editor';
@@ -410,6 +410,27 @@ function answering(port) {
  * it: `next dev` binds long before it has finished compiling, and a slow build
  * must not be read as a failure to start.
  */
+/**
+ * Spawn a child, show its output, and keep the tail of it.
+ *
+ * The tail is the only way to tell WHY a child gave up, and the difference
+ * matters: a port taken from under us is worth trying the next one for, and
+ * anything else is worth stopping for. Piped rather than inherited so it can be
+ * read, and written straight back out so the user still sees it live.
+ */
+function spawnWatched(cmd, args, opts) {
+  const proc = spawn(cmd, args, Object.assign({}, opts, { stdio: ['inherit', 'pipe', 'pipe'] }));
+  let tail = '';
+  const tap = (src, dest) => src && src.on('data', (chunk) => {
+    dest.write(chunk);
+    tail = (tail + chunk.toString()).slice(-4000);
+  });
+  tap(proc.stdout, process.stdout);
+  tap(proc.stderr, process.stderr);
+  proc.tail = () => tail;
+  return proc;
+}
+
 async function holds(proc, port, waitMs) {
   let dead = false;
   proc.once('exit', () => { dead = true; });
@@ -448,7 +469,7 @@ async function runDev() {
   let bwFrom = Number(arg('port', DEFAULT_PORT));
   let appFrom = Number(arg('app-port', plan.appPort));
 
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const bwPort = await freePort(bwFrom, '127.0.0.1');
     const appPort = await freePort(appFrom, null);
     const origin = `http://localhost:${appPort}`;
@@ -463,9 +484,8 @@ async function runDev() {
       continue;
     }
 
-    const app = spawn('npx', [bin, ...rest, '--port', String(appPort)], {
+    const app = spawnWatched('npx', [bin, ...rest, '--port', String(appPort)], {
       cwd: plan.root,
-      stdio: 'inherit',
       // Read when the layout renders, which is what lets the editor live
       // anywhere without the number being written into the user's source.
       env: { ...process.env, NEXT_PUBLIC_BW_PORT: String(bwPort) },
@@ -473,6 +493,27 @@ async function runDev() {
     if (!(await holds(app, appPort, 40000))) {
       app.kill();
       editor.kill();
+      const died = whyItDied(app.tail());
+
+      // Next refuses a second dev server for the same DIRECTORY, whatever port
+      // it is offered — it starts, says so, and exits. No port is going to fix
+      // that, so retrying is four restarts that cannot succeed and a closing
+      // message blaming the wrong thing. It even names the one already running.
+      if (died.kind === 'duplicate') {
+        const { at, pid } = died;
+        console.log(`\n${red('A dev server for this project is already running.')}`);
+        if (at) console.log(`  It is at ${bold(at)}${pid ? dim(`  (pid ${pid})`) : ''}.`);
+        console.log(`  ${plan.devCommand || 'The dev server'} allows one per directory, so this cannot start beside it.`);
+        console.log(`\n  Either stop it${pid ? ` — ${bold('kill ' + pid)}` : ''} and run ${bold('bw-edit dev')} again,`);
+        console.log(`  or leave it and run ${bold('bw-edit')} on its own beside it.\n`);
+        process.exit(1);
+      }
+
+      // Only a port collision is worth another port.
+      if (died.kind !== 'port-taken') {
+        console.log(`\n${red('The app did not start.')} Its output is above.\n`);
+        process.exit(1);
+      }
       console.log(dim(`  port ${appPort} went while we were looking at it — trying the next pair`));
       appFrom = appPort + 1;
       continue;
@@ -488,7 +529,7 @@ async function runDev() {
     editor.on('exit', (code) => { app.kill(); process.exit(code || 0); });
     return;
   }
-  throw new Error('could not get a pair of ports to hold — is something restarting in a loop?');
+  throw new Error(`no pair of ports would hold after 4 tries, starting from ${arg('app-port', plan.appPort)} and ${arg('port', DEFAULT_PORT)} — something is taking them as fast as they are found`);
 }
 
 if (process.argv[2] === 'dev' || flag('dev')) {
