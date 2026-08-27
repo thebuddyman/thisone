@@ -51,6 +51,27 @@ const green = (s) => `\x1b[32m${s}\x1b[0m`;
  * has — so the only copy of the user's own next.config and layout would be in
  * the one directory guaranteed not to survive. `--unwire` reads from here too.
  */
+/**
+ * Drop Turbopack's dev cache, because wiring has just invalidated it.
+ *
+ * `--wire` and `--unwire` both change next.config.ts and both add or remove
+ * `tools/bw-loader.cjs`, and Turbopack caches module *resolutions* — including
+ * the failed ones. Unwire while the dev server is up and it caches "there is no
+ * such file"; wire again and the file is back but the cache is not asked again,
+ * so every page 500s with `Cannot find module .../tools/bw-loader.cjs` naming a
+ * path that is plainly there. Nothing short of clearing it recovers, and the
+ * error points at the file rather than at the cache, so it reads as our bug.
+ *
+ * Only `.next/dev`. Next 16 keeps dev and build output in separate trees, and
+ * a production build is not ours to throw away.
+ */
+function clearDevCache(root) {
+  const dir = path.join(root, '.next', 'dev');
+  if (!fs.existsSync(dir)) return false;
+  fs.rmSync(dir, { recursive: true, force: true });
+  return true;
+}
+
 function backupDir(root) {
   return path.join(root, '.bw-edit', 'backups');
 }
@@ -277,6 +298,10 @@ if (flag('unwire')) {
     console.log(`${red('Left in place: ' + rel)} — it carries a ${MARK} block this version ` +
       'does not recognise (wired by an older release, or edited since). Remove it by hand.');
   }
+  if (removed.length && clearDevCache(plan.root)) {
+    console.log(dim('Cleared .next/dev — a dev server still running would otherwise keep '
+      + 'a cached resolution of the loader that is no longer there.'));
+  }
   console.log('');
   process.exit(stuck.length ? 1 : 0);
 }
@@ -310,6 +335,10 @@ if (flag('wire')) {
     }
     if (manual.length) process.exit(1);
   }
+  if (clearDevCache(plan.root)) {
+    console.log(dim('Cleared .next/dev — Turbopack caches which files the loader rule '
+      + 'resolves to, including the ones that were missing a moment ago.'));
+  }
   console.log(`\nNext: ${bold('bw-edit dev')} starts your app and the editor together.`);
   console.log(`${dim('Or run ' + (plan.devCommand || 'the app') + ' yourself and ')}${bold('bw-edit')}${dim(' beside it.')}\n`);
   process.exit(0);
@@ -321,19 +350,19 @@ if (!wired) {
 }
 
 /**
- * The first free port at or above `from`, asked of the OS rather than guessed.
+ * The first port at or above `from` that nothing is listening on.
  *
  * `host` must match how the server being tested for will bind, or the answer is
  * wrong: `next dev` listens on every interface and the editor listens only on
  * 127.0.0.1, and on macOS a loopback bind SUCCEEDS against a port already held
- * by a wildcard listener. Probing 127.0.0.1 for the app therefore called 3000
- * free while another app was plainly on it, and Next died a second later.
+ * by a wildcard listener.
  *
- * Only used by `dev`, where we own both sides and can make them agree. The
- * standalone server deliberately does NOT do this: the layout falls back to
- * 3500, so a server that quietly moved itself would leave the overlay looking
- * for it at the old number and failing in silence — the exact bug the runtime
- * port lookup was added to kill.
+ * This is a starting guess and nothing more. It answers "free right now", and
+ * right now is not when the child binds — a server restarting frees its port
+ * for a second or two, which is a window wide enough to walk straight into.
+ * `--wire` rewrites next.config.ts, Next restarts on that, and the probe lands
+ * in the gap: 3001 was genuinely free when asked and genuinely taken a moment
+ * later. Whoever calls this must expect to be wrong and try the next one.
  */
 function freePort(from, host) {
   const net = require('net');
@@ -350,44 +379,116 @@ function freePort(from, host) {
 }
 
 /**
+ * Is a *web server* answering on this port yet?
+ *
+ * An HTTP request and a real response, not a bare TCP connect. Connecting only
+ * proves something accepted the socket, which a process squatting on the port
+ * does happily while never replying — and that is precisely the thing we are
+ * trying to detect, so the cheap check reported success against the very case
+ * it existed to catch. Any status line counts: Next answers while it is still
+ * compiling, and a 404 or a 500 is still proof the port is held by something
+ * that speaks HTTP.
+ */
+function answering(port) {
+  const http = require('http');
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/', timeout: 1500 }, (res) => {
+      res.resume();
+      resolve(true);
+    });
+    req.once('error', () => resolve(false));
+    req.once('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Did this child actually take the port, or did it fall over trying?
+ *
+ * Polled until it answers rather than waited out on a guess — the same rule the
+ * HMR assertions follow, and for the same reason: a first compile is not on a
+ * clock. A child that is still alive when the deadline passes counts as holding
+ * it: `next dev` binds long before it has finished compiling, and a slow build
+ * must not be read as a failure to start.
+ */
+async function holds(proc, port, waitMs) {
+  let dead = false;
+  proc.once('exit', () => { dead = true; });
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    if (dead) return false;
+    if (await answering(port)) return true;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return !dead;
+}
+
+/**
  * `bw-edit dev` — the app and the editor, from one command.
  *
- * Three numbers have to agree for this to work at all: the app's port, the
- * editor's port, and the origin the editor will accept writes from. Left to
- * the user they are three chances to be wrong, and the third fails in the
- * worst way — everything looks fine until Save, which is refused as a bad
- * origin. Owning all three is the only way they cannot disagree.
+ * Three numbers have to agree: the app's port, the editor's port, and the
+ * origin the editor accepts writes from. Left to the user they are three
+ * chances to be wrong, and the third fails in the worst way — everything looks
+ * right until Save, which is refused as a bad origin.
+ *
+ * They are also circular, which is what makes this fiddly. The app is started
+ * with the editor's port in its environment, so the editor must go first; the
+ * editor is started with the app's origin in its allowlist, so the app must.
+ * Neither can be told later — an env var is fixed at spawn and the allowlist is
+ * built at boot. So the PAIR is chosen, tried, and retried together: if either
+ * half cannot hold its port, both are torn down and the next pair is tried.
+ * Retrying only the failed half would leave the other holding a number its
+ * partner no longer has.
  */
 async function runDev() {
   if (plan.framework === 'html') {
     console.log(`\n${red('`dev` is for framework projects.')} This one is served directly; run ${bold('bw-edit')}.\n`);
     process.exit(1);
   }
-  const appPort = await freePort(Number(arg('app-port', plan.appPort)), null);
-  const bwPort = await freePort(Number(arg('port', DEFAULT_PORT)), '127.0.0.1');
-  const origin = `http://localhost:${appPort}`;
   const [bin, ...rest] = (plan.devCommand || 'next dev').split(' ');
+  let bwFrom = Number(arg('port', DEFAULT_PORT));
+  let appFrom = Number(arg('app-port', plan.appPort));
 
-  console.log(`\n${green('Starting both.')}  app ${bold(origin)}   editor ${bold('127.0.0.1:' + bwPort)}`);
-  console.log(`${dim('open ' + origin + ' and press ')}${bold('Edit mode')}${dim(' — bottom right')}\n`);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const bwPort = await freePort(bwFrom, '127.0.0.1');
+    const appPort = await freePort(appFrom, null);
+    const origin = `http://localhost:${appPort}`;
 
-  const appProc = spawn('npx', [bin, ...rest, '--port', String(appPort)], {
-    cwd: plan.root,
-    stdio: 'inherit',
-    // Read when the layout renders, which is what lets the editor live
-    // anywhere without the number being written into their source.
-    env: { ...process.env, NEXT_PUBLIC_BW_PORT: String(bwPort) },
-  });
-  const bwProc = spawn(process.execPath,
-    [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(bwPort), '--app', origin]
-      .concat(flag('prompt') ? ['--prompt'] : []),
-    { stdio: 'inherit' });
+    const editor = spawn(process.execPath,
+      [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(bwPort),
+        '--app', origin].concat(flag('prompt') ? ['--prompt'] : []),
+      { stdio: 'inherit' });
+    if (!(await holds(editor, bwPort, 8000))) {
+      editor.kill();
+      bwFrom = bwPort + 1;
+      continue;
+    }
 
-  process.on('SIGINT', () => { appProc.kill(); bwProc.kill(); process.exit(0); });
-  // Neither is useful alone: an editor with no app has nothing to edit, and an
-  // app whose editor died silently stops being able to save.
-  appProc.on('exit', (code) => { bwProc.kill(); process.exit(code || 0); });
-  bwProc.on('exit', (code) => { appProc.kill(); process.exit(code || 0); });
+    const app = spawn('npx', [bin, ...rest, '--port', String(appPort)], {
+      cwd: plan.root,
+      stdio: 'inherit',
+      // Read when the layout renders, which is what lets the editor live
+      // anywhere without the number being written into the user's source.
+      env: { ...process.env, NEXT_PUBLIC_BW_PORT: String(bwPort) },
+    });
+    if (!(await holds(app, appPort, 40000))) {
+      app.kill();
+      editor.kill();
+      console.log(dim(`  port ${appPort} went while we were looking at it — trying the next pair`));
+      appFrom = appPort + 1;
+      continue;
+    }
+
+    console.log(`\n${green('Both up.')}  app ${bold(origin)}   editor ${bold('127.0.0.1:' + bwPort)}`);
+    console.log(`${dim('open ' + origin + ' and press ')}${bold('Edit mode')}${dim(' — bottom right')}\n`);
+
+    process.on('SIGINT', () => { app.kill(); editor.kill(); process.exit(0); });
+    // Neither is useful alone: an editor with no app has nothing to edit, and
+    // an app whose editor died silently stops being able to save.
+    app.on('exit', (code) => { editor.kill(); process.exit(code || 0); });
+    editor.on('exit', (code) => { app.kill(); process.exit(code || 0); });
+    return;
+  }
+  throw new Error('could not get a pair of ports to hold — is something restarting in a loop?');
 }
 
 if (process.argv[2] === 'dev' || flag('dev')) {

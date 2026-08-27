@@ -200,6 +200,32 @@ check('an installed project gets the shim by package name',
 check('...and that name really loads the loader from inside the project',
   typeof require(path.join(linked, 'tools/bw-loader.cjs')) === 'function');
 
+// Turbopack caches module resolutions, including failed ones. Unwire while the
+// dev server is up and it caches "no such file"; wire again and the file is
+// back but the cache is not re-asked, so every page 500s with `Cannot find
+// module .../tools/bw-loader.cjs` naming a path that is plainly there. Hit in a
+// real trial, and it reads as the tool's bug rather than as a cache.
+const cached = fixture('stale-cache', {
+  deps: { next: '16.2.4' }, tailwind: '4.2.4',
+  files: {
+    'next.config.ts': NEXT_CONFIG,
+    'src/app/layout.tsx': LAYOUT,
+    '.next/dev/build/chunks/stale.js': '// pretend Turbopack was here',
+    '.next/BUILD_ID': 'a-production-build',
+  },
+});
+run(['--root', cached, '--wire']);
+check('wiring drops the dev cache it has just invalidated',
+  !fs.existsSync(path.join(cached, '.next/dev')));
+// Next 16 keeps dev and build output in separate trees, and a production build
+// is not ours to throw away.
+check('...and leaves the production build alone',
+  fs.existsSync(path.join(cached, '.next/BUILD_ID')));
+run(['--root', cached, '--unwire']);
+check('unwiring drops it too — a running server would keep resolving a loader '
+  + 'that is no longer there',
+  !fs.existsSync(path.join(cached, '.next/dev')));
+
 // A block this version cannot match must be named, not silently skipped. An
 // older release wrote a different snippet, and a replace that does not match
 // fails quietly — reporting success while the project still carries the block.

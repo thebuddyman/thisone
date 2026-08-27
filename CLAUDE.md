@@ -1209,6 +1209,37 @@ string — a `replace` that does not match fails silently, reporting success
 while the project still carries the block. It matches by marker and names any
 file it could not take the block out of.
 
+**A free port is an answer about the past, so `dev` retries the pair.** The
+probe asks "is this free", and the answer is about the moment it was asked, not
+about the moment the child binds. `--wire` rewrites next.config.ts, Next fully
+restarts on that, and the probe lands in the second or two while its port is
+down: 3001 was genuinely free when asked and genuinely taken when Next reached
+for it. Hit on the first try in a real trial, not in a fixture. The two numbers
+also have to agree with each other — the app is spawned with the editor's port
+in its environment, the editor with the app's origin in its allowlist, and
+neither can be told later — so a failure on either side retires *both* and the
+next pair is tried. Retrying one half alone would leave the other holding a
+number its partner no longer has.
+
+**"Something answered" has to mean a web server, not an open socket.** The
+readiness check connected and called that success, which a process squatting on
+a port satisfies happily while never replying — so it reported success against
+precisely the case it existed to catch, and `dev` announced "Both up" on a port
+its app had never got. It makes an HTTP request now and requires a response.
+Any status will do: Next answers while it is still compiling, and a 404 is still
+proof that the thing holding the port speaks HTTP. A child still alive when the
+deadline passes also counts, because a first compile is not on a clock.
+
+**Wiring throws away `.next/dev`, because wiring has just invalidated it.**
+Turbopack caches module *resolutions*, failures included. Unwire while the dev
+server is up and it caches "there is no such file"; wire again and the file is
+back but the cache is not re-asked, so every page 500s with `Cannot find module
+…/tools/bw-loader.cjs` naming a path that is plainly sitting there. Nothing
+short of clearing it recovers, and the message points at the file rather than at
+the cache, so it reads as this tool's bug. `.next/dev` only: Next 16 keeps dev
+and build output in separate trees and a production build is not ours to throw
+away.
+
 **`dev` owns all three numbers, because a user holding them cannot keep them
 in step.** The app's port, the editor's port, and the origin the editor accepts
 writes from have to agree, and the third fails in the worst way available:
