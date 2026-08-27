@@ -1241,6 +1241,26 @@ case, not the error case, so `EADDRINUSE` is caught and answered with the flag
 that fixes it. `Unhandled 'error' event` reads as though the tool is broken
 rather than as though you need an argument.
 
+**The panel is told what the source looks like, because the DOM cannot say.**
+`{name}` renders as ordinary characters, so an element the writer will refuse
+looks exactly like one it will accept — which is why the overlay used to let
+you type and object only at save. The loader stamps `data-bw-text` with what
+it saw, from the same `textShape` the writer's own refusal is derived from, so
+the two cannot drift. Only the awkward shapes are named: `expr` for characters
+with no literal behind them, `runs` for a literal interleaved with markup.
+Empty and single-literal say nothing, being both the common case and the
+editable one — stamping every element in an app to report "normal" is a great
+many bytes to say nothing. A container of elements says nothing either: it is
+not refusing anything, and a notice there would put one under every wrapper in
+the app explaining why you cannot type into a `<div>` of `<li>`s.
+
+**That one gets a line where the box would have been, rather than silence.**
+Every other unwritable row simply is not drawn — the rule that a disabled
+control explaining itself is the largest way to say nothing you can act on. Text
+from an expression is the exception, because it is plainly *there* on the page:
+a row that vanishes reads as a bug, where a row saying where the characters come
+from reads as an answer.
+
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
@@ -1365,8 +1385,11 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    text edits still say nothing** — same one-line count, same place to put it.
 3. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
    safely editable; the delta mechanism from `cn()` already does the hard part.
-4. **Text editing refuses late.** A leaf whose text is `{variable}` lets you type
-   and only refuses at save. The panel should say so up front. On Cora only
+4. **Mixed text is still not editable, though it now says so up front.** A leaf
+   whose text is `{variable}` no longer lets you type — the loader stamps
+   `data-bw-text="expr"` and the row says where the text comes from instead of
+   offering a box. What is left is `runs`: text interleaved with markup, where
+   each literal *is* separately writable and nothing offers it yet. On Cora only
    25.7% of elements have writable text; 59.6% are `mixed-content`.
 5. **Packaging** — the three things that only bite once it is a *dependency*
    are done (see below); what is left is a `files` allowlist, dropping

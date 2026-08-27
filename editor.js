@@ -321,8 +321,15 @@
    * Only leaf elements may be typed into. Turning a container contenteditable
    * would let a stray keystroke delete its child markup, and the server
    * refuses those writes anyway.
+   *
+   * A leaf is not enough on its own. `<p>{name}</p>` has no element children
+   * and renders as ordinary characters, so it passed this test and could be
+   * typed into and then refused at save — the DOM has no way to tell those
+   * characters from a literal. The loader stamps what it saw, and this reads
+   * it: the same refusal, arriving before the typing rather than after.
    */
   function canEditText(el) {
+    if (el.getAttribute('data-bw-text') === 'expr') return false;
     return el.children.length === 0;
   }
 
@@ -1540,6 +1547,11 @@
       '  padding:0 20px;font:400 15px/1.4 ' + UI_FONT + ';color:var(--bw-muted);',
       '  word-break:break-word}',
       P + ' .bw-pctx-note{font-size:12px;color:var(--bw-faint)}',
+      // Said in the row the box would have been in, so the answer is where the
+      // question was asked. Italic for the reason every literal is italic here:
+      // this is the source speaking, not a value you chose.
+      P + ' .bw-tnote{flex:1;align-self:center;font-size:12px;font-style:italic;',
+      '  color:var(--bw-faint);line-height:1.5}',
       // No min-height and hidden while empty: the log is under the composer
       // now, so an empty one would be a blank panel-width gap below the field
       // rather than the space above it it used to fill.
@@ -4507,6 +4519,16 @@
     box.autocomplete = 'off';
     row.appendChild(box);
 
+    // Where there is nothing writable behind the characters on screen, the row
+    // says so instead of offering a box. It used to offer one: `{name}` renders
+    // as ordinary text, so the panel could not tell it apart from a literal and
+    // only found out by asking for the write and being refused — after you had
+    // typed. The loader stamps the shape now, so the answer arrives with the
+    // selection.
+    var note = el('span', 'bw-tnote', '');
+    note.setAttribute('data-tw-text-note', '');
+    row.appendChild(note);
+
     box.addEventListener('input', function () {
       if (!selected || !textEditable || box.disabled) return;
       if (selected.textContent === box.value) return;
@@ -4523,9 +4545,22 @@
       // No text, no field. A container cannot be typed into, and a disabled box
       // explaining that took the largest row in the panel to say nothing you
       // could act on — the row simply is not there now.
-      var show = TEXT_ENABLED && textEditable;
+      //
+      // An element whose text comes from an expression is the exception: it
+      // reads as ordinary text on the page, so silence there looks like a bug
+      // rather than a rule. That one gets a line saying why.
+      var shape = selected ? (selected.getAttribute('data-bw-text') || '') : '';
+      var speaks = shape === 'expr';
+      var show = TEXT_ENABLED && (textEditable || speaks);
       row.style.display = show ? '' : 'none';
       if (!show) return;
+      box.style.display = speaks ? 'none' : '';
+      note.style.display = speaks ? '' : 'none';
+      if (speaks) {
+        note.textContent = 'comes from an expression in the source, so there is '
+          + 'no text here to change';
+        return;
+      }
       box.disabled = false;
       box.className = 'bw-text';
       box.placeholder = '(empty)';

@@ -20,7 +20,7 @@
  */
 
 const path = require('path');
-const { loadTypeScript, hostElements, hashOf } = require('./jsx-adapter');
+const { loadTypeScript, hostElements, hashOf, textShape } = require('./jsx-adapter');
 
 module.exports = function bwLoader(source) {
   const opts = (typeof this.getOptions === 'function' && this.getOptions()) || {};
@@ -52,9 +52,14 @@ module.exports = function bwLoader(source) {
 
   const inserts = [];
   nodes.forEach((node, lineCol) => {
+    // The shape rides along only where there is something to say. The panel
+    // cannot read it off the DOM — `{name}` renders as ordinary characters —
+    // so without this it can only find out by asking for a write and being
+    // refused, which is why it used to let you type first and object after.
+    const shape = textShape(ts, sourceFile, node);
     inserts.push({
       pos: node.tagName.getEnd(),
-      attr: ` data-bw-loc="${rel}:${lineCol}:${hash}"`,
+      attr: ` data-bw-loc="${rel}:${lineCol}:${hash}"` + (shape ? ` data-bw-text="${shape}"` : ''),
     });
   });
 

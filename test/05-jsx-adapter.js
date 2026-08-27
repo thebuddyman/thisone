@@ -4,7 +4,7 @@
  * `editFile` is bytes-in/bytes-out by design, so every refusal path and every
  * whitespace subtlety is testable as a plain string comparison.
  */
-const { loadTypeScript, editFile, hashOf } = require('../next/jsx-adapter');
+const { loadTypeScript, editFile, hashOf, textShape, hostElements } = require('../next/jsx-adapter');
 
 const ts = loadTypeScript(__dirname);
 const results = [];
@@ -243,6 +243,48 @@ r = editFile(ts, 'test.tsx', src, [
   { id: 'x', loc: { file: 'test.tsx', line: 1, col: 11, hash: hashOf(src) }, text: 'y' },
 ]);
 check('matching hash accepted', r.ok && r.contents === 'const a = <p>y</p>;');
+
+// ------------------------------------------ what the panel is told up front
+//
+// The overlay cannot work this out for itself: `{name}` renders as ordinary
+// characters, so an element the writer will refuse looks exactly like one it
+// will accept. It used to find out by asking for the write and being refused,
+// which is why it let you type first and objected afterwards.
+function shapes(source) {
+  const file = ts.createSourceFile('s.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out = [];
+  hostElements(ts, file).forEach((node) => {
+    out.push(node.tagName.getText(file) + ':' + (textShape(ts, file, node) || '-'));
+  });
+  return out.sort().join(' ');
+}
+
+check('a plain literal says nothing — it is the editable case',
+  shapes('const a = <span>plain</span>;') === 'span:-', shapes('const a = <span>plain</span>;'));
+check('an empty element says nothing either — it can be typed into',
+  shapes('const a = <em></em>;') === 'em:-');
+check('a self-closing element has no body to describe',
+  shapes('const a = <img src="x" />;') === 'img:-');
+check('text that is only an expression is named `expr`',
+  shapes('const a = <p>{name}</p>;') === 'p:expr', shapes('const a = <p>{name}</p>;'));
+check('a literal beside an expression is `runs` — one of them is writable',
+  shapes('const a = <p>Hello {name}</p>;') === 'p:runs');
+check('a literal beside markup is `runs` too',
+  shapes("const a = <h1>edit the{' '}<code>x</code>{' '}file.</h1>;") === 'code:- h1:runs',
+  shapes("const a = <h1>edit the{' '}<code>x</code>{' '}file.</h1>;"));
+// A wrapper is not refusing anything, and saying so on every <div> of <li>s in
+// the app would put a notice under every container in the panel.
+check('a container of elements says nothing',
+  shapes('const a = <ul><li>a</li></ul>;') === 'li:- ul:-', shapes('const a = <ul><li>a</li></ul>;'));
+
+// And the shape agrees with what the writer actually does.
+const exprSrc = 'const a = <p>{name}</p>;';
+r = editFile(ts, 'test.tsx', exprSrc, [
+  { id: 'x', loc: { file: 'test.tsx', ...at(exprSrc, 'p'), hash: hashOf(exprSrc) }, text: 'typed' },
+]);
+check('...and the writer refuses that same element, for the same reason',
+  !r.ok && r.refusals[0].reason === 'mixed-content',
+  r.ok ? 'accepted!' : r.refusals[0].detail);
 
 const failed = results.filter((x) => !x).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);

@@ -346,6 +346,30 @@ const selectAllIn = page => page.evaluate(() => {
     />Typed from the panel</.test(disk()),
     disk().split('\n').find(l => l.includes('<h1')));
 
+  // ---- text with nothing writable behind it says so, before you type ----
+  //
+  // `<p>{name}</p>` renders as ordinary characters, so the overlay cannot tell
+  // it from a literal — it used to let you type and refuse at save. The loader
+  // stamps the shape it saw and the panel reads that. Set here rather than in
+  // the fixture: adding an element would renumber every data-eid the other
+  // suites address.
+  const expr = page.locator('[data-eid="6"]');
+  await page.keyboard.press('Escape');
+  await expr.evaluate((el) => el.setAttribute('data-bw-text', 'expr'));
+  await expr.click();
+  check('the Text row is still on screen — silence would read as a bug',
+    await panel.locator('[data-tw-field="text"]').isVisible());
+  check('...but it explains itself instead of offering a box',
+    await panel.locator('[data-tw-text-note]').isVisible());
+  check('...and says where the text actually comes from',
+    /expression/.test(await panel.locator('[data-tw-text-note]').textContent()),
+    await panel.locator('[data-tw-text-note]').textContent());
+  check('the box is gone, so there is nothing to type into',
+    !(await panel.locator('[data-tw-text]').isVisible()));
+  check('and the page will not take typing either',
+    !(await expr.evaluate((el) => el.isContentEditable)));
+  await expr.evaluate((el) => el.removeAttribute('data-bw-text'));
+
   await page.locator('[data-eid="6"]').click();
   await page.screenshot({ path: `${__dirname}/text.png`, clip: { x: 0, y: 0, width: 1280, height: 620 } });
   await browser.close();

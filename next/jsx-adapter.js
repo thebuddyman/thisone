@@ -108,6 +108,48 @@ function escapeJsxText(value) {
 }
 
 /**
+ * The editable children of an element, whitespace-only text dropped.
+ *
+ * Shared by every function below and by the loader, for the reason
+ * `hostElements` is shared: two sides that disagree about what an element's
+ * children are would disagree about whether its text can be written.
+ */
+function textKids(ts, sourceFile, opening) {
+  if (ts.isJsxSelfClosingElement(opening)) return null;
+  const element = opening.parent;
+  if (!element || !ts.isJsxElement(element)) return null;
+  return element.children.filter(
+    (c) => !(ts.isJsxText(c) && c.getText(sourceFile).trim() === '')
+  );
+}
+
+/**
+ * What this element's text is made of, in one word, for the overlay.
+ *
+ * Stamped by the loader so the panel can say up front what it would otherwise
+ * only discover at save. The DOM cannot work this out for itself: `{name}`
+ * renders as ordinary characters, so an element the writer will refuse looks
+ * exactly like one it will accept.
+ *
+ * Only the awkward shapes are named. Empty and single-literal are the common
+ * cases and the editable ones, and stamping every element in the app to say
+ * "normal" is a lot of bytes to say nothing.
+ */
+function textShape(ts, sourceFile, opening) {
+  const kids = textKids(ts, sourceFile, opening);
+  if (!kids || kids.length === 0) return '';
+  if (kids.length === 1 && ts.isJsxText(kids[0])) return '';
+  // A literal among the markup can still be written, one run at a time.
+  if (kids.some((c) => ts.isJsxText(c))) return 'runs';
+  // Only expressions: characters on screen with no literal behind them.
+  if (kids.some((c) => ts.isJsxExpression(c))) return 'expr';
+  // Nothing but elements — a container, which has no text of its own and is
+  // not refusing anything. Saying 'expr' here would put a notice on every
+  // wrapper in the app explaining why you cannot type into a <div> of <li>s.
+  return '';
+}
+
+/**
  * The editable span of an element's text body.
  *
  * Only a lone JsxText child qualifies. `<p>Hello {name}</p>` renders as one
@@ -123,14 +165,11 @@ function textSpan(ts, sourceFile, opening, source) {
   if (ts.isJsxSelfClosingElement(opening)) {
     return { reason: 'no-text', detail: 'self-closing element' };
   }
-  const element = opening.parent;
-  if (!element || !ts.isJsxElement(element)) {
+  const kids = textKids(ts, sourceFile, opening);
+  if (!kids) {
     return { reason: 'no-text', detail: 'no element body' };
   }
-
-  const kids = element.children.filter(
-    (c) => !(ts.isJsxText(c) && c.getText(sourceFile).trim() === '')
-  );
+  const element = opening.parent;
 
   if (kids.length === 0) {
     return { insertAt: element.openingElement.getEnd() };
@@ -409,4 +448,4 @@ function editFile(ts, filePath, source, edits) {
   return { ok: true, contents: out, applied: [...new Set(live.map((s) => s.tag))] };
 }
 
-module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, classNameSpan, textSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };
+module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };
