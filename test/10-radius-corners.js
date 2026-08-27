@@ -61,10 +61,23 @@ const CORNERS = ['tl', 'tr', 'bl', 'br'];
   check('folded, the section is a label over one 40px field',
     folded.width === 312 && folded.height === 69, `${folded.width}x${folded.height}`);
 
+  // The frame had no Parts glyph for radius, so the toggle wore the
+  // all-corners mark in both states and the pressed fill was the only thing
+  // saying which it was in. ic-radius-parts.svg is that file: the boxed mark
+  // while the row is one field, the four bare corners while it is four —
+  // which is the swap padding and margin have always made. Told apart by the
+  // box, because that is the whole difference between the two exports — the
+  // drawn one at 2,2 and not the 20x20 rect every clipPath carries.
+  const boxed = async () => /<rect x="2" y="2"/.test(await toggle.innerHTML());
+  check('folded, the toggle wears the box with its corners', await boxed(),
+    (await toggle.innerHTML()).slice(0, 140));
+
   await toggle.click();
   check('the toggle opens the four corners',
     !(await grid.getAttribute('class')).includes('is-hidden'));
   check('and says which state it is in', (await toggle.getAttribute('aria-pressed')) === 'true');
+  check('…in its mark as well as its fill — open, the box is gone',
+    !(await boxed()), (await toggle.innerHTML()).slice(0, 140));
 
   const open = await row.boundingBox();
   const one = await panel.locator('[data-tw-field="radius-tl"]').boundingBox();

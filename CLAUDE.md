@@ -18,7 +18,7 @@ Working today against `../uiux_experiment` (Next 16.2.4, Tailwind 4.2.4).
 ## Run it
 
 ```bash
-npm test                                   # 12 suites, ~85s
+npm test                                   # 13 suites, ~85s
 node cli.js --root ../uiux_experiment --check   # inspect a project
 node cli.js --root ../uiux_experiment           # start the editor server (port 3500)
 node cli.js --root ../uiux_experiment --prompt  # …with the Prompt tab enabled
@@ -52,7 +52,7 @@ so the tab is never drawn. Two tabs on screen means the flag is on.
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `assets/` | the panel's icons, exported from Figma and inlined verbatim |
 | `detect.js` / `cli.js` | framework detection and `bw-edit` |
-| `test/` | 12 suites; `run.mjs` orchestrates |
+| `test/` | 13 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 `how-to-make-this-giggly-scone.md` (earlier, still accurate on security).
@@ -449,15 +449,18 @@ the corner lands on the same number the box rung does. On Cora, `2xl` on a
 corner previews at 21.6px, not the stock 16px, which is the live suite's
 assertion.
 
-**The corner icons are the export's, and the toggle wears the all-corners one
-twice.** `assets/ic-radius-{all,tl,tr,bl,br}.svg`: four brackets, the one the
-field owns lit and the other three stepped back to the export's `#414141`.
-Padding and margin have a distinct `Parts` glyph for the open state; radius has
-no such file in the frame, and drawing one would be inventing — so the toggle
-keeps the all-corners mark in both states and the pressed fill, which every
-toggle already has, is what says which state it is in. This replaced the
-hand-drawn `radius` glyph, which existed only because the export had no file
-for it and now does.
+**The corner icons are the export's, and the toggle swaps two of them.**
+`assets/ic-radius-{all,parts,tl,tr,bl,br}.svg`: four brackets, the one the
+field owns lit and the other three stepped back to the export's `#505050`. The
+all-corners mark carries the box as well as its four lit corners and `Parts` is
+the same four without it, so the toggle reads the way padding's and margin's
+do — the box while the row is one field, the parts while it is four. It wore
+the all-corners mark in both states for a while, because the frame had no
+`Parts` glyph for radius and drawing one would have been inventing; there is a
+file for it now, so the pressed fill is no longer the only thing saying which
+state the row is in. That is twice this has happened here: the mark before
+these was a hand-drawn `radius` glyph, which existed only because the export
+had no file for it either.
 
 **A list row is a list row: one size, one weight, whatever it names.** The
 size list used to set each rung's name at the size it names and the weight
@@ -1102,7 +1105,16 @@ why only one of the three broke, and why it looked like a family-only bug.
 **Icons are the exported files, inlined byte-for-byte — never redrawn.** They
 live in `assets/` and are pasted into `ICONS` exactly as exported, keeping their
 own `#aaa` / `#505050` / `#858585` fills rather than being switched to
-`currentColor`, because the design's colours are the point. The four marks with
+`currentColor`, because the design's colours are the point. Inlining is the
+file with its newlines taken out and nothing else, which is what makes
+`test/12-icons.js` possible: it re-derives every entry from `assets/` and fails
+on any that has drifted. Twenty-one had, all at once, after one re-export from
+the frame — an icon that is stale on disk looks like nothing at all until
+somebody happens to screenshot the row it is in. The same suite refuses a file
+in `assets/` that no entry claims, which is how the four-corner `Parts` glyph
+sat unused, and refuses two exports sharing an id anything points at, since
+they are pasted into one document and the second would wear the first's
+clipPath. The four marks with
 no file (the individual edges) stay hand-drawn on a 12 grid, rendered at 20 with
 a 0.9 stroke so they land on the assets' 1.5.
 
@@ -1452,7 +1464,7 @@ positive.
 
 ## Test discipline
 
-`npm test` runs 12 suites: 3 pure-unit (`00`, `05`, `06`) and 9 browser suites
+`npm test` runs 13 suites: 4 pure-unit (`00`, `05`, `06`, `12`) and 9 browser suites
 against `test/fixture.html` copied to a temp dir — the demo page is never
 mutated. Tailwind is served locally (`@tailwindcss/browser`), not from a CDN, so
 runs are offline-capable and deterministic.
@@ -1535,6 +1547,11 @@ the 20px gutter at both ends, that shutting the ramp leaves the palette where
 it was, and that picking a shade writes the class and takes both boxes away. It
 compares colour by painting it, never as a string — the same green arrives as
 `oklch()` from a generated utility and `rgb()` from the hex the picker writes.
+
+`test/12-icons.js` is the only suite that reads `assets/` rather than the
+panel: it re-derives every `ICONS` entry from its file, insists every file is
+claimed by an entry, and insists no two exports share an id anything points at.
+Pure unit, so it costs nothing and runs first.
 
 `test/03-text.js` owns the three families sharing the `text-` prefix, which is
 why the Size field's own checks are there rather than in a suite of their own:
