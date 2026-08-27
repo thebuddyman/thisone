@@ -122,10 +122,10 @@ it is showing you. Every other rung is still a bare number, and the tooltip
 still names the class.
 
 **An arrow is a pixel, and Shift is ten of them.** Every length in the panel —
-padding, margin, gap, radius, stroke width — prints pixels, so the arrows
-count pixels. They used to walk the ladder underneath instead, which made them
-the one control here whose presses were unevenly sized: 6 to 8 was a press and
-64 to 80 was a press, on a field showing the pixels either way, so what a press
+padding, margin, gap, radius, stroke width, font size — prints pixels, so the
+arrows count pixels. They used to walk the ladder underneath instead, which made them the
+one control here whose presses were unevenly sized: 6 to 8 was a press and 64
+to 80 was a press, on a field showing the pixels either way, so what a press
 was worth could only be found out by pressing it. The ladder has not gone
 anywhere — a step writes the rung where one lands and `p-[17px]` where none
 does, which is exactly what typing 17 does, so the two ways into a field agree,
@@ -133,7 +133,10 @@ and the rungs themselves are what the chevron beside it opens. Opacity already
 counted this way and now merely says so: one and ten, in whatever unit the
 field prints. `full` is the one value with no length to count from, so the one
 press it takes is down, onto the tallest rung that is a number — up from it
-would be a step past infinity.
+would be a step past infinity. Font size is the one field where a press cannot
+land on a rung at all, for the reason its own entry gives, so its first press
+off a token detaches from it — which is the honest reading, since that ladder
+is 12, 14, 16, 18, 20, 24, 30, 36 and was never something a count could walk.
 
 **A press counts from the pixels on screen, and `1.5rem` is not 1.5 of them.**
 A field can be showing a literal in some other unit — it has to keep the unit
@@ -925,6 +928,53 @@ snowflake from the same condition — `kind === 'arbitrary'` — which is what t
 cross-field assertion below requires, and the snowflake sits where a unit sits
 so the chevron takes its place on hover exactly as elsewhere.
 
+**The size field is a field; the chevron is the button.** The whole thing used
+to be one button that opened a list, which left the one number in this section
+people most often arrive holding — a size out of a design file or a spec — as
+the only value in the panel that could be picked and not typed. Same change the
+colour row went through, and the same half kept as the opener: there is no
+swatch here to press, so the chevron takes the job and the value beside it
+becomes an input, which is how spacing and radius have always been drawn. The
+hover fill went with the button, as it did from the colour value — what you
+type in is not a button — so the weight field beside it is now the only half of
+that line that lights. The value stands on the same 12px gutter the bare token
+does, from the same number: `.bw-field.is-bare > .bw-val` is `.bw-ctoken.is-bare`
+read on an input.
+
+**A number typed there is a length; a name is the token — and a number never
+becomes one.** This is where the size field parts from padding, radius and
+stroke width, which all write the rung the moment a typed pixel lands on it.
+Their rungs are the length and nothing else, so `p-4` for 16 changes only what
+the class is called. A `text-*` token is two declarations: it sets a
+line-height as well, so `text-lg` for a typed 18 would move the leading nobody
+asked about. 18 is therefore `text-[18px]`, snowflaked, even on a route where
+`lg` is exactly 18 — and the token is a click away in the list, or its own name
+typed into the same field. That is also what the list's custom row has always
+written, so the two ways into the field agree. The arrows follow the same rule
+— a press writes `text-[25px]`, never the rung 25 happens to be — so counting
+off a token is what detaches from it.
+
+**A note in a field asks for the centre; it does not get it for free.** A
+`.bw-field` stretches its children, so a 13px note in a 40px field puts its text
+flush against the top edge — the trap the leading icons were already fixed for,
+one element along. It went unseen because every note in the panel until now sat
+inside a `.bw-ctoken`, which centres its own row: the Size field's is the first
+to be a child of the field itself, and the radius box's `+n` was the same bug
+waiting on a logical class neither codebase has. `.bw-unit` now carries the two
+properties `.bw-snow` already carried for the slot it shares. The suite measures
+the **text** with a Range rather than the span, because a stretched box is
+centred by definition and says nothing about where its line landed.
+
+**The size field speaks the same bare pixels the others do, and keeps a unit
+only where it is not one.** `24`, not `24px`, because every length in this panel
+is in pixels and printing it on each one is noise — but `text-[1.5rem]` reads
+`1.5rem`, since a literal in some other unit has to keep it or it says nothing.
+That is spacing's own rule, met on the one length field that routinely holds
+rem. An unset size puts what the page renders in the **placeholder** rather than
+the value, which is the stroke width field's rule and the one a field you can
+type in needs: a number this element does not own must never be mistaken for
+one it does.
+
 **A literal font size wears the snowflake alone, not a nearest rung beside
 it.** The Size field was the one row naming the token it is nearest — `sm` in
 the note slot where `lg` sits on a row that really is set to `lg`, a shade away
@@ -1455,7 +1505,8 @@ Escape belongs to the field it is in.
 `test/02-spacing-sides.js` owns the two cross-cutting halves of the steppers,
 because spacing is where both were found: that a `1.5rem` literal steps from
 the 24 it renders rather than the 1.5 it says, and that a step off the ladder
-is italic and snowflaked while the field still holds focus. It also owns the
+is italic and snowflaked while the field still holds focus. It owns the notes'
+centring beside the icons', for the same reason and by the same measurement. It also owns the
 reveal rows: that every property has
 one whether or not it is set, in the order the panel reads in, that the + sits
 in the same column a section toggle does, and that revealing writes nothing.
@@ -1484,6 +1535,20 @@ the 20px gutter at both ends, that shutting the ramp leaves the palette where
 it was, and that picking a shade writes the class and takes both boxes away. It
 compares colour by painting it, never as a string — the same green arrives as
 `oklch()` from a generated utility and `rgb()` from the hex the picker writes.
+
+`test/03-text.js` owns the three families sharing the `text-` prefix, which is
+why the Size field's own checks are there rather than in a suite of their own:
+that its value is an `<input>` with the chevron beside it as the opener, that a
+token reads as the pixels it renders with the rung in the note, that a typed 18
+is written `text-[18px]` and **not** `text-lg` on a route where `lg` is exactly
+18, that a name — with or without the prefix — is how the token is asked for,
+that another unit keeps itself in the field and in the class, that a word puts
+the value back and writes nothing, that tabbing through is not an edit, that an
+arrow is a pixel and Shift ten of them with the marking landing on the press
+rather than at the next blur, and that clearing takes the size off while the
+`text-indigo-600` beside it stays. Its
+block runs on the `<h1>` and puts the heading back through the field itself,
+which is also the check that a token typed in restores it.
 
 `test/10-radius-corners.js` covers the seam the live suite cannot reach
 cheaply — a corner overriding the box, the box clearing the corners, one value

@@ -1990,6 +1990,10 @@
       P + ' .bw-field.is-locked .bw-chev{opacity:0}',
       // No mark to indent past, so the value sits at the frame's 12px gutter.
       P + ' .bw-ctoken.is-bare{padding-left:12px;gap:8px}',
+      // A field with no leading mark stands its value on the same 12px the
+      // bare token beside it does — the size field against the weight field,
+      // one an input and one a button, on one line and one gutter.
+      P + ' .bw-field.is-bare > .bw-val{padding-left:12px}',
       // Not an icon: this is the face itself, set in the face, which is why it
       // is the one thing in a bare field that comes before the value.
       P + ' .bw-famsample{flex:0 0 auto;font:15px/1 serif;color:var(--bw-fg)}',
@@ -2080,7 +2084,16 @@
       // no mark there the name keeps the field's own 12px gutter.
       P + ' .bw-field.has-unlink{padding-right:38px}',
       // Sits against the chevron: the name above is what absorbs the width.
-      P + ' .bw-unit{flex:0 0 auto;font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
+      // Centred the way the snowflake it shares that slot with is, and for the
+      // reason .bw-snow already carries the same two properties: a .bw-field
+      // stretches its children, so a 13px line box in a 40px field puts its
+      // text at the top of the field rather than on its centre line. It went
+      // unseen while every note in the panel sat inside a .bw-ctoken, which
+      // centres its own row — the size field's note is the first to be a child
+      // of the field itself, and the radius box's "+n" was the same bug
+      // waiting on a logical class neither codebase has.
+      P + ' .bw-unit{flex:0 0 auto;display:flex;align-items:center;',
+      '  font:400 13px/1 ' + UI_FONT + ';color:var(--bw-faint)}',
       P + ' .bw-pct{font:400 15px/1 ' + UI_FONT + ';color:var(--bw-fg)}',
 
       /* colour popover */
@@ -2918,54 +2931,200 @@
     return { field: field, token: token, name: name, note: note };
   }
 
+  /**
+   * The size field: a length you type, with the ladder behind the chevron.
+   *
+   * It was one button that opened a list, which left the one number in this
+   * section people most often arrive holding — a size out of a design file or
+   * a spec — as the only value in the panel that could be picked and not
+   * typed. The same change the colour row went through, and the same half kept
+   * as the opener; there is no swatch here to press, so the chevron keeps the
+   * job and the value beside it becomes a field, which is how spacing and
+   * radius have always been drawn. The hover fill goes with the button, the
+   * way it went from the colour value: what you type in is not a button, and
+   * the weight field beside it still is one.
+   */
   function sizeField() {
-    var d = dropField('font', function (anchor) { openSizePopover(anchor); });
-    d.token.setAttribute('data-tw-font-open', '');
+    var field = el('div', 'bw-field is-bare');
+    field.setAttribute('data-tw-field', 'font');
+    field.setAttribute('data-tw-optional', 'font');
 
-    d.sync = function () {
-      // Font size hides on elements with no text of their own, but a wrapper
-      // may legitimately set it to cascade — so it stays one click away.
+    var readout = document.createElement('input');
+    readout.className = 'bw-val';
+    readout.type = 'text';
+    readout.inputMode = 'numeric';
+    readout.autocomplete = 'off';
+    readout.spellcheck = false;
+    readout.setAttribute('data-tw-font-text', '');
+    readout.placeholder = '\u2014';
+
+    // The rung's name where the value is one, and nothing where it is not —
+    // the snowflake beside it is what says so, as it does on every other
+    // literal in the panel.
+    var note = el('span', 'bw-unit', '');
+    var snow = snowflake();
+    snow.style.display = 'none';
+
+    var open = el('button', 'bw-open');
+    open.setAttribute('data-tw-font-open', '');
+    open.innerHTML = ICONS.chevron;
+    open.title = 'Size \u2014 pick a token';
+    open.addEventListener('click', function () { openSizePopover(field); });
+
+    field.appendChild(readout);
+    field.appendChild(note);
+    field.appendChild(snow);
+    field.appendChild(open);
+
+    /** A pixel length said the way every other length here is: bare. */
+    function bare(css) {
+      var m = /^([\d.]+)px$/.exec(String(css || ''));
+      return m ? m[1] : String(css || '');
+    }
+
+    /** What the field shows for a given read — the inverse of commit(). */
+    function textFor(state) {
+      if (!state || state.kind === 'none') return '';
+      if (state.kind === 'scale') return bare(pxOfToken(state.name));
+      // A literal in some other unit has to keep it, or it says nothing —
+      // the same rule spacing states, met on the one length field that
+      // routinely holds rem.
+      return state.unit === 'px' ? String(state.px) : state.px + state.unit;
+    }
+
+    /**
+     * What was typed.
+     *
+     *   16 / 16px    sixteen pixels, written text-[16px]
+     *   1.5rem       any other unit taken at its word, arbitrary
+     *   lg / text-lg the token, the prefix being the panel’s business
+     *
+     * A bare number stays a literal even where a rung lands exactly on it,
+     * which is where this parts from padding, radius and stroke width. Those
+     * rungs are the length and nothing else, so writing p-4 for 16 changes
+     * only what the class is called. A text-* token is two declarations: it
+     * sets a line-height as well, so text-lg for a typed 18 would move the
+     * leading nobody asked about. The token is a click away in the list, and
+     * its own name typed here still fetches it — that is what asking for the
+     * token looks like. It is also what the list’s own custom row has always
+     * written, so the two ways into this field agree.
+     *
+     * Empty clears the class. Anything else puts back what was showing rather
+     * than guessing at an intent, the way every field in this panel refuses.
+     */
+    function commit() {
+      if (!selected) return;
+      var raw = readout.value.trim().replace(/\s+/g, '');
+      // Committing what the field already shows is not an edit — blur fires on
+      // every field merely tabbed through, and without this each one marked the
+      // element dirty and pushed a history step that undid to itself.
+      if (raw === textFor(readFontSize(selected))) return refresh();
+      if (raw === '' || raw === '\u2014') return setFontSize(selected, null);
+
+      var t = raw.toLowerCase();
+      var tok = t.indexOf('text-') === 0 ? t.slice(5) : t;
+      if (TEXT_SIZES[tok]) return setFontSize(selected, 'text-' + tok);
+
+      var px = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(t);
+      if (px) return setFontSize(selected, 'text-[' + Number(px[1]) + 'px]');
+      if (/^[\d.]+(?:rem|em)$/.test(t)) return setFontSize(selected, 'text-[' + t + ']');
+      if (/^\[[^\]]+\]$/.test(t)) return setFontSize(selected, 'text-' + t);
+      refresh();
+    }
+
+    /**
+     * A pixel a press, ten with Shift — the same press every length in the
+     * panel takes, on a field that prints the same unit.
+     *
+     * It writes what typing that number writes: a literal, never the rung it
+     * happens to land on, for the reason commit() gives — a text-* token sets
+     * a line-height as well, and counting past 18 is not a request for lg's
+     * leading. So the first press off a token detaches from it, which is the
+     * honest reading of what an arrow on this field can mean: the ladder here
+     * is 12, 14, 16, 18, 20, 24, 30, 36, and it was never something a count
+     * could walk.
+     */
+    function step(dir, leap) {
+      if (!selected) return;
       var state = readFontSize(selected);
-      var show = hasOwnText(selected) || revealed.typography || state.kind !== 'none';
-      d.field.style.display = show ? '' : 'none';
-      if (!show) return false;
-
-      // Pixels lead and the rung is the note beside them, which is the frame's
-      // "24" and the same call the spacing fields already make: nobody should
-      // have to know what lg is worth to know how big this is.
-      if (state.kind === 'scale') {
-        var px = pxOfToken(state.name);
-        d.name.textContent = px || state.name.replace('text-', '');
-        d.name.className = 'bw-cname';
-        d.note.textContent = state.name.replace('text-', '');
-        d.token.title = state.cls + (px ? ' \u2014 ' + px : '');
-      } else if (state.kind === 'px') {
-        // Not a token. Say so rather than dressing it up as one — picking from
-        // the list is how you get back onto the scale.
-        d.name.textContent = state.px + state.unit;
-        d.name.className = 'bw-cname is-custom';
-        // The snowflake alone, which is what every other literal in this panel
-        // wears. Naming the nearest rung beside it put a token in the value's
-        // own slot on the one row where the value is emphatically not that
-        // token — `sm` sitting where `lg` sits on the row above, a shade away
-        // from claiming the element is set to it. Radius and spacing take
-        // arbitrary values just as often and say nothing; this was the odd one
-        // out, and `nearestToken` had exactly one caller. The hint keeps the
-        // tooltip, where a nudge toward the scale costs nothing to read past.
-        var near = nearestToken(state.px);
-        d.note.textContent = '';
-        d.note.appendChild(snowflake());
-        d.token.title = state.cls + ' \u2014 not a scale token' +
-          (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
-      } else {
-        d.name.textContent = state.px ? state.px + 'px' : '\u2014';
-        d.name.className = 'bw-cname is-unset';
-        d.note.textContent = state.px ? 'inherited' : '';
-        d.token.title = 'not set \u2014 rendering at ' + state.px + 'px';
+      var here = stepFrom(readout.value || readout.placeholder,
+        Math.round(parseFloat(getComputedStyle(selected).fontSize) || 0));
+      var next = stepLength(here, dir, leap);
+      if (next === null) {
+        // Below zero the class comes off rather than pinning a size nothing is
+        // legible at. Nothing of its own to take off means nothing to do.
+        if (state.kind === 'none') return;
+        return setFontSize(selected, null);
       }
-      return true;
+      setFontSize(selected, 'text-[' + next + 'px]');
+    }
+
+    readout.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); readout.blur(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); refresh(); readout.blur(); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        withStep(function () { step(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); });
+      }
+    });
+    readout.addEventListener('blur', commit);
+    readout.addEventListener('focus', function () { readout.select(); });
+
+    return {
+      field: field,
+      sync: function () {
+        // Font size hides on elements with no text of their own, but a wrapper
+        // may legitimately set it to cascade — so it stays one click away.
+        var state = readFontSize(selected);
+        var show = hasOwnText(selected) || revealed.typography || state.kind !== 'none';
+        field.style.display = show ? '' : 'none';
+        if (!show) return false;
+        // The section still needs its answer, so this reports before it bows
+        // out rather than instead of it.
+        if (typing(readout)) return true;
+
+        readout.placeholder = '\u2014';
+        if (state.kind === 'scale') {
+          // Pixels lead and the rung is the note beside them, which is the
+          // frame’s "24" and the same call the spacing fields already make:
+          // nobody should have to know what lg is worth to know how big this
+          // is. Bare, because every length in this panel is — the unit only
+          // survives where it is not a pixel and would otherwise say nothing.
+          readout.value = textFor(state);
+          readout.className = 'bw-val';
+          note.textContent = state.name.replace('text-', '');
+          snow.style.display = 'none';
+          readout.title = state.name + ' \u2014 ' + pxOfToken(state.name);
+        } else if (state.kind === 'px') {
+          // Not a token. Say so rather than dressing it up as one — the
+          // snowflake and the italic, set from the one condition, exactly as
+          // spacing and radius mark a literal. Naming the nearest rung in the
+          // note put a token in the value’s own slot on the one row where the
+          // value is emphatically not that token, a shade away from claiming
+          // the element is set to it. The hint keeps the tooltip, where a
+          // nudge toward the scale costs nothing to read past.
+          var near = nearestToken(state.px);
+          readout.value = textFor(state);
+          readout.className = 'bw-val is-jit';
+          note.textContent = '';
+          snow.style.display = '';
+          readout.title = state.cls + ' \u2014 not a scale token' +
+            (near ? '; nearest is ' + near.name + ' at ' + near.px + 'px' : '');
+        } else {
+          // Nothing in the class list. What the page renders goes in the
+          // placeholder rather than the value, so a number this element does
+          // not own is never mistaken for one it does — the rule the stroke
+          // width field states, and the one a field you can type in needs.
+          readout.value = '';
+          readout.placeholder = state.px ? String(state.px) : '\u2014';
+          readout.className = 'bw-val';
+          note.textContent = state.px ? 'inherited' : '';
+          snow.style.display = 'none';
+          readout.title = 'not set \u2014 rendering at ' + state.px + 'px';
+        }
+        return true;
+      },
     };
-    return d;
   }
 
   /**

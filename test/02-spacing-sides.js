@@ -430,6 +430,41 @@ function check(name, pass, detail) {
     `${await held.getAttribute('class')} — ${await held.inputValue()}`);
   await held.blur();
 
+  // ---- and every note in a field sits on that field's centre line ----
+  //
+  // The same trap the icons are checked for above, one element along: a
+  // .bw-field stretches its children, so a 13px note in a 40px field lands at
+  // the top of it unless it asks for the centre. It went unseen while every
+  // note in the panel sat inside a .bw-ctoken, which centres its own row — the
+  // Size field's note is the first to be a child of the field itself. The text
+  // is measured with a Range and not the span, because a stretched box is
+  // centred by definition and says nothing about where its line landed.
+  await reselect('font-bold p-4');   // no size class, so Size reads "inherited"
+  const notes = await page.evaluate(() => {
+    const bad = [];
+    let seen = 0;
+    document.querySelectorAll('[data-tw-editor="panel"] .bw-field').forEach((f) => {
+      const fr = f.getBoundingClientRect();
+      if (!fr.height) return;
+      f.querySelectorAll('.bw-unit').forEach((n) => {
+        if (!n.textContent.trim()) return;
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        const nr = r.getBoundingClientRect();
+        if (!nr.height) return;
+        seen++;
+        const off = (nr.top + nr.bottom) / 2 - (fr.top + fr.bottom) / 2;
+        if (Math.abs(off) > 1) {
+          bad.push(`${f.closest('[data-tw-field]')?.getAttribute('data-tw-field')} ${Math.round(off)}`);
+        }
+      });
+    });
+    return { bad: bad, seen: seen };
+  });
+  check('there are notes on screen to measure', notes.seen >= 2, String(notes.seen));
+  check('every one of them sits on its field’s centre line',
+    notes.bad.length === 0, notes.bad.join(', '));
+
   // ---- an unset side reads 0, not a dash ----
   //
   // On a fresh element: by this point the card has had every side set by hand.

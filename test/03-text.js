@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 
 /**
- * Nudge a spacing field by one rung.
+ * Nudge a spacing field by one pixel.
  *
  * The stepper buttons are gone — the field takes a typed value and a chevron
  * opens the token list — but the arrow keys still step, which is what these
@@ -205,6 +205,126 @@ const selectAllIn = page => page.evaluate(() => {
   check('and the classes are back where they started',
     (await h1b.getAttribute('class')) === beforeAlign,
     `${beforeAlign} → ${await h1b.getAttribute('class')}`);
+
+  // ---- the size field is a field too: a length typed, the ladder behind
+  // the chevron ----
+  //
+  // The first of the three families sharing the text- prefix, and the one that
+  // used to be a button end to end. What is checked here is the seam typing
+  // opens: that a number is a length and a name is a token, and that the two
+  // are not quietly swapped for each other.
+  const size = panel.locator('[data-tw-field="font"]');
+  const sizeIn = size.locator('input');
+  const sizeCls = () => h1b.getAttribute('class');
+  const sizeNote = () => size.locator('.bw-unit').textContent();
+  const sizePx = () => h1b.evaluate(el => getComputedStyle(el).fontSize);
+  const pending = async () => (await panel.locator('[data-tw-save]').textContent()).trim();
+
+  check('the value is an input, and the chevron beside it is what opens the list',
+    (await sizeIn.evaluate(e => e.tagName)) === 'INPUT' &&
+    (await size.locator('[data-tw-font-open]').count()) === 1);
+  check('a token reads as the pixels it renders, with the rung beside it',
+    (await sizeIn.inputValue()) === '36' && (await sizeNote()) === '4xl',
+    `${await sizeIn.inputValue()} / ${await sizeNote()}`);
+  check('and stands on the same 12px gutter the bare token beside it does',
+    (await sizeIn.evaluate(e => getComputedStyle(e).paddingLeft)) === '12px',
+    await sizeIn.evaluate(e => getComputedStyle(e).paddingLeft));
+
+  // 18 is exactly what lg renders here, and it must not become text-lg: that
+  // token sets a line-height as well, so a number typed into a size field
+  // would move the leading nobody asked about. Every other length field snaps
+  // to its rung because there the rung is the length and nothing else.
+  await sizeIn.fill('18');
+  await sizeIn.press('Enter');
+  check('a typed number is a length, and stays a literal even on a rung',
+    /(^| )text-\[18px\]( |$)/.test(await sizeCls()) && !/text-lg/.test(await sizeCls()),
+    await sizeCls());
+  check('…and it paints, on a class no source file has',
+    (await sizePx()) === '18px', await sizePx());
+  check('…and is marked a literal, italic and snowflaked from the one condition',
+    (await sizeIn.getAttribute('class')).includes('is-jit') &&
+    await size.locator('.bw-snow').isVisible(),
+    await sizeIn.getAttribute('class'));
+
+  await sizeIn.fill('lg');
+  await sizeIn.press('Enter');
+  check('a token name is how you ask for the token, line-height and all',
+    /(^| )text-lg( |$)/.test(await sizeCls()) && (await sizeNote()) === 'lg' &&
+    (await sizePx()) === '18px', await sizeCls());
+  await sizeIn.fill('text-2xl');
+  await sizeIn.press('Enter');
+  check('the prefix is the panel’s business, not the typist’s',
+    /(^| )text-2xl( |$)/.test(await sizeCls()) && !/text-lg/.test(await sizeCls()),
+    await sizeCls());
+
+  await sizeIn.fill('1.5rem');
+  await sizeIn.press('Enter');
+  check('a length in another unit keeps it, in the field and in the class',
+    /(^| )text-\[1\.5rem\]( |$)/.test(await sizeCls()) &&
+    (await sizeIn.inputValue()) === '1.5rem', await sizeCls());
+
+  const junkBefore = await sizeCls();
+  await sizeIn.fill('banana');
+  await sizeIn.press('Enter');
+  check('a word is no size: the field puts itself back and writes nothing',
+    (await sizeCls()) === junkBefore && (await sizeIn.inputValue()) === '1.5rem',
+    await sizeCls());
+
+  const tabBefore = await pending();
+  await sizeIn.focus();
+  await sizeIn.blur();
+  check('tabbing through it is not an edit', (await pending()) === tabBefore,
+    `${tabBefore} → ${await pending()}`);
+
+  await sizeIn.fill('');
+  await sizeIn.press('Enter');
+  // By membership, not by prefix — text-indigo-600 is on this element too, and
+  // it is a colour. Clearing a size that took it with it would be the /^text-/
+  // trap, one field along from where the family map already refuses it.
+  const SIZE_CLASS = /(^| )text-(?:\[[^\]]+\]|xs|sm|base|lg|[2-9]?xl)( |$)/;
+  check('empty takes the size class off, and only that one',
+    !SIZE_CLASS.test(await sizeCls()) && /text-indigo-600/.test(await sizeCls()),
+    await sizeCls());
+  check('…and what the page renders goes in the placeholder, not the value',
+    (await sizeIn.inputValue()) === '' &&
+    Number(await sizeIn.getAttribute('placeholder')) > 0 &&
+    (await sizeNote()) === 'inherited',
+    `"${await sizeIn.inputValue()}" ph ${await sizeIn.getAttribute('placeholder')} / ${await sizeNote()}`);
+
+  // Put the heading back the size it was, through the field itself.
+  await sizeIn.fill('4xl');
+  await sizeIn.press('Enter');
+  check('and the token typed back restores it',
+    /(^| )text-4xl( |$)/.test(await sizeCls()) && (await sizePx()) === '36px',
+    await sizeCls());
+
+  // ---- and the arrows count pixels here too ----
+  //
+  // A press writes what typing that number writes: a literal, never the rung
+  // it lands on. The first press off a token therefore detaches from it, which
+  // is the honest reading — this ladder is 12, 14, 16, 18, 20, 24, 30, 36, and
+  // was never something a count could walk.
+  await sizeIn.focus();
+  await sizeIn.press('ArrowUp');
+  check('an arrow steps the size up one pixel, straight to a literal',
+    (await sizeIn.inputValue()) === '37' &&
+    /(^| )text-\[37px\]( |$)/.test(await sizeCls()), await sizeCls());
+  check('…and the marking lands with the step, not at the next blur',
+    (await sizeIn.getAttribute('class')).includes('is-jit') &&
+    await size.locator('.bw-snow').isVisible(),
+    await sizeIn.getAttribute('class'));
+  await sizeIn.press('Shift+ArrowUp');
+  check('Shift is ten of them', (await sizeIn.inputValue()) === '47', await sizeIn.inputValue());
+  await sizeIn.press('Shift+ArrowDown');
+  check('…both ways', (await sizeIn.inputValue()) === '37' && (await sizePx()) === '37px',
+    await sizePx());
+  await sizeIn.blur();
+
+  // Restore it once more, now that the arrows have been over it.
+  await sizeIn.fill('4xl');
+  await sizeIn.press('Enter');
+  check('the heading is back at 4xl for the checks below',
+    /(^| )text-4xl( |$)/.test(await sizeCls()), await sizeCls());
 
   // ---- the Text field is a field: typing in it writes through ----
   //
