@@ -383,6 +383,21 @@ compilePalette(ROOT)
   })
   .catch((err) => console.error(`palette compile failed: ${err.message}`))
   .finally(() => {
+    // A port already in use is a normal thing to hit — a second project is
+    // being edited, or the last run is still up — so it gets a sentence and an
+    // exit code, not an unhandled 'error' event and a stack trace. Reading
+    // `Unhandled 'error' event` makes it look like the tool is broken rather
+    // than like you need a flag.
+    server.on('error', (err) => {
+      if (err.code !== 'EADDRINUSE') throw err;
+      console.error(`\nport ${PORT} is already in use.`);
+      console.error('Another bw-edit is probably running (one per project).');
+      console.error(`Give this one its own port:  bw-edit --port ${PORT + 100}`);
+      console.error('...and start the app with NEXT_PUBLIC_BW_PORT set to match,');
+      console.error('or use `bw-edit dev`, which starts both and picks the ports itself.\n');
+      process.exit(1);
+    });
+
     server.listen(PORT, '127.0.0.1', () => {
       const addr = server.address();
       if (addr.address !== '127.0.0.1') throw new Error(`refusing to listen on ${addr.address}`);

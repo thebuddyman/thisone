@@ -283,13 +283,26 @@ if (flag('unwire')) {
 
 const app = arg('app', `http://localhost:${plan.appPort}`);
 
-if (plan.framework !== 'html') {
-  const ready = wiring.loader && wiring.overlay && wiring.loaderShim;
-  if (!ready) {
-    if (!flag('wire')) {
-      console.log(`\n${red('Not wired yet.')} Run with ${bold('--wire')} to add it, or ${bold('--check')} to inspect only.\n`);
-      process.exit(1);
-    }
+const wired = plan.framework === 'html'
+  || (wiring.loader && wiring.overlay && wiring.loaderShim);
+
+/**
+ * Wiring is setup, and setup is not a reason to start a server.
+ *
+ * Its own branch rather than a step on the way to running, so it behaves the
+ * same whether or not there was anything left to do — falling through meant
+ * `--wire` on an already-wired project silently became "run", and `--wire` on
+ * a busy port failed *after* having succeeded, which reads as though the
+ * wiring itself broke.
+ */
+if (flag('wire')) {
+  if (plan.framework === 'html') {
+    console.log(`\n${dim('Nothing to wire — this project is served directly.')}\n`);
+    process.exit(0);
+  }
+  if (wired) {
+    console.log(`\n${dim('Already wired — nothing to do.')}`);
+  } else {
     const { done, manual } = wireNext(plan);
     if (done.length) console.log(`\n${green('Wired')} — ${done.join(', ')}   ${dim('(originals in .bw-edit/backups/)')}`);
     for (const [file, why, snippet] of manual) {
@@ -297,6 +310,92 @@ if (plan.framework !== 'html') {
     }
     if (manual.length) process.exit(1);
   }
+  console.log(`\nNext: ${bold('bw-edit dev')} starts your app and the editor together.`);
+  console.log(`${dim('Or run ' + (plan.devCommand || 'the app') + ' yourself and ')}${bold('bw-edit')}${dim(' beside it.')}\n`);
+  process.exit(0);
+}
+
+if (!wired) {
+  console.log(`\n${red('Not wired yet.')} Run ${bold('bw-edit --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
+  process.exit(1);
+}
+
+/**
+ * The first free port at or above `from`, asked of the OS rather than guessed.
+ *
+ * `host` must match how the server being tested for will bind, or the answer is
+ * wrong: `next dev` listens on every interface and the editor listens only on
+ * 127.0.0.1, and on macOS a loopback bind SUCCEEDS against a port already held
+ * by a wildcard listener. Probing 127.0.0.1 for the app therefore called 3000
+ * free while another app was plainly on it, and Next died a second later.
+ *
+ * Only used by `dev`, where we own both sides and can make them agree. The
+ * standalone server deliberately does NOT do this: the layout falls back to
+ * 3500, so a server that quietly moved itself would leave the overlay looking
+ * for it at the old number and failing in silence — the exact bug the runtime
+ * port lookup was added to kill.
+ */
+function freePort(from, host) {
+  const net = require('net');
+  const tryPort = (p) => new Promise((resolve, reject) => {
+    if (p >= from + 50) return reject(new Error(`no free port between ${from} and ${from + 50}`));
+    const probe = net.createServer();
+    probe.once('error', () => resolve(tryPort(p + 1)));
+    // No host means every interface, which is what `next dev` does.
+    const done = () => probe.close(() => resolve(p));
+    if (host) probe.listen(p, host, done);
+    else probe.listen(p, done);
+  });
+  return tryPort(from);
+}
+
+/**
+ * `bw-edit dev` — the app and the editor, from one command.
+ *
+ * Three numbers have to agree for this to work at all: the app's port, the
+ * editor's port, and the origin the editor will accept writes from. Left to
+ * the user they are three chances to be wrong, and the third fails in the
+ * worst way — everything looks fine until Save, which is refused as a bad
+ * origin. Owning all three is the only way they cannot disagree.
+ */
+async function runDev() {
+  if (plan.framework === 'html') {
+    console.log(`\n${red('`dev` is for framework projects.')} This one is served directly; run ${bold('bw-edit')}.\n`);
+    process.exit(1);
+  }
+  const appPort = await freePort(Number(arg('app-port', plan.appPort)), null);
+  const bwPort = await freePort(Number(arg('port', DEFAULT_PORT)), '127.0.0.1');
+  const origin = `http://localhost:${appPort}`;
+  const [bin, ...rest] = (plan.devCommand || 'next dev').split(' ');
+
+  console.log(`\n${green('Starting both.')}  app ${bold(origin)}   editor ${bold('127.0.0.1:' + bwPort)}`);
+  console.log(`${dim('open ' + origin + ' and press ')}${bold('Edit mode')}${dim(' — bottom right')}\n`);
+
+  const appProc = spawn('npx', [bin, ...rest, '--port', String(appPort)], {
+    cwd: plan.root,
+    stdio: 'inherit',
+    // Read when the layout renders, which is what lets the editor live
+    // anywhere without the number being written into their source.
+    env: { ...process.env, NEXT_PUBLIC_BW_PORT: String(bwPort) },
+  });
+  const bwProc = spawn(process.execPath,
+    [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(bwPort), '--app', origin]
+      .concat(flag('prompt') ? ['--prompt'] : []),
+    { stdio: 'inherit' });
+
+  process.on('SIGINT', () => { appProc.kill(); bwProc.kill(); process.exit(0); });
+  // Neither is useful alone: an editor with no app has nothing to edit, and an
+  // app whose editor died silently stops being able to save.
+  appProc.on('exit', (code) => { bwProc.kill(); process.exit(code || 0); });
+  bwProc.on('exit', (code) => { appProc.kill(); process.exit(code || 0); });
+}
+
+if (process.argv[2] === 'dev' || flag('dev')) {
+  runDev().catch((err) => {
+    console.error(`\n${red(err.message)}\n`);
+    process.exit(1);
+  });
+  return;
 }
 
 const server = plan.framework === 'html'

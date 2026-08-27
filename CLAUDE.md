@@ -1209,6 +1209,38 @@ string — a `replace` that does not match fails silently, reporting success
 while the project still carries the block. It matches by marker and names any
 file it could not take the block out of.
 
+**`dev` owns all three numbers, because a user holding them cannot keep them
+in step.** The app's port, the editor's port, and the origin the editor accepts
+writes from have to agree, and the third fails in the worst way available:
+everything looks right until Save, which is refused as a bad origin. Found by
+running the tool as a stranger would with a real session already up — the
+default ports were both taken, which is not exotic, it is what a second project
+looks like. `bw-edit dev` picks both ports, sets `NEXT_PUBLIC_BW_PORT` in the
+app's own environment and points the origin at it, so nobody types a number.
+
+**The port probe has to bind the way the server it is testing for binds.**
+`next dev` listens on every interface, the editor listens only on 127.0.0.1 —
+and on macOS a loopback bind *succeeds* against a port a wildcard listener
+already holds. Probing 127.0.0.1 for the app therefore called 3000 free while
+another app was plainly on it, and Next died a second later. The standalone
+server deliberately does not probe at all: the layout falls back to 3500, so a
+server that quietly moved itself would leave the overlay looking for it at the
+old number and failing in silence — the exact bug the runtime port lookup
+exists to kill. Moving is safe only where we also own the app's environment.
+
+**Wiring is setup, and setup is no reason to start a server.** `--wire` used to
+fall through into running, which made it silently mean "run" on an
+already-wired project, and made it fail *after* succeeding when the port was
+busy — reading as though the wiring itself had broken. It is its own branch
+now, ending in what to type next. It also took a server spawn out of
+`06-detect`, which ran one on every `--wire` call and is a fair suspect for the
+stale-port trap below.
+
+**A busy port gets a sentence, not a stack trace.** Two editors is the normal
+case, not the error case, so `EADDRINUSE` is caught and answered with the flag
+that fixes it. `Unhandled 'error' event` reads as though the tool is broken
+rather than as though you need an argument.
+
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
