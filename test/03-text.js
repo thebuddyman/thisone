@@ -346,6 +346,46 @@ const selectAllIn = page => page.evaluate(() => {
     />Typed from the panel</.test(disk()),
     disk().split('\n').find(l => l.includes('<h1')));
 
+  // ---- text broken up by markup is edited one run at a time ----
+  //
+  // `Read the <a>docs</a> or the <a>guide</a> first.` is not one string: it is
+  // three literals with markup between them, and each is its own stretch of the
+  // file. The whole element used to be refused as `has-children`.
+  await page.keyboard.press('Escape');
+  const mixed = page.locator('footer p').nth(1);
+  await mixed.click();
+  const runFields = panel.locator('[data-tw-text-run]');
+  check('a field for each literal run, and none for the markup between them',
+    (await runFields.count()) === 3, String(await runFields.count()));
+  check('the single-text box is not offered for this element',
+    !(await panel.locator('[data-tw-text]').isVisible()));
+  check('each field holds its own run, not the whole element',
+    (await runFields.nth(0).inputValue()) === 'Read the'
+    && (await runFields.nth(2).inputValue()) === 'first.',
+    `${await runFields.nth(0).inputValue()} | ${await runFields.nth(2).inputValue()}`);
+
+  await runFields.nth(0).fill('Start with the');
+  await runFields.nth(2).fill('to begin.');
+  check('typing a run reaches the page without disturbing the links',
+    (await mixed.locator('a').count()) === 2
+    && (await mixed.textContent()).includes('Start with the')
+    && (await mixed.textContent()).includes('docs'),
+    await mixed.textContent());
+
+  status = await saveAndWait();
+  const line = (disk().split('\n').find((l) => l.includes('underline')) || '').trim();
+  // The whole line, not `includes` of the words: the first version of this
+  // check passed while the write was silently closing the gaps either side of
+  // each run — `Read the <a>docs</a>` had become `Read thedocs`. Only the
+  // exact bytes catch that, which is the standard everywhere else here.
+  const want = '<p class="text-sm text-slate-500">Start with the '
+    + '<a href="#" class="underline">docs</a> or the '
+    + '<a href="#" class="underline">guide</a> to begin.</p>';
+  check('both runs reach disk, and nothing else on the line moves',
+    status.includes('written') && line === want, line);
+  check('...including the space either side of each run, which is what keeps '
+    + 'the words apart', / the <a/.test(line) && /<\/a> to begin/.test(line), line);
+
   // ---- text with nothing writable behind it says so, before you type ----
   //
   // `<p>{name}</p>` renders as ordinary characters, so the overlay cannot tell

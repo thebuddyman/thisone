@@ -93,7 +93,7 @@ app.get('/tailwind-browser.js', (req, res) => {
 app.get('/editor.js', (req, res) => {
   const prelude =
     'window.__TW_EDITOR__ = ' +
-    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS }, textSizes: TEXT_SIZES, fontWeights: FONT_WEIGHTS, radii: RADII }) +
+    JSON.stringify({ colors: { order: HUES.filter((h) => COLOR_RAMPS[h]), ramps: COLOR_RAMPS }, textSizes: TEXT_SIZES, fontWeights: FONT_WEIGHTS, radii: RADII, textRuns: true }) +
     ';\n';
   res.type('application/javascript').send(prelude + fs.readFileSync(EDITOR_FILE, 'utf8'));
 });
@@ -107,6 +107,23 @@ function escapeText(value) {
 
 function hasElementChildren(element) {
   return element.childNodes.some((node) => node.nodeType === 1);
+}
+
+/**
+ * The literal runs of an element: its own text nodes, markup left out.
+ *
+ * The mirror of `textRuns` in the overlay and of `textKids` in the JSX writer.
+ * A `<p>` holding text, an `<a>` and more text is three separate literals, and
+ * each can be rewritten on its own without touching what sits between them —
+ * which is the one edit `has-children` was refusing wholesale.
+ */
+function textRunNodes(element) {
+  return element.childNodes.filter((n) => n.nodeType === 3 && n.rawText.trim());
+}
+
+/** Whitespace folds when it renders, so compare the way the page reads. */
+function collapseText(t) {
+  return String(t).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -130,11 +147,20 @@ function validateEdit(edit) {
   if (edit.text !== undefined && typeof edit.text !== 'string') {
     return 'text must be a string';
   }
+  if (edit.runs !== undefined) {
+    if (!Array.isArray(edit.runs)) return 'runs must be an array';
+    for (const r of edit.runs) {
+      if (!r || typeof r.from !== 'string' || typeof r.to !== 'string') {
+        return 'each run needs a from and a to, both strings';
+      }
+    }
+  }
   if (edit.remove !== undefined && typeof edit.remove !== 'boolean') {
     return 'remove must be a boolean';
   }
-  if (edit.classes === undefined && edit.text === undefined && !edit.remove) {
-    return 'nothing to edit: send classes, text and/or remove';
+  if (edit.classes === undefined && edit.text === undefined
+      && edit.runs === undefined && !edit.remove) {
+    return 'nothing to edit: send classes, text, runs and/or remove';
   }
   return null;
 }
@@ -219,6 +245,35 @@ app.post('/edit', (req, res) => {
           });
         }
         element.textContent = escapeText(edit.text);
+      }
+
+      // One literal at a time, found by what it says rather than by position:
+      // the two sides count text nodes differently, and matching on content
+      // makes the write self-checking — `from` is what the overlay believed was
+      // there, so a page that has moved on is refused, not overwritten.
+      if (edit.runs) {
+        for (const run of edit.runs) {
+          const hits = textRunNodes(element)
+            .filter((n) => collapseText(n.rawText) === collapseText(run.from));
+          if (hits.length !== 1) {
+            return res.status(409).json({
+              ok: false,
+              reason: hits.length ? 'run-ambiguous' : 'run-missing',
+              error: `eid ${index} <${element.rawTagName}>: ${hits.length ? 'that text appears more than once' : 'that text is no longer there'}`,
+            });
+          }
+          // rawText, not textContent: assigning textContent on the element
+          // would replace every child, which is the markup this exists to keep.
+          //
+          // The space either side is the layout's, not the sentence's:
+          // `Read the <a>docs</a>` renders as two words because of that
+          // trailing space, and writing a trimmed value over it produces
+          // `Read thedocs`. Replace the words, leave the gaps.
+          const had = hits[0].rawText;
+          const lead = had.match(/^\s*/)[0];
+          const tail = had.match(/\s*$/)[0];
+          hits[0].rawText = lead + escapeText(String(run.to).trim()) + tail;
+        }
       }
 
       applied.push(`#${index} <${element.rawTagName}>`);

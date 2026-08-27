@@ -263,14 +263,26 @@ function handleEdit(req, res, payload) {
     if (edit.remove !== undefined && typeof edit.remove !== 'boolean') {
       return json(res, 400, { ok: false, error: 'remove must be a boolean' });
     }
-    if (edit.classes === undefined && edit.text === undefined && !edit.remove) {
-      return json(res, 400, { ok: false, error: 'nothing to edit: send classes, text and/or remove' });
+    if (edit.runs !== undefined) {
+      if (!Array.isArray(edit.runs)) {
+        return json(res, 400, { ok: false, error: 'runs must be an array' });
+      }
+      for (const r of edit.runs) {
+        if (!r || typeof r.from !== 'string' || typeof r.to !== 'string') {
+          return json(res, 400, { ok: false, error: 'each run needs a from and a to, both strings' });
+        }
+      }
+    }
+    if (edit.classes === undefined && edit.text === undefined
+        && edit.runs === undefined && !edit.remove) {
+      return json(res, 400, { ok: false, error: 'nothing to edit: send classes, text, runs and/or remove' });
     }
     const abs = safeResolve(loc.file);
     if (!abs) return json(res, 403, { ok: false, reason: 'outside-root', error: `refusing path: ${loc.file}` });
     if (!byFile.has(abs)) byFile.set(abs, []);
     byFile.get(abs).push({
-      id: edit.id, loc, classes: edit.classes, text: edit.text, remove: edit.remove === true,
+      id: edit.id, loc, classes: edit.classes, text: edit.text, runs: edit.runs,
+      remove: edit.remove === true,
       // What actually changed, for spans that own only part of the class list.
       added: Array.isArray(edit.added) ? edit.added : undefined,
       removed: Array.isArray(edit.removed) ? edit.removed : undefined,
@@ -324,7 +336,9 @@ const server = http.createServer((req, res) => {
         endpoint: `http://localhost:${PORT}/edit`,
         promptEndpoint: PROMPT_ENABLED ? `http://localhost:${PORT}/prompt` : null,
         token: TOKEN,
-        text: true, // only a lone static JsxText child is editable; the rest is refused
+        text: true, // a lone static JsxText child, written whole
+        // ...and each literal run of a mixed element, written one at a time.
+        textRuns: true,
         // The dev server re-renders from the new source after a write, so the
         // overlay must not take removed nodes out of the DOM itself.
         hmr: true,

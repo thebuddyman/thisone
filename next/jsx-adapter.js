@@ -82,6 +82,8 @@ function hostElements(ts, sourceFile) {
 const CN_CALLEES = new Set(['cn', 'clsx', 'classnames', 'classNames', 'cx', 'twMerge', 'twJoin']);
 
 const REFUSALS = {
+  'run-missing': 'that text is no longer in the source',
+  'run-ambiguous': 'the same text appears more than once in this element',
   'cn-call': 'classes are built by a function call',
   'cn-no-literal': 'the composition call has no plain string to edit',
   'cva-call': 'classes come from a cva() variant definition',
@@ -150,6 +152,52 @@ function textShape(ts, sourceFile, opening) {
 }
 
 /**
+ * The span of ONE literal run inside an element, found by what it says.
+ *
+ * A `<p>` holding text, an `<a>` and more text is not one string — it is
+ * several literals with markup between them, and each literal is its own
+ * contiguous stretch of bytes. Writing one is the same operation as writing a
+ * class: replace a span, touch nothing else. The old refusal was never really
+ * about there being several children; it was about `Hello {name}` being one
+ * rendered string with no way to tell which characters came from the literal.
+ * That ambiguity does not exist between siblings.
+ *
+ * Matched by content rather than by index, because the two sides count
+ * differently: React emits `{" "}` as a text node of its own, so the overlay's
+ * third text node is not the third JsxText. Content also makes the write
+ * self-checking — `from` is what the panel believed was there, so a file that
+ * has moved on is caught rather than overwritten.
+ */
+function textRunSpan(ts, sourceFile, opening, source, from) {
+  const kids = textKids(ts, sourceFile, opening);
+  if (!kids) return { reason: 'no-text', detail: 'no element body' };
+  const want = String(from).trim();
+  const hits = kids.filter(
+    (c) => ts.isJsxText(c) && collapse(c.getText(sourceFile)) === collapse(want)
+  );
+  if (hits.length === 0) return { reason: 'run-missing', detail: JSON.stringify(want.slice(0, 40)) };
+  if (hits.length > 1) return { reason: 'run-ambiguous', detail: JSON.stringify(want.slice(0, 40)) };
+  return trimmedSpan(source, hits[0]);
+}
+
+/**
+ * JSX folds a newline and its indentation into a single space when it renders,
+ * so a run written across three lines in the source is one line on the page.
+ * Compared this way, the two are the same string.
+ */
+function collapse(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/** A node's span with the surrounding whitespace left out of it. */
+function trimmedSpan(source, node) {
+  const full = source.slice(node.pos, node.end);
+  const leading = full.match(/^\s*/)[0].length;
+  const trailing = full.match(/\s*$/)[0].length;
+  return { start: node.pos + leading, end: node.end - trailing };
+}
+
+/**
  * The editable span of an element's text body.
  *
  * Only a lone JsxText child qualifies. `<p>Hello {name}</p>` renders as one
@@ -179,11 +227,7 @@ function textSpan(ts, sourceFile, opening, source) {
     return { reason: 'mixed-content', detail: kinds.join(' + ') };
   }
 
-  const node = kids[0];
-  const full = source.slice(node.pos, node.end);
-  const leading = full.match(/^\s*/)[0].length;
-  const trailing = full.match(/\s*$/)[0].length;
-  return { start: node.pos + leading, end: node.end - trailing };
+  return trimmedSpan(source, kids[0]);
 }
 
 /**
@@ -419,6 +463,24 @@ function editFile(ts, filePath, source, edits) {
       }
       spans.push({ span, tag, insertion: (v) => v, value: escapeJsxText(String(edit.text).trim()) });
     }
+
+    // One entry per literal run the panel changed, each resolved by the text it
+    // is replacing. Several runs of one element are several spans, which the
+    // back-to-front splice below already handles — they cannot overlap, being
+    // siblings with markup between them.
+    if (Array.isArray(edit.runs)) {
+      let refused = false;
+      for (const run of edit.runs) {
+        const span = textRunSpan(ts, sourceFile, node, source, run.from);
+        if (span.reason) {
+          refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
+          refused = true;
+          break;
+        }
+        spans.push({ span, tag, insertion: (v) => v, value: escapeJsxText(String(run.to).trim()) });
+      }
+      if (refused) continue;
+    }
   }
 
   if (refusals.length) return { ok: false, refusals };
@@ -448,4 +510,4 @@ function editFile(ts, filePath, source, edits) {
   return { ok: true, contents: out, applied: [...new Set(live.map((s) => s.tag))] };
 }
 
-module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };
+module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, textRunSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };

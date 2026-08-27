@@ -1261,6 +1261,40 @@ from an expression is the exception, because it is plainly *there* on the page:
 a row that vanishes reads as a bug, where a row saying where the characters come
 from reads as an answer.
 
+**Text is edited a run at a time, because a run is what a literal is.** A `<p>`
+holding text, an `<a>` and more text is not one string — it is several literals
+with markup between them, each its own contiguous stretch of the file. Writing
+one is the same operation as writing a class: replace a span, leave everything
+else. The old refusal read as though the trouble were *several children*, but it
+was only ever `Hello {name}`: one rendered string with no way to tell which
+characters came from the literal. Siblings have no such ambiguity, and refusing
+them cost the whole of the mixed-content majority.
+
+**A run is found by what it says, not by where it sits.** The two sides count
+differently — React emits `{" "}` as a text node of its own, so the overlay's
+third text node is not the third `JsxText`. Content also makes the write
+self-checking: `from` is what the panel believed was there, so a file that has
+moved on is refused rather than overwritten, the same bargain `cn()` strikes by
+sending a delta instead of a snapshot. Whitespace is folded before comparing,
+since a run written across three source lines is one line on the page.
+
+**The space either side of a run belongs to the layout, not to the sentence.**
+`Read the <a>docs</a>` renders as two words *because* of the trailing space in
+the literal. The field shows the words and hands back the words, so writing that
+value straight over the node closes the gap and gives you `Read thedocs` — which
+is what the first version did, in the DOM and on disk, while a test asserting
+`line.includes('Start with the')` passed anyway. The gaps are kept aside and put
+back on every write, and the test now compares the whole line. The JSX writer
+never had the bug: its span already excludes surrounding whitespace, which is the
+same rule arrived at from the other side.
+
+**Both backends had to be taught, and their validators are separate copies.**
+The panel is shared, so a field it offers must be writable in either mode —
+`runs` reached the JSX writer, was accepted by the HTML server, and was rejected
+by the Next server's own `validateEdit` with "nothing to edit". Caught only by
+driving the real app; every fixture suite was green. The two validators remain
+the most obvious place in this codebase for the next thing to drift.
+
 **Anything unsafe is refused with a reason, never guessed at.** `cn()` with no
 string literal, `cva()`, interpolated templates, text mixed with `{expressions}`,
 paths outside the root. Refusals surface in the panel.
@@ -1385,12 +1419,12 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    text edits still say nothing** — same one-line count, same place to put it.
 3. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
    safely editable; the delta mechanism from `cn()` already does the hard part.
-4. **Mixed text is still not editable, though it now says so up front.** A leaf
+4. **Text from an expression is still not editable, and now says so.** A leaf
    whose text is `{variable}` no longer lets you type — the loader stamps
    `data-bw-text="expr"` and the row says where the text comes from instead of
-   offering a box. What is left is `runs`: text interleaved with markup, where
-   each literal *is* separately writable and nothing offers it yet. On Cora only
-   25.7% of elements have writable text; 59.6% are `mixed-content`.
+   offering a box. Text interleaved with *markup* is editable now, one literal
+   run at a time. On Cora 59.6% of elements were `mixed-content`, most of which
+   this reaches.
 5. **Packaging** — the three things that only bite once it is a *dependency*
    are done (see below); what is left is a `files` allowlist, dropping
    `private: true`, `engines`, a README, and one install test against a fresh

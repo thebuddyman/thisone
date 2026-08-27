@@ -24,6 +24,10 @@
   var ID_ATTR = CFG.idAttr || 'data-eid';
   var ENDPOINT = CFG.endpoint || '/edit';
   var TEXT_ENABLED = CFG.text !== false;
+  // Both backends write runs, but say so explicitly rather than assuming: a
+  // panel offering a field the writer cannot honour reports "written" and
+  // changes nothing, which is the worst answer available.
+  var RUNS_ENABLED = CFG.textRuns !== false;
   // Tailwind v4 generates no CSS for a class that appears in no source file, so
   // the preview stylesheet is scoped to this attribute and applied only to
   // elements the editor has actually touched.
@@ -333,6 +337,32 @@
     return el.children.length === 0;
   }
 
+  /**
+   * The literal runs of an element: its own text, with the markup left out.
+   *
+   * A `<p>` holding text, an `<a>` and more text has three of these, and each
+   * one is a separate literal in the source. Whitespace-only nodes are dropped
+   * because that is what `{" "}` renders as — a space of its own between the
+   * runs, which belongs to neither and is never written.
+   */
+  function textRuns(el) {
+    var runs = [];
+    if (!el) return runs;
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim()) runs.push(n);
+    }
+    return runs;
+  }
+
+  /** What each run said when the element was selected — the `from` a save sends. */
+  var runBase = new WeakMap();
+
+  function noteRuns(el) {
+    if (!el || runBase.has(el)) return;
+    runBase.set(el, textRuns(el).map(function (n) { return n.nodeValue.trim(); }));
+  }
+
   function onTextInput() {
     markDirty(selected, 'text');
     refresh();
@@ -464,6 +494,10 @@
       // Only a leaf's text round-trips. textContent on a container would
       // flatten its markup — the very thing the writer refuses to do.
       text: el.children.length === 0 ? el.textContent : null,
+      // A mixed element's runs do round-trip, one node at a time, which is the
+      // whole reason they are editable: each is written back on its own and the
+      // markup between them is never touched.
+      runs: textRuns(el).map(function (n) { return n.nodeValue; }),
       removed: isRemoved(el),
       dirty: entry ? { text: entry.text, classes: entry.classes, remove: entry.remove } : null,
     };
@@ -527,6 +561,18 @@
 
       if (s.text !== null && el.children.length === 0 && el.textContent !== s.text) {
         el.textContent = s.text;
+      }
+
+      // Node by node, never through textContent: assigning that would collapse
+      // the element's markup into a string and lose the very children the runs
+      // sit between.
+      if (s.runs && s.runs.length) {
+        var live = textRuns(el);
+        if (live.length === s.runs.length) {
+          for (var ri = 0; ri < live.length; ri++) {
+            if (live[ri].nodeValue !== s.runs[ri]) live[ri].nodeValue = s.runs[ri];
+          }
+        }
       }
 
       // Removal is recorded on the element that holds the edit, and applied to
@@ -2271,6 +2317,11 @@
       '  color:var(--bw-fg);resize:none;overflow-y:auto;word-break:break-word}',
       P + ' .bw-text::placeholder{color:var(--bw-muted)}',
       P + ' .bw-text.is-off::placeholder{font-style:italic}',
+      // A column of short fields rather than one tall box: each is a separate
+      // literal in the file, and running them together would suggest they can
+      // be typed across, which is exactly the edit the writer cannot make.
+      P + ' .bw-truns{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}',
+      P + ' .bw-text.is-run{height:auto;min-height:40px;flex:none;padding:10px 12px}',
       P + ' .bw-text:disabled{cursor:default}',
 
       /* footer */
@@ -4529,6 +4580,46 @@
     note.setAttribute('data-tw-text-note', '');
     row.appendChild(note);
 
+    // One field per literal run, for an element whose text is broken up by
+    // markup. Rebuilt per selection rather than pooled: the count is a property
+    // of the element, and a stale field pointing at a node from the last
+    // selection would write to it.
+    var runWrap = el('div', 'bw-truns');
+    runWrap.setAttribute('data-tw-text-runs', '');
+    row.appendChild(runWrap);
+
+    function buildRuns() {
+      runWrap.textContent = '';
+      textRuns(selected).forEach(function (node, i) {
+        var f = document.createElement('textarea');
+        f.className = 'bw-text is-run';
+        f.setAttribute('data-tw-text-run', String(i));
+        f.spellcheck = false;
+        f.rows = 1;
+        // The field shows the words; the space either side of them belongs to
+        // the layout, not to the sentence. `Read the <a>docs</a>` renders as two
+        // words because of that trailing space, so writing the trimmed value
+        // straight back closes the gap and gives you `Read thedocs`. Kept aside
+        // and put back on every write — the same rule the JSX writer follows by
+        // leaving whitespace outside the span it replaces.
+        var lead = node.nodeValue.match(/^\s*/)[0];
+        var tail = node.nodeValue.match(/\s*$/)[0];
+        f.value = node.nodeValue.trim();
+        f.title = 'one run of this element\u2019s text — the markup between runs is left alone';
+        f.addEventListener('input', function () {
+          // Straight through to the node, the same as the single-text field
+          // writes through to the element: the DOM stays the one source of
+          // truth and the save path reads it back off the page.
+          node.nodeValue = lead + f.value + tail;
+          markDirty(selected, 'text');
+        });
+        f.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') { e.stopPropagation(); f.blur(); }
+        });
+        runWrap.appendChild(f);
+      });
+    }
+
     box.addEventListener('input', function () {
       if (!selected || !textEditable || box.disabled) return;
       if (selected.textContent === box.value) return;
@@ -4551,14 +4642,28 @@
       // rather than a rule. That one gets a line saying why.
       var shape = selected ? (selected.getAttribute('data-bw-text') || '') : '';
       var speaks = shape === 'expr';
-      var show = TEXT_ENABLED && (textEditable || speaks);
+      // Runs are offered wherever there are any, not only where the loader said
+      // so: the stamp is a Next thing, and the same shape occurs in HTML mode
+      // where the server tags the page instead.
+      var runs = RUNS_ENABLED && !speaks && !textEditable && textRuns(selected).length > 0;
+      var show = TEXT_ENABLED && (textEditable || speaks || runs);
       row.style.display = show ? '' : 'none';
       if (!show) return;
-      box.style.display = speaks ? 'none' : '';
+      box.style.display = (speaks || runs) ? 'none' : '';
       note.style.display = speaks ? '' : 'none';
+      runWrap.style.display = runs ? '' : 'none';
       if (speaks) {
         note.textContent = 'comes from an expression in the source, so there is '
           + 'no text here to change';
+        return;
+      }
+      if (runs) {
+        // Only when the element changed. Rebuilding under the cursor would take
+        // the field out from under whoever is typing in it.
+        if (runWrap.getAttribute('data-tw-for') !== selected.getAttribute(ID_ATTR)) {
+          runWrap.setAttribute('data-tw-for', selected.getAttribute(ID_ATTR) || '');
+          buildRuns();
+        }
         return;
       }
       box.disabled = false;
@@ -7116,6 +7221,7 @@
     selected = el;
     if (!baseline.has(el)) baseline.set(el, classesOf(el));
     noteTouched(el); // while it is still untouched — see noteTouched
+    noteRuns(el);    // and the same moment is when each run still says what it said
     revealed = {}; // reveals are per-selection, not sticky across elements
     // So is the folded/unfolded choice. Deciding it again here is what makes
     // "decided once per selection" true when you click away and back — while
@@ -7182,10 +7288,31 @@
         edit.added = now.filter(function (c) { return was.indexOf(c) === -1; });
       }
       if (entry.text && TEXT_ENABLED) {
-        // A browser quirk may still have slipped a node in (a <br> from an odd
-        // paste path). Flatten back to pure text so the write stays a leaf.
-        if (el.children.length) el.textContent = el.textContent;
-        edit.text = el.textContent;
+        var was = runBase.get(el);
+        // A mixed element with no baseline has nothing to measure against, and
+        // the leaf path below would flatten its markup to reach a string. Say
+        // nothing about its text rather than destroy it.
+        if (el.children.length && !was) return edits.push(edit);
+        if (el.children.length) {
+          // A mixed element: send the runs that moved, each against what it
+          // said when the element was selected. `from` is what makes the write
+          // self-checking — the server finds the literal by its content, so a
+          // file that has changed underneath is refused rather than overwritten.
+          var now = textRuns(el);
+          var moved = [];
+          if (now.length === was.length) {
+            for (var ri = 0; ri < now.length; ri++) {
+              var to = now[ri].nodeValue.trim();
+              if (to !== was[ri]) moved.push({ from: was[ri], to: to });
+            }
+          }
+          if (moved.length) edit.runs = moved;
+        } else {
+          // A browser quirk may still have slipped a node in (a <br> from an odd
+          // paste path). Flatten back to pure text so the write stays a leaf.
+          if (el.children.length) el.textContent = el.textContent;
+          edit.text = el.textContent;
+        }
       }
       edits.push(edit);
     });
@@ -7219,6 +7346,11 @@
           fileHash = data.hash || fileHash;
           dirty.clear();
           baseline.clear();
+          // What is on disk is what a further edit is now a change against.
+          // The element usually stays selected across a save, so waiting for
+          // the next select() would leave the next run edit measuring from
+          // text the file no longer holds.
+          saving.forEach(function (el) { runBase.delete(el); noteRuns(el); });
           // Undo cannot reach across a write: the file has already changed, so
           // stepping back would only stage the reverse as a fresh edit while
           // silently claiming to have undone something. The saved state is the
