@@ -1,8 +1,31 @@
 {
   "name": "thisone",
   "version": "0.1.0",
-  "description": "Proof of concept: visual Tailwind editor with write-back to source",
-  "main": "server.js",
+  "description": "Design mode for your running app — point at any element, change it, and it's written back to source",
+  "keywords": [
+    "tailwind",
+    "visual-editor",
+    "nextjs",
+    "design-mode",
+    "devtools",
+    "turbopack",
+    "wysiwyg",
+    "jsx"
+  ],
+  "homepage": "https://github.com/thebuddyman/bw-pl-browsereditor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebuddyman/bw-pl-browsereditor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thebuddyman/bw-pl-browsereditor/issues"
+  },
+  "author": "Thomas B (Bloomworks)",
+  "license": "MIT",
+  "exports": {
+    "./loader": "./next/loader.cjs",
+    "./package.json": "./package.json"
+  },
   "files": [
     "cli.js",
     "server.js",
@@ -19,14 +42,13 @@
     "next/radii.json",
     "next/text-sizes.json"
   ],
-  "exports": {
-    "./loader": "./next/loader.cjs",
-    "./package.json": "./package.json"
-  },
   "scripts": {
     "start": "node server.js",
     "test": "node test/run.mjs",
     "edit": "node cli.js"
+  },
+  "bin": {
+    "thisone": "./cli.js"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -36,9 +58,6 @@
     "@tailwindcss/browser": "^4.3.3",
     "playwright": "^1.58.2",
     "typescript": "^5.9.3"
-  },
-  "bin": {
-    "thisone": "./cli.js"
   },
   "engines": {
     "node": ">=20.9.0"

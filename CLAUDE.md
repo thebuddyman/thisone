@@ -1523,13 +1523,19 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    offering a box. Text interleaved with *markup* is editable now, one literal
    run at a time. On Cora 59.6% of elements were `mixed-content`, most of which
    this reaches.
-5. **Packaging** — the three things that only bite once it is a *dependency*
-   are done (see below), and the tarball is now an allowlist: 15 files, 143kB,
-   `private: true` gone, `engines` at `>=20.9.0`. What is left is a README, a
-   `.` entry in `exports` — `main: server.js` is decorative today, since an
-   `exports` map with no `.` makes `require('thisone')` throw
-   `ERR_PACKAGE_PATH_NOT_EXPORTED` — and one install test against a fresh
-   `create-next-app`. Still only worth finishing if other people will use it.
+5. **Packaging is done.** The tarball is an allowlist — 17 files, 146kB,
+   `private: true` gone, `engines` at `>=20.9.0`, MIT, README, repository and
+   keywords. The install test has been run: a fresh `create-next-app` on Next
+   16.3.3 / Tailwind 4.3.3, `npm i -D` the tarball, `--wire`, `thisone dev` —
+   shim resolved by name, overlay served, 30 elements stamped. **There is no
+   `.` export and no `main`, which is a reversal of what this list used to
+   ask for.** The old note wanted a root entry because `main: server.js` was
+   decorative; the reason it was decorative is that `server.js` calls
+   `app.listen()` at module load with no `require.main` guard and exports
+   nothing, so a `.` entry would make `require('thisone')` *bind a port* and
+   return `{}`. `ERR_PACKAGE_PATH_NOT_EXPORTED` is the better answer, because
+   there is no library here to enter: the CLI is `bin`, the loader is
+   `./loader`, and a package should not claim an entry point it does not have.
 6. **The hex is still read-only as *text*.** The picker sets it and the opacity
    field sets its alpha, but there is nowhere to paste `#3f6212` into. gw-web is
    608 arbitrary colours, so "detached" is the norm there. A drag also leaves
