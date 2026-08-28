@@ -76,6 +76,21 @@ p = detect(fixture('astro-site', {
 check('Astro detected with the vite locator', p.framework === 'astro' && p.locator === 'vite');
 check('...and both writers, astro first', p.writers.join() === 'astro,jsx', p.writers.join());
 check('...on its own default port', p.appPort === 4321, String(p.appPort));
+// Recognised and refused are different answers, and Astro gets the second one.
+// It reported `supported` for a while on the strength of a config file and a v4
+// Tailwind, which sent it down the Next wiring path: astro.config.mjs asked for
+// `const nextConfig = {`, a turbopack block offered for a key Astro has not got,
+// and a React overlay tag printed for a layout file it does not keep.
+check('...but refused, because the locator cannot be reached', !p.supported);
+check('...naming the build, not the config', /never routes project files/.test(p.reason), p.reason);
+
+p = detect(fixture('vite-app', {
+  deps: { vite: '^7.0.0' }, tailwind: '4.3.3',
+  files: { 'vite.config.ts': 'export default {};' },
+}));
+check('a bare Vite project is refused too', !p.supported && p.framework === 'vite');
+check('...because the only locator written is turbopack\'s',
+  /only locator that exists is the turbopack loader/.test(p.reason), p.reason);
 
 p = detect(fixture('expo-app', {
   deps: { expo: '~57.0.0', 'react-native': '0.86.2' }, tailwind: '3.4.19',
@@ -189,7 +204,13 @@ const linked = fixture('installed-here', {
   deps: { next: '16.2.4' }, tailwind: '4.2.4',
   files: { 'next.config.ts': NEXT_CONFIG, 'src/app/layout.tsx': LAYOUT },
 });
-fs.symlinkSync(path.join(__dirname, '..'), path.join(linked, 'node_modules', PKG), 'dir');
+// A scoped name is a directory and then a link, not one link: npm lays out
+// `node_modules/@designbuddy/thisone`, so the scope has to exist before the
+// symlink can land in it. Derived from PKG rather than written out, so this
+// keeps working whichever of the two shapes the package name takes next.
+const linkPath = path.join(linked, 'node_modules', PKG);
+fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+fs.symlinkSync(path.join(__dirname, '..'), linkPath, 'dir');
 run(['--root', linked, '--wire']);
 const shimInstalled = fs.readFileSync(path.join(linked, 'tools/thisone-loader.cjs'), 'utf8');
 check('an installed project gets the shim by package name',

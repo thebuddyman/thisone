@@ -1575,6 +1575,19 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    is not inferable from the rungs that do exist — cora's live/stock ratios run
    1.8, 1.6, 1.5, 1.4, 1.35. Corrects itself on save.
 
+**Astro is blocked — and `detect.js` has to say so, which for a while it did
+not.** The block below was true in the writer and false in the detector:
+`supported` was `!!config && tailwind.supported`, so a real Astro project with
+a v4 Tailwind reported supported and went down the *Next* wiring path. It asked
+`astro.config.mjs` for `const nextConfig = {`, offered a turbopack block for a
+key Astro does not have, printed a React overlay tag for a layout file Astro
+does not keep, and left `tools/thisone-loader.cjs` behind in the repo. Found by
+running the published package against `bloomworks-web`. Vite had the identical
+hole and the identical cause — there is no vite locator either, only the
+turbopack loader — so both now report `supported: false` with a reason naming
+the build rather than the config. Recognised and refused is a different answer
+from unrecognised, and the reason is where the difference lives.
+
 **Astro is blocked.** Astro 7 never routes project files through Vite plugins:
 instrumented, **1,271 plugin calls, zero for anything under `src/`**. The locator
 logic itself works (10/10 stamped offline). None of Astro's twelve integration

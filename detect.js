@@ -112,9 +112,17 @@ function detect(root) {
       entryFile: null, // Astro injects via its integration, not a layout file
       devCommand: 'astro dev',
       appPort: 4321,
-      supported: !!config && tailwind.supported,
-      reason: !config ? 'no astro.config.* found'
-        : !tailwind.supported ? tailwindReason(tailwind) : null,
+      // Astro is recognised and refused, which is not the same as unrecognised:
+      // the locator was written (next/astro-locator.mjs) and cannot be reached.
+      // Astro 7 never routes project files through Vite plugins — instrumented,
+      // 1,271 plugin calls, zero for anything under src/ — and none of its twelve
+      // integration hooks is transform-shaped. Saying `supported` here sent an
+      // Astro project down the Next wiring path, which asks astro.config.mjs for
+      // `const nextConfig = {`, offers a turbopack block it has no key for, and
+      // prints a React overlay tag for a layout file Astro does not have.
+      supported: false,
+      reason: 'astro is not supported: its build never routes project files '
+        + 'through a plugin, so there is nowhere to stamp source locations',
     };
   }
 
@@ -129,9 +137,12 @@ function detect(root) {
       configFile: config,
       devCommand: 'vite',
       appPort: 5173,
-      supported: !!config && tailwind.supported,
-      reason: !config ? 'no vite.config.* found'
-        : !tailwind.supported ? tailwindReason(tailwind) : null,
+      // Same correction as astro above: there is no vite locator, and the only
+      // wiring this CLI can write is the turbopack rule plus a JSX layout tag.
+      // A bare Vite project claiming support got Next's instructions verbatim.
+      supported: false,
+      reason: 'vite is not supported yet: the only locator that exists is the '
+        + 'turbopack loader, so nothing would stamp source locations',
     };
   }
 
