@@ -30,8 +30,11 @@ routes project files through Vite plugins, so there's nothing to hook.
 ## Install
 
 ```bash
-npm i -D thisone
+npm i -D @designbuddy/thisone
 ```
+
+The package is scoped; the command is not. You install
+`@designbuddy/thisone` and you run `thisone`.
 
 ## Use
 

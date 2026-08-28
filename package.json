@@ -1,5 +1,5 @@
 {
-  "name": "thisone",
+  "name": "@designbuddy/thisone",
   "version": "0.1.0",
   "description": "Design mode for your running app — point at any element, change it, and it's written back to source",
   "keywords": [

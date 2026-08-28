@@ -77,6 +77,19 @@ or to Next. About 46 sites moved: the bin, `tools/thisone-loader.cjs`,
 studio prefix, not the product name.** That is the line — their repo speaks the
 product's name, our own code speaks the house prefix.
 
+**The package is scoped and the command is not, because npm would not have
+the bare name.** `thisone` is refused at publish time: npm strips punctuation
+before comparing, so it collides with `this-one` — the abandoned package that
+made us pick `thisone` in the first place — and the typosquatting rule fires
+whether or not that package is maintained. It ships as `@designbuddy/thisone`.
+**The bin stays `thisone`**, because a bin name is independent of the package
+name, so the command people type daily is the one we chose and only the install
+line is longer. Almost nothing in the code had to move: `PKG` is read from
+`package.json`, so the shim writes `require("@designbuddy/thisone/loader")` on
+its own, and the shim's *filename* is hardcoded `tools/thisone-loader.cjs` and
+so never grows a slash. Verified against a real install — the bin symlink and
+the scoped subpath both resolve.
+
 **A rename adds to the marker lists; it never replaces them.** `detect.js` has
 `LOADER_MARKS` and `SHIMS`, `cli.js` has `MARKS` and `hasMark()`, and each
 carries every name this tool has ever written into a project. A project wired by
