@@ -415,7 +415,7 @@ compilePalette(ROOT)
     server.listen(PORT, '127.0.0.1', () => {
       const addr = server.address();
       if (addr.address !== '127.0.0.1') throw new Error(`refusing to listen on ${addr.address}`);
-      console.log(`bw editor  -> http://127.0.0.1:${PORT}  (project: ${ROOT})`);
+      console.log(`thisone    -> http://127.0.0.1:${PORT}  (project: ${ROOT})`);
       console.log(`app origin -> ${APP}`);
       console.log(`prompt tab -> ${PROMPT_ENABLED ? 'on (claude may write anywhere under the root)' : 'off (--prompt to enable)'}`);
     });
