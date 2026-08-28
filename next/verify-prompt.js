@@ -86,7 +86,7 @@ check('the styling rule is in the preamble, element or not',
       await panel.locator('[data-tw-idle-msg]').isVisible());
 
     // ---- selecting an element brings the strip back, and aims it ----
-    const target = page.locator('[data-bw-loc^="src/app/experiments/cora/login/page.tsx:"]').first();
+    const target = page.locator('[data-thisone-loc^="src/app/experiments/cora/login/page.tsx:"]').first();
     await target.click({ position: { x: 4, y: 4 } });
     check('selecting brings the strip back',
       await panel.locator('.bw-tabs').isVisible());

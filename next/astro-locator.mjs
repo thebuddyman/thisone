@@ -2,7 +2,7 @@
  * Vite plugin: stamp every element in an `.astro` template with its source
  * location.
  *
- *   data-bw-loc="src/pages/index.astro:9:7:a1b2c3d4"
+ *   data-thisone-loc="src/pages/index.astro:9:7:a1b2c3d4"
  *
  * Runs with `enforce: 'pre'` so it sees the raw `.astro` source, before Astro's
  * own plugin compiles the template away.
@@ -74,7 +74,7 @@ export function createAstroLocator({ root }) {
   let compiler;
 
   return {
-    name: 'bw-editor-astro-locator',
+    name: 'thisone-astro-locator',
     enforce: 'pre', // before Astro compiles the template away
     apply: 'serve', // dev only; never part of `astro build`
     async transform(code, id) {
@@ -109,7 +109,7 @@ export function createAstroLocator({ root }) {
       for (const el of found) {
         const { line, col } = lineColOf(code, el.start);
         out = out.slice(0, el.insertAt) +
-          ` data-bw-loc="${rel}:${line}:${col}:${hash}"` +
+          ` data-thisone-loc="${rel}:${line}:${col}:${hash}"` +
           out.slice(el.insertAt);
       }
       return { code: out, map: null };

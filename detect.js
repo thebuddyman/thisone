@@ -176,10 +176,17 @@ function detectWiring(plan) {
       return false;
     }
   };
+  // Every name this tool has shipped under, newest first. A rename must *add*
+  // to this list, never replace it: a project wired by an older release still
+  // carries the old name in its config and on disk, and a detector that has
+  // forgotten it calls that project unwired — which is how uiux_experiment
+  // became undetectable, and unwirable, after the last one.
+  const LOADER_MARKS = ['thisone-loader', 'bw-loader', 'tw-editor'];
+  const SHIMS = ['tools/thisone-loader.cjs', 'tools/bw-loader.cjs'];
   return {
-    loader: has(plan.configFile, 'bw-loader') || has(plan.configFile, 'tw-editor'),
+    loader: LOADER_MARKS.some((m) => has(plan.configFile, m)),
     overlay: has(plan.entryFile, 'overlay.js'),
-    loaderShim: fs.existsSync(path.join(plan.root, 'tools/bw-loader.cjs')),
+    loaderShim: SHIMS.some((f) => fs.existsSync(path.join(plan.root, f))),
   };
 }
 

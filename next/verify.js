@@ -33,7 +33,7 @@ async function pickColor(panel, prefix, hue, shade) {
  * reads as a broken panel.
  */
 async function selectTyped(page, panel, locPrefix, skip = 0) {
-  const cands = page.locator(`[data-bw-loc^="${locPrefix}"]`);
+  const cands = page.locator(`[data-thisone-loc^="${locPrefix}"]`);
   const total = await cands.count();
   let seen = 0;
   for (let i = 0; i < total; i++) {
@@ -163,14 +163,14 @@ function restore(g) {
   check('the editor starts off, with only its toggle showing',
     (await mode.count()) === 1 && (await mode.getAttribute('aria-pressed')) === 'false',
     await mode.getAttribute('aria-pressed'));
-  await page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
+  await page.locator('[data-thisone-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
   check('clicking the page selects nothing while it is off', !(await panel.isVisible()));
   await mode.click();
   check('turning it on says so', (await mode.getAttribute('aria-pressed')) === 'true');
 
-  const target = page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]');
+  const target = page.locator('[data-thisone-loc^="src/app/page.tsx:5:5:"]');
   check('loader stamped the page.tsx element', (await target.count()) === 1,
-    await target.getAttribute('data-bw-loc'));
+    await target.getAttribute('data-thisone-loc'));
 
   // ---- select and preview ----
   await target.click({ position: { x: 5, y: 5 } });
@@ -204,7 +204,7 @@ function restore(g) {
     };
   }, sel);
 
-  const SEL = '[data-bw-loc^="src/app/page.tsx:5:5:"]';
+  const SEL = '[data-thisone-loc^="src/app/page.tsx:5:5:"]';
   const bgBefore = (await rgbOf(SEL)).actual;
   await pickColor(panel, 'bg', 'emerald', '500');
   const bgAfter = await rgbOf(SEL);
@@ -212,7 +212,7 @@ function restore(g) {
     bgAfter.actual !== bgBefore && bgAfter.actual === bgAfter.emerald,
     `${bgBefore} → ${bgAfter.actual} (emerald ${bgAfter.emerald})`);
   check('preview opt-in attribute was set',
-    (await target.getAttribute('data-bw-edited')) !== null);
+    (await target.getAttribute('data-thisone-edited')) !== null);
 
   // ---- save to the .tsx ----
   const saveBtn = panel.locator('[data-tw-save]');
@@ -243,7 +243,7 @@ function restore(g) {
   const settled = (fn) => page.waitForFunction(fn, null, { timeout: 20000 })
     .then(() => true).catch(() => false);
   await settled(() => {
-    const el = document.querySelector('[data-bw-loc^="src/app/page.tsx:5:5:"]');
+    const el = document.querySelector('[data-thisone-loc^="src/app/page.tsx:5:5:"]');
     if (!el) return false;
     const px = (css) => {
       const cv = document.createElement('canvas');
@@ -256,7 +256,7 @@ function restore(g) {
     return px(getComputedStyle(el).backgroundColor) === px('oklch(69.6% 0.17 162.48)');
   });
   const hmr = await page.evaluate(() => {
-    const el = document.querySelector('[data-bw-loc^="src/app/page.tsx:5:5:"]');
+    const el = document.querySelector('[data-thisone-loc^="src/app/page.tsx:5:5:"]');
     if (!el) return { missing: true };
     const px = (css) => {
       const cv = document.createElement('canvas');
@@ -477,7 +477,7 @@ function restore(g) {
   // measuring a section that correctly is not there reads as a broken panel.
   // It must also live in the Cora page, because the write below diffs that
   // file and that file is the one this run guarded.
-  const typoCands = page.locator('[data-bw-loc^="src/app/experiments/cora/login/page.tsx:"]');
+  const typoCands = page.locator('[data-thisone-loc^="src/app/experiments/cora/login/page.tsx:"]');
   const typoTotal = await typoCands.count();
   let typoBtn = null;
   for (let i = 0; i < typoTotal; i++) {
@@ -738,7 +738,7 @@ function restore(g) {
     const want = getComputedStyle(probe).fontFamily;
     probe.remove();
     return { want, got: getComputedStyle(el).fontFamily };
-  }, [voltFonts.themeVars[famTarget], `[data-bw-loc="${await voltEl.getAttribute('data-bw-loc')}"]`]);
+  }, [voltFonts.themeVars[famTarget], `[data-thisone-loc="${await voltEl.getAttribute('data-thisone-loc')}"]`]);
   check('the family the token names is the family the element renders',
     facePaint.got === facePaint.want, `${facePaint.got} vs ${facePaint.want}`);
 
@@ -810,7 +810,7 @@ function restore(g) {
   await page.waitForTimeout(600);
 
   // ---- refusal: template-literal className must not be touched ----
-  const loc = await page.evaluate(() => document.documentElement.getAttribute('data-bw-loc'));
+  const loc = await page.evaluate(() => document.documentElement.getAttribute('data-thisone-loc'));
   const refusal = await page.evaluate(
     async ([ed, id]) => {
       const r = await fetch(ed + '/edit', {
@@ -860,7 +860,7 @@ function restore(g) {
   await page.goto(APP + '/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(700);
   const rootBefore = snapshot(PAGE);
-  await page.locator('[data-bw-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
+  await page.locator('[data-thisone-loc^="src/app/page.tsx:5:5:"]').click({ position: { x: 4, y: 4 } });
   await page.waitForTimeout(250);
   check('the delete handle appears on a selection', await xHandle.isVisible());
   await xHandle.click();
@@ -879,7 +879,7 @@ function restore(g) {
   await page.goto(APP + '/experiments/volt/design-system', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
   const voltBefore = snapshot(VOLT);
-  const shared = page.locator('[data-bw-loc^="src/app/experiments/volt/design-system/page.tsx:555:9:"]').first();
+  const shared = page.locator('[data-thisone-loc^="src/app/experiments/volt/design-system/page.tsx:555:9:"]').first();
   await shared.scrollIntoViewIfNeeded();
   await shared.click();
   await page.waitForTimeout(250);

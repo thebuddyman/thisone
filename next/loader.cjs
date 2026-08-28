@@ -4,7 +4,7 @@
  * Turbopack/webpack loader: stamp every JSX host element with its source
  * location plus the file's fingerprint.
  *
- *   data-bw-loc="src/app/page.tsx:24:7:a1b2c3d4"
+ *   data-thisone-loc="src/app/page.tsx:24:7:a1b2c3d4"
  *
  * The attribute is spliced in immediately after the tag name, so byte offsets
  * of everything else are unchanged and the line count is identical to the
@@ -59,7 +59,7 @@ module.exports = function bwLoader(source) {
     const shape = textShape(ts, sourceFile, node);
     inserts.push({
       pos: node.tagName.getEnd(),
-      attr: ` data-bw-loc="${rel}:${lineCol}:${hash}"` + (shape ? ` data-bw-text="${shape}"` : ''),
+      attr: ` data-thisone-loc="${rel}:${lineCol}:${hash}"` + (shape ? ` data-thisone-text="${shape}"` : ''),
     });
   });
 

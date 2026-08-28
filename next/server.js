@@ -331,8 +331,8 @@ const server = http.createServer((req, res) => {
     const prelude =
       'window.__TW_EDITOR__ = ' +
       JSON.stringify({
-        idAttr: 'data-bw-loc',
-        previewAttr: 'data-bw-edited',
+        idAttr: 'data-thisone-loc',
+        previewAttr: 'data-thisone-edited',
         endpoint: `http://localhost:${PORT}/edit`,
         promptEndpoint: PROMPT_ENABLED ? `http://localhost:${PORT}/prompt` : null,
         token: TOKEN,
@@ -405,10 +405,10 @@ compilePalette(ROOT)
     server.on('error', (err) => {
       if (err.code !== 'EADDRINUSE') throw err;
       console.error(`\nport ${PORT} is already in use.`);
-      console.error('Another bw-edit is probably running (one per project).');
-      console.error(`Give this one its own port:  bw-edit --port ${PORT + 100}`);
-      console.error('...and start the app with NEXT_PUBLIC_BW_PORT set to match,');
-      console.error('or use `bw-edit dev`, which starts both and picks the ports itself.\n');
+      console.error('Another thisone is probably running (one per project).');
+      console.error(`Give this one its own port:  thisone --port ${PORT + 100}`);
+      console.error('...and start the app with NEXT_PUBLIC_THISONE_PORT set to match,');
+      console.error('or use `thisone dev`, which starts both and picks the ports itself.\n');
       process.exit(1);
     });
 

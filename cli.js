@@ -2,12 +2,12 @@
 'use strict';
 
 /**
- * bw-edit — detect a project, wire the editor into it, run it.
+ * thisone — detect a project, wire the editor into it, run it.
  *
- *   bw-edit --root ../uiux_experiment          inspect and start
- *   bw-edit --root ../uiux_experiment --wire   add the loader + overlay first
- *   bw-edit --root ../uiux_experiment --unwire remove them again
- *   bw-edit --root ../uiux_experiment --check  report only, change nothing
+ *   thisone --root ../uiux_experiment          inspect and start
+ *   thisone --root ../uiux_experiment --wire   add the loader + overlay first
+ *   thisone --root ../uiux_experiment --unwire remove them again
+ *   thisone --root ../uiux_experiment --check  report only, change nothing
  *
  * Wiring edits the target's own config, so every touched file is copied to
  * .backups/ first and `--unwire` restores it. Where an unambiguous anchor
@@ -21,7 +21,15 @@ const { createRequire } = require('module');
 const { detect, detectWiring, whyItDied } = require('./detect');
 
 const HERE = __dirname;
-const MARK = 'bw-editor';
+// The name written into a project today, and every name written by a release
+// before it. `MARK` is what --wire puts in; `MARKS` is what --unwire looks for,
+// so a rename cannot leave an already-wired project carrying a block this tool
+// no longer recognises. Same rule as detect.js's LOADER_MARKS, and the same
+// reason: the failure is silent from the user's side — the block simply stays.
+const MARKS = ['thisone', 'bw-editor', 'tw-editor'];
+const MARK = MARKS[0];
+const ANY_MARK = '(?:' + MARKS.join('|') + ')';
+const hasMark = (src) => MARKS.some((m) => src.includes(m));
 const PKG = require('./package.json').name;
 
 // The port the overlay is fetched from when nothing says otherwise. It is a
@@ -55,10 +63,10 @@ const green = (s) => `\x1b[32m${s}\x1b[0m`;
  * Drop Turbopack's dev cache, because wiring has just invalidated it.
  *
  * `--wire` and `--unwire` both change next.config.ts and both add or remove
- * `tools/bw-loader.cjs`, and Turbopack caches module *resolutions* — including
+ * `tools/thisone-loader.cjs`, and Turbopack caches module *resolutions* — including
  * the failed ones. Unwire while the dev server is up and it caches "there is no
  * such file"; wire again and the file is back but the cache is not asked again,
- * so every page 500s with `Cannot find module .../tools/bw-loader.cjs` naming a
+ * so every page 500s with `Cannot find module .../tools/thisone-loader.cjs` naming a
  * path that is plainly there. Nothing short of clearing it recovers, and the
  * error points at the file rather than at the cache, so it reads as our bug.
  *
@@ -73,7 +81,7 @@ function clearDevCache(root) {
 }
 
 function backupDir(root) {
-  return path.join(root, '.bw-edit', 'backups');
+  return path.join(root, '.thisone', 'backups');
 }
 
 function backup(root, abs) {
@@ -81,7 +89,7 @@ function backup(root, abs) {
   fs.mkdirSync(dir, { recursive: true });
   // Ours to keep, not theirs to commit. Self-ignoring, so it stays out of the
   // project's history without editing the project's own .gitignore.
-  const ignore = path.join(root, '.bw-edit', '.gitignore');
+  const ignore = path.join(root, '.thisone', '.gitignore');
   if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
   // Named after the path inside the project and not the basename: `layout.tsx`
   // and `page.tsx` repeat across a Next app, and two guards taken in the same
@@ -96,7 +104,7 @@ function backup(root, abs) {
 // ------------------------------------------------------------------ wiring
 
 /**
- * The shim written into the project as `tools/bw-loader.cjs`.
+ * The shim written into the project as `tools/thisone-loader.cjs`.
  *
  * By package name wherever the editor resolves from the project, because this
  * file is committed with the repo: an absolute path here is one machine's
@@ -119,20 +127,20 @@ function loaderShim(root) {
   const note = byName
     ? 'Resolved by name, so this file is safe to commit.'
     : `NOT PORTABLE: absolute path to a checkout on this machine, because\n// ${PKG} does not resolve from this project. Install it and re-run --wire\n// before committing this file.`;
-  return `// Added by bw-edit. Dev-only source-location stamper; delete with --unwire.
+  return `// Added by thisone. Dev-only source-location stamper; delete with --unwire.
 // ${note}
 module.exports = require(${JSON.stringify(target)});
 `;
 }
 
 const TURBOPACK_RULE = `
-  // ${MARK}:start — dev-only source-location stamping. Remove with \`bw-edit --unwire\`.
+  // ${MARK}:start — dev-only source-location stamping. Remove with \`thisone --unwire\`.
   turbopack: {
     rules: {
       "*.{tsx,jsx}": {
         condition: { all: [{ not: "foreign" }, "development"] },
         loaders: [
-          { loader: require("node:path").join(process.cwd(), "tools/bw-loader.cjs"),
+          { loader: require("node:path").join(process.cwd(), "tools/thisone-loader.cjs"),
             options: { root: process.cwd() } },
         ],
       },
@@ -146,7 +154,7 @@ const TURBOPACK_RULE = `
 // the moment the constant was edited, and a replace that does not match fails
 // silently — which is the one failure mode this file cannot afford.
 const TURBOPACK_BLOCK = new RegExp(
-  '\\n[ \\t]*// ' + MARK + ':start[\\s\\S]*?' + MARK + ':end'
+  '\\n[ \\t]*// ' + ANY_MARK + ':start[\\s\\S]*?' + ANY_MARK + ':end'
 );
 
 // Bracketed by explicit markers so --unwire removes exactly what --wire added,
@@ -162,38 +170,38 @@ const TURBOPACK_BLOCK = new RegExp(
  * layout renders on the server or is pulled into a client component.
  */
 const overlayTags = () => `
-        {/* ${MARK}:start — dev-only. Remove with \`bw-edit --unwire\`. */}
+        {/* ${MARK}:start — dev-only. Remove with \`thisone --unwire\`. */}
         {process.env.NODE_ENV === "development" && (
           <>
             <link
               rel="stylesheet"
-              href={\`http://127.0.0.1:\${process.env.NEXT_PUBLIC_BW_PORT ?? ${DEFAULT_PORT}}/palette.css\`}
+              href={\`http://127.0.0.1:\${process.env.NEXT_PUBLIC_THISONE_PORT ?? ${DEFAULT_PORT}}/palette.css\`}
             />
             <script
-              src={\`http://127.0.0.1:\${process.env.NEXT_PUBLIC_BW_PORT ?? ${DEFAULT_PORT}}/overlay.js\`}
+              src={\`http://127.0.0.1:\${process.env.NEXT_PUBLIC_THISONE_PORT ?? ${DEFAULT_PORT}}/overlay.js\`}
               async
             />
           </>
         )}
         {/* ${MARK}:end */}`;
 const OVERLAY_BLOCK = new RegExp(
-  '\\n[ \\t]*\\{/\\* ' + MARK + ':start[\\s\\S]*?' + MARK + ':end \\*/\\}'
+  '\\n[ \\t]*\\{/\\* ' + ANY_MARK + ':start[\\s\\S]*?' + ANY_MARK + ':end \\*/\\}'
 );
 
 function wireNext(plan) {
   const done = [];
   const manual = [];
 
-  const shim = path.join(plan.root, 'tools/bw-loader.cjs');
+  const shim = path.join(plan.root, 'tools/thisone-loader.cjs');
   if (!fs.existsSync(shim)) {
     fs.mkdirSync(path.dirname(shim), { recursive: true });
     fs.writeFileSync(shim, loaderShim(plan.root));
-    done.push('tools/bw-loader.cjs (new)');
+    done.push('tools/thisone-loader.cjs (new)');
   }
 
   const configAbs = path.join(plan.root, plan.configFile);
   let config = fs.readFileSync(configAbs, 'utf8');
-  if (config.includes(MARK)) {
+  if (hasMark(config)) {
     done.push(`${plan.configFile} (already wired)`);
   } else if (/turbopack\s*:/.test(config)) {
     manual.push([plan.configFile, 'it already defines `turbopack`; merge this in by hand:', TURBOPACK_RULE]);
@@ -214,7 +222,7 @@ function wireNext(plan) {
     manual.push(['(layout)', 'no layout file found; add before </body>:', overlayTags()]);
   } else {
     const entry = fs.readFileSync(entryAbs, 'utf8');
-    if (entry.includes(MARK)) {
+    if (hasMark(entry)) {
       done.push(`${plan.entryFile} (already wired)`);
     } else if (!entry.includes('</body>')) {
       manual.push([plan.entryFile, 'no </body> to anchor to; add:', overlayTags()]);
@@ -234,18 +242,18 @@ function unwireNext(plan) {
   const removed = [];
   const stuck = [];
 
-  const shim = path.join(plan.root, 'tools/bw-loader.cjs');
+  const shim = path.join(plan.root, 'tools/thisone-loader.cjs');
   if (fs.existsSync(shim)) {
     fs.unlinkSync(shim);
     try { fs.rmdirSync(path.dirname(shim)); } catch { /* not empty; leave it */ }
-    removed.push('tools/bw-loader.cjs');
+    removed.push('tools/thisone-loader.cjs');
   }
 
   for (const rel of [plan.configFile, plan.entryFile].filter(Boolean)) {
     const abs = path.join(plan.root, rel);
     if (!fs.existsSync(abs)) continue;
     const before = fs.readFileSync(abs, 'utf8');
-    if (!before.includes(MARK)) continue;
+    if (!hasMark(before)) continue;
     backup(plan.root, abs);
     const after = before.replace(rel === plan.configFile ? TURBOPACK_BLOCK : OVERLAY_BLOCK, '');
     if (after !== before) {
@@ -292,7 +300,7 @@ if (flag('check')) process.exit(0);
 if (flag('unwire')) {
   const { removed, stuck } = unwireNext(plan);
   console.log(removed.length
-    ? `\n${green('Unwired')} — reverted: ${removed.join(', ')}   ${dim('(originals in .bw-edit/backups/)')}`
+    ? `\n${green('Unwired')} — reverted: ${removed.join(', ')}   ${dim('(originals in .thisone/backups/)')}`
     : `\n${dim('Nothing to unwire.')}`);
   for (const rel of stuck) {
     console.log(`${red('Left in place: ' + rel)} — it carries a ${MARK} block this version ` +
@@ -329,7 +337,7 @@ if (flag('wire')) {
     console.log(`\n${dim('Already wired — nothing to do.')}`);
   } else {
     const { done, manual } = wireNext(plan);
-    if (done.length) console.log(`\n${green('Wired')} — ${done.join(', ')}   ${dim('(originals in .bw-edit/backups/)')}`);
+    if (done.length) console.log(`\n${green('Wired')} — ${done.join(', ')}   ${dim('(originals in .thisone/backups/)')}`);
     for (const [file, why, snippet] of manual) {
       console.log(`\n${red('Manual step for ' + file)}: ${why}\n${snippet}`);
     }
@@ -339,13 +347,13 @@ if (flag('wire')) {
     console.log(dim('Cleared .next/dev — Turbopack caches which files the loader rule '
       + 'resolves to, including the ones that were missing a moment ago.'));
   }
-  console.log(`\nNext: ${bold('bw-edit dev')} starts your app and the editor together.`);
-  console.log(`${dim('Or run ' + (plan.devCommand || 'the app') + ' yourself and ')}${bold('bw-edit')}${dim(' beside it.')}\n`);
+  console.log(`\nNext: ${bold('thisone dev')} starts your app and the editor together.`);
+  console.log(`${dim('Or run ' + (plan.devCommand || 'the app') + ' yourself and ')}${bold('thisone')}${dim(' beside it.')}\n`);
   process.exit(0);
 }
 
 if (!wired) {
-  console.log(`\n${red('Not wired yet.')} Run ${bold('bw-edit --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
+  console.log(`\n${red('Not wired yet.')} Run ${bold('thisone --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
   process.exit(1);
 }
 
@@ -444,7 +452,7 @@ async function holds(proc, port, waitMs) {
 }
 
 /**
- * `bw-edit dev` — the app and the editor, from one command.
+ * `thisone dev` — the app and the editor, from one command.
  *
  * Three numbers have to agree: the app's port, the editor's port, and the
  * origin the editor accepts writes from. Left to the user they are three
@@ -462,7 +470,7 @@ async function holds(proc, port, waitMs) {
  */
 async function runDev() {
   if (plan.framework === 'html') {
-    console.log(`\n${red('`dev` is for framework projects.')} This one is served directly; run ${bold('bw-edit')}.\n`);
+    console.log(`\n${red('`dev` is for framework projects.')} This one is served directly; run ${bold('thisone')}.\n`);
     process.exit(1);
   }
   const [bin, ...rest] = (plan.devCommand || 'next dev').split(' ');
@@ -488,7 +496,7 @@ async function runDev() {
       cwd: plan.root,
       // Read when the layout renders, which is what lets the editor live
       // anywhere without the number being written into the user's source.
-      env: { ...process.env, NEXT_PUBLIC_BW_PORT: String(bwPort) },
+      env: { ...process.env, NEXT_PUBLIC_THISONE_PORT: String(bwPort) },
     });
     if (!(await holds(app, appPort, 40000))) {
       app.kill();
@@ -504,8 +512,8 @@ async function runDev() {
         console.log(`\n${red('A dev server for this project is already running.')}`);
         if (at) console.log(`  It is at ${bold(at)}${pid ? dim(`  (pid ${pid})`) : ''}.`);
         console.log(`  ${plan.devCommand || 'The dev server'} allows one per directory, so this cannot start beside it.`);
-        console.log(`\n  Either stop it${pid ? ` — ${bold('kill ' + pid)}` : ''} and run ${bold('bw-edit dev')} again,`);
-        console.log(`  or leave it and run ${bold('bw-edit')} on its own beside it.\n`);
+        console.log(`\n  Either stop it${pid ? ` — ${bold('kill ' + pid)}` : ''} and run ${bold('thisone dev')} again,`);
+        console.log(`  or leave it and run ${bold('thisone')} on its own beside it.\n`);
         process.exit(1);
       }
 
@@ -553,7 +561,7 @@ if (port !== DEFAULT_PORT) {
   // The layout reads this at render time; without it the overlay is fetched
   // from the default port and nothing loads, silently.
   console.log(`${bold('non-default port')} — start your app with ` +
-    `${bold('NEXT_PUBLIC_BW_PORT=' + port)} or the overlay will not load.`);
+    `${bold('NEXT_PUBLIC_THISONE_PORT=' + port)} or the overlay will not load.`);
 }
 console.log('');
 process.on('SIGINT', () => { server.kill(); process.exit(0); });

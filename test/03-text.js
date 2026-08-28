@@ -395,7 +395,7 @@ const selectAllIn = page => page.evaluate(() => {
   // suites address.
   const expr = page.locator('[data-eid="6"]');
   await page.keyboard.press('Escape');
-  await expr.evaluate((el) => el.setAttribute('data-bw-text', 'expr'));
+  await expr.evaluate((el) => el.setAttribute('data-thisone-text', 'expr'));
   await expr.click();
   check('the Text row is still on screen — silence would read as a bug',
     await panel.locator('[data-tw-field="text"]').isVisible());
@@ -408,7 +408,7 @@ const selectAllIn = page => page.evaluate(() => {
     !(await panel.locator('[data-tw-text]').isVisible()));
   check('and the page will not take typing either',
     !(await expr.evaluate((el) => el.isContentEditable)));
-  await expr.evaluate((el) => el.removeAttribute('data-bw-text'));
+  await expr.evaluate((el) => el.removeAttribute('data-thisone-text'));
 
   await page.locator('[data-eid="6"]').click();
   await page.screenshot({ path: `${__dirname}/text.png`, clip: { x: 0, y: 0, width: 1280, height: 620 } });

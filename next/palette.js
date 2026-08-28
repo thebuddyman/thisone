@@ -13,14 +13,14 @@
  * which silently kills responsive variants. Measured on a real page: sections
  * written `px-6 md:px-12` rendered at 24px instead of 48px. Scoped, the palette
  * matches nothing until the editor opts an element in, and
- * `[data-bw-edited].px-6` (0,2,0) still beats `.md:px-12` (0,1,0).
+ * `[data-thisone-edited].px-6` (0,2,0) still beats `.md:px-12` (0,1,0).
  */
 
 const fs = require('fs');
 const path = require('path');
 const { createRequire } = require('module');
 
-const SCOPE = '[data-bw-edited]';
+const SCOPE = '[data-thisone-edited]';
 
 /**
  * Read the colour ramps straight out of the project's own tailwind theme, so
@@ -120,7 +120,7 @@ const CANDIDATES = [
 // scale, every project redefines the radius ladder, and `@theme inline` bakes
 // the result straight into the utility: on the Cora route `.rounded-lg` is
 // `var(--radius)` — 12px — while `--radius-lg` still resolves to the stock 8px.
-// A pre-generated `[data-bw-edited].rounded-lg` would outrank the route's own
+// A pre-generated `[data-thisone-edited].rounded-lg` would outrank the route's own
 // rule and visibly shrink an element the moment it was touched. The overlay
 // reads the rungs off the live page instead, and emits a rule only for the
 // ones this route has never generated.

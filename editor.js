@@ -333,7 +333,7 @@
    * it: the same refusal, arriving before the typing rather than after.
    */
   function canEditText(el) {
-    if (el.getAttribute('data-bw-text') === 'expr') return false;
+    if (el.getAttribute('data-thisone-text') === 'expr') return false;
     return el.children.length === 0;
   }
 
@@ -645,7 +645,7 @@
    * change mid-session keeps you editing, and a fresh tab always starts on the
    * page as its own users see it.
    */
-  var MODE_KEY = 'bw-editor-mode';
+  var MODE_KEY = 'thisone-mode';
   var editing = false;
   var modeToggle = null;
   var modeRing = null;
@@ -4640,7 +4640,7 @@
       // An element whose text comes from an expression is the exception: it
       // reads as ordinary text on the page, so silence there looks like a bug
       // rather than a rule. That one gets a line saying why.
-      var shape = selected ? (selected.getAttribute('data-bw-text') || '') : '';
+      var shape = selected ? (selected.getAttribute('data-thisone-text') || '') : '';
       var speaks = shape === 'expr';
       // Runs are offered wherever there are any, not only where the loader said
       // so: the stamp is a Next thing, and the same shape occurs in HTML mode

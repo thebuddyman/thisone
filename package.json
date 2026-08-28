@@ -1,5 +1,5 @@
 {
-  "name": "bw-pl-browsereditor",
+  "name": "thisone",
   "version": "0.1.0",
   "description": "Proof of concept: visual Tailwind editor with write-back to source",
   "main": "server.js",
@@ -38,7 +38,7 @@
     "typescript": "^5.9.3"
   },
   "bin": {
-    "bw-edit": "./cli.js"
+    "thisone": "./cli.js"
   },
   "engines": {
     "node": ">=20.9.0"

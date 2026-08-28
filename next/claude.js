@@ -137,7 +137,7 @@ function runTurn(opts, onEvent) {
     stdio: ['pipe', 'pipe', 'pipe'],
     // A prompt arriving from a web page must not inherit whatever the editor
     // server happened to be started with.
-    env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'bw-editor' }),
+    env: Object.assign({}, process.env, { CLAUDE_CODE_ENTRYPOINT: 'thisone' }),
   });
 
   let done = false;

@@ -1,4 +1,4 @@
-# bw-pl-browsereditor — handover
+# thisone — handover
 
 A visual Tailwind editor: turn on edit mode, click an element in the browser,
 change its classes and text or remove it outright, and the edit is written back
@@ -33,7 +33,7 @@ Without `--prompt` the route 404s and the overlay is told `promptEndpoint:null`,
 so the tab is never drawn. Two tabs on screen means the flag is on.
 
 `uiux_experiment` is already wired (`next.config.ts`, `src/app/layout.tsx`,
-`tools/bw-loader.cjs`). `cli.js --unwire` removes it, byte-exactly.
+`tools/thisone-loader.cjs`). `cli.js --unwire` removes it, byte-exactly.
 
 ---
 
@@ -43,7 +43,7 @@ so the tab is never drawn. Two tabs on screen means the flag is on.
 |---|---|
 | `editor.js` | the whole client overlay — panel, selection, all controls (~2900 lines) |
 | `server.js` | HTML mode: tags, serves, writes back |
-| `next/loader.cjs` | Turbopack loader — stamps `data-bw-loc="file:line:col:hash"` |
+| `next/loader.cjs` | Turbopack loader — stamps `data-thisone-loc="file:line:col:hash"` |
 | `next/jsx-adapter.js` | the writer: resolves a location, replaces or cuts a byte span |
 | `next/palette.js` | compiles the dev preview stylesheet; extracts colours/sizes/weights/radii |
 | `next/server.js` | the editor server for a Next project |
@@ -51,7 +51,7 @@ so the tab is never drawn. Two tabs on screen means the flag is on.
 | `next/verify-prompt.js` | live suite for the Prompt tab; spends real quota, not in `npm test` |
 | `next/astro-locator.mjs` | written, **unused** — Astro is blocked, see below |
 | `assets/` | the panel's icons, exported from Figma and inlined verbatim |
-| `detect.js` / `cli.js` | framework detection and `bw-edit` |
+| `detect.js` / `cli.js` | framework detection and `thisone` |
 | `test/` | 13 suites; `run.mjs` orchestrates |
 
 Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
@@ -64,6 +64,30 @@ Plans live at `~/.claude/plans/tailwind-editor-restructure.md` (current) and
 Every one of these came from measuring the real codebases. Do not undo them
 without re-measuring.
 
+**The package is `thisone`, and only what reaches a stranger's repo was
+renamed.** `this-one` is taken on npm by an abandoned package — 8 versions in 6
+days in 2024, no README, 3 downloads a week — and `thisone` is free, which is
+the better name anyway: you write it "this one" and you install `thisone`.
+`this-one-editor` was rejected because "editor" is the same ceiling `tw-` would
+have been, and the point is that the editing model is not specific to Tailwind
+or to Next. About 46 sites moved: the bin, `tools/thisone-loader.cjs`,
+`.thisone/backups/`, `NEXT_PUBLIC_THISONE_PORT`, the wire markers, and the
+`data-thisone-*` attributes. The ~500 internal `bw-*` CSS classes and the 474
+`data-tw-*` test hooks stayed exactly where they were: **`bw` is Bloomworks, the
+studio prefix, not the product name.** That is the line — their repo speaks the
+product's name, our own code speaks the house prefix.
+
+**A rename adds to the marker lists; it never replaces them.** `detect.js` has
+`LOADER_MARKS` and `SHIMS`, `cli.js` has `MARKS` and `hasMark()`, and each
+carries every name this tool has ever written into a project. A project wired by
+an older release still has the old name in its config and on disk, so a detector
+that has forgotten it calls that project *unwired* — and `--unwire` then leaves
+the block in place, which from the user's side is silent. This is not
+hypothetical: it is what happened to `uiux_experiment` across the last rename,
+and re-running the sed over `detect.js` reproduced it immediately, because a
+blanket replace turns the legacy entry into a duplicate of the new one. `MARK`
+is what `--wire` writes; `MARKS` is what everything else matches against.
+
 **Writes are byte-span replacements, never AST reprints.** A save changes one
 line; nothing else moves, no quote style or trailing comma shifts into the diff.
 The loader and the writer share `hostElements()` so they cannot disagree about
@@ -71,7 +95,7 @@ what sits at `line:col`.
 
 **Tailwind v4 has no runtime JIT.** A class the editor invents has no CSS until
 it is in a source file. Preview comes from a dev-only palette compiled with the
-*project's own* Tailwind, scoped to `[data-bw-edited]`. Unscoped it beat the
+*project's own* Tailwind, scoped to `[data-thisone-edited]`. Unscoped it beat the
 app's own responsive variants — `px-6 md:px-12` rendered at 24px instead of 48px.
 Scoped, it changes nothing until an element is selected.
 
@@ -87,7 +111,7 @@ Opposite of font size, and for the colour reason: `@theme inline` bakes the
 token straight into the utility and emits no `--radius-*`. On the Cora route
 `.rounded-lg` is `var(--radius)`, 12px, while `--radius-lg` still resolves to
 the stock 8px. Radius is therefore the one control kept **out** of the
-pre-generated palette — a scoped `[data-bw-edited].rounded-lg` would outrank
+pre-generated palette — a scoped `[data-thisone-edited].rounded-lg` would outrank
 the route's own rule and visibly shrink an element the moment it was touched,
 the same failure as the `px-6 md:px-12` bug. Rungs a route has never generated
 get a runtime rule from the server's ladder instead.
@@ -720,7 +744,7 @@ get one.** The old note here said no rule is ever added — true while the map
 held only generated utilities, and false the moment it holds theme keys as
 well. `renderable.family` stays the record of what the page has already drawn
 and `FAMILIES` is a *copy* with the utilities merged over the variables, so
-`ensureFamilyRule` can skip by name: a scoped `[data-bw-edited].font-sans`
+`ensureFamilyRule` can skip by name: a scoped `[data-thisone-edited].font-sans`
 over a route's own `.font-sans` is the `px-6 md:px-12` failure again. The
 utility also wins the merge on value, because under `@theme inline` it is the
 truer of the two — cora's `.font-mono` carries `ui-monospace, "Cascadia Code"`
@@ -1177,7 +1201,7 @@ nothing re-renders — has its DOM updated by hand.
 than sitting next to the project, so nothing in a sibling checkout can catch
 them.**
 
-*Backups go in the project, at `.bw-edit/backups/`.* They used to live beside
+*Backups go in the project, at `.thisone/backups/`.* They used to live beside
 this code, which is fine for a checkout and fatal for a dependency: `__dirname`
 is then inside `node_modules`, the one directory `npm ci` deletes and a fresh
 clone never has — so the only copy of the user's own `next.config.ts` and
@@ -1187,7 +1211,7 @@ basename, which is the collision the trap below already warns about. The
 directory carries a self-ignoring `.gitignore` so it stays out of the project's
 history without editing the project's own.
 
-*The loader shim is resolved by package name.* It writes `tools/bw-loader.cjs`
+*The loader shim is resolved by package name.* It writes `tools/thisone-loader.cjs`
 into the user's repo, under `tools/`, where they will commit it — so an
 absolute path in it is one machine's path that breaks for every teammate and
 every CI checkout the moment it is pushed. `require('<pkg>/loader')` needs the
@@ -1200,7 +1224,7 @@ the file, rather than looking committable.
 `overlayTags` used to bake the number into the layout. Wire once at the
 default, later run `--port 3600`, and the overlay is fetched from the old port
 and simply never loads: no error, no missing file, a page with no editor on it
-and nothing saying why. It reads `NEXT_PUBLIC_BW_PORT ?? 3500` instead, and the
+and nothing saying why. It reads `NEXT_PUBLIC_THISONE_PORT ?? 3500` instead, and the
 CLI prints the export line whenever the port is not the default.
 
 The turbopack rule gained `:start`/`:end` markers to go with that, because both
@@ -1277,7 +1301,7 @@ deadline passes also counts, because a first compile is not on a clock.
 Turbopack caches module *resolutions*, failures included. Unwire while the dev
 server is up and it caches "there is no such file"; wire again and the file is
 back but the cache is not re-asked, so every page 500s with `Cannot find module
-…/tools/bw-loader.cjs` naming a path that is plainly sitting there. Nothing
+…/tools/thisone-loader.cjs` naming a path that is plainly sitting there. Nothing
 short of clearing it recovers, and the message points at the file rather than at
 the cache, so it reads as this tool's bug. `.next/dev` only: Next 16 keeps dev
 and build output in separate trees and a production build is not ours to throw
@@ -1289,7 +1313,7 @@ writes from have to agree, and the third fails in the worst way available:
 everything looks right until Save, which is refused as a bad origin. Found by
 running the tool as a stranger would with a real session already up — the
 default ports were both taken, which is not exotic, it is what a second project
-looks like. `bw-edit dev` picks both ports, sets `NEXT_PUBLIC_BW_PORT` in the
+looks like. `thisone dev` picks both ports, sets `NEXT_PUBLIC_THISONE_PORT` in the
 app's own environment and points the origin at it, so nobody types a number.
 
 **The port probe has to bind the way the server it is testing for binds.**
@@ -1318,7 +1342,7 @@ rather than as though you need an argument.
 **The panel is told what the source looks like, because the DOM cannot say.**
 `{name}` renders as ordinary characters, so an element the writer will refuse
 looks exactly like one it will accept — which is why the overlay used to let
-you type and object only at save. The loader stamps `data-bw-text` with what
+you type and object only at save. The loader stamps `data-thisone-text` with what
 it saw, from the same `textShape` the writer's own refusal is derived from, so
 the two cannot drift. Only the awkward shapes are named: `expr` for characters
 with no literal behind them, `runs` for a literal interleaved with markup.
@@ -1488,14 +1512,14 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
 2. **Blast radius — warned about on removal only.** Editing an element inside a
    shared component changes every instance. Measured: cora 42% of elements,
    polaris 72%, volt **78%**, worst case one location rendering 19 elements.
-   Removal now counts `[data-bw-loc^="file:line:col:"]`, ghosts all of them and
+   Removal now counts `[data-thisone-loc^="file:line:col:"]`, ghosts all of them and
    says "renders 19 elements … removes all 19" before you can save. **Class and
    text edits still say nothing** — same one-line count, same place to put it.
 3. **Template literals** — 211 sites in gw-web. Only the leading static quasi is
    safely editable; the delta mechanism from `cn()` already does the hard part.
 4. **Text from an expression is still not editable, and now says so.** A leaf
    whose text is `{variable}` no longer lets you type — the loader stamps
-   `data-bw-text="expr"` and the row says where the text comes from instead of
+   `data-thisone-text="expr"` and the row says where the text comes from instead of
    offering a box. Text interleaved with *markup* is editable now, one literal
    run at a time. On Cora 59.6% of elements were `mixed-content`, most of which
    this reaches.
@@ -1503,7 +1527,7 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    are done (see below), and the tarball is now an allowlist: 15 files, 143kB,
    `private: true` gone, `engines` at `>=20.9.0`. What is left is a README, a
    `.` entry in `exports` — `main: server.js` is decorative today, since an
-   `exports` map with no `.` makes `require('bw-pl-browsereditor')` throw
+   `exports` map with no `.` makes `require('thisone')` throw
    `ERR_PACKAGE_PATH_NOT_EXPORTED` — and one install test against a fresh
    `create-next-app`. Still only worth finishing if other people will use it.
 6. **The hex is still read-only as *text*.** The picker sets it and the opacity
