@@ -48,7 +48,7 @@
     "edit": "node cli.js"
   },
   "bin": {
-    "thisone": "./cli.js"
+    "thisone": "cli.js"
   },
   "dependencies": {
     "express": "^4.19.2",
