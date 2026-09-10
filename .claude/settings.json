@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm pack --dry-run)",
+      "Bash(node cli.js:*)",
+      "Bash(node next/verify.js:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(lsof -ti tcp:3131:*)"
+    ]
+  }
+}

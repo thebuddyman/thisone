@@ -45,7 +45,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test/run.mjs",
-    "edit": "node cli.js"
+    "edit": "node cli.js",
+    "prepublishOnly": "npm test"
   },
   "bin": {
     "thisone": "cli.js"
