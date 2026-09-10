@@ -4,7 +4,18 @@
  * `editFile` is bytes-in/bytes-out by design, so every refusal path and every
  * whitespace subtlety is testable as a plain string comparison.
  */
-const { loadTypeScript, editFile, hashOf, textShape, hostElements } = require('../next/jsx-adapter');
+const { loadTypeScript, editFile: writeSource, hashOf, textShape, hostElements } = require('../next/jsx-adapter');
+
+// Every successful write is kept so the suite can parse them all at the end.
+// The writer emits source code, and until this was added not one of these
+// checks asked whether what came out was still source: a className that had
+// lost its closing quote passed a string comparison and broke the app.
+const writes = [];
+function editFile(...args) {
+  const r = writeSource(...args);
+  if (r.ok && typeof r.contents === 'string') writes.push(r.contents);
+  return r;
+}
 
 const ts = loadTypeScript(__dirname);
 const results = [];
@@ -153,6 +164,56 @@ r = run(mixedBatch, [
 check('a refusal aborts the entire batch', !r.ok && r.refusals[0].reason === 'dynamic-classname',
   r.ok ? 'accepted!' : r.refusals[0].reason);
 
+// ------------------------------------------------- one line, many elements
+//
+// A component rendered several times is one line of source and many elements
+// on screen. Editing two of them and saving once sends two edits that resolve
+// to the same bytes. Splicing both applied the second against offsets the
+// first had already moved: it ate the closing quote off the className and left
+// the file unparseable at the next class carrying a decimal. Found in a real
+// project, where the error pointed at `py-3.5` two lines below the damage.
+
+const cards = [
+  'function Card({ inner }: any) {',
+  '  return (',
+  '    <div className="rounded-2xl px-4 py-3.5" style={{}}>',
+  '      {inner}',
+  '    </div>',
+  '  );',
+  '}',
+  '',
+].join('\n');
+
+r = run(cards, [
+  { tag: 'div', classes: 'rounded-2xl px-4 py-3' },
+  { tag: 'div', classes: 'rounded-2xl px-4 py-3' },
+]);
+check('two edits on one line with the same value apply once',
+  r.ok && r.contents.includes('className="rounded-2xl px-4 py-3" style={{}}>'),
+  r.ok ? JSON.stringify(r.contents.split('\n')[2]) : r.refusals[0].reason);
+
+check('a shorter value at a shared location keeps its closing quote',
+  r.ok && !/py-3style/.test(r.contents),
+  r.ok ? JSON.stringify(r.contents.split('\n')[2]) : r.refusals[0].reason);
+
+r = run(cards, [
+  { tag: 'div', classes: 'rounded-2xl px-4 py-3' },
+  { tag: 'div', classes: 'rounded-2xl px-4 py-8' },
+]);
+check('two edits on one line with different values are refused',
+  !r.ok && r.refusals[0].reason === 'shared-location',
+  r.ok ? 'accepted!' : r.refusals[0].reason);
+
+check('...and that refusal writes nothing at all', !r.ok && r.contents === undefined,
+  r.ok ? 'accepted!' : 'no contents');
+
+r = run('const a = <div>hi</div>;', [
+  { tag: 'div', classes: 'p-4' },
+  { tag: 'div', classes: 'p-4' },
+]);
+check('a doubled insert writes the attribute once, not twice',
+  r.ok && r.contents === 'const a = <div className="p-4">hi</div>;', r.contents);
+
 // ------------------------------------------------------------- staleness
 
 // ------------------------------------------------------------------- remove
@@ -285,6 +346,14 @@ r = editFile(ts, 'test.tsx', exprSrc, [
 check('...and the writer refuses that same element, for the same reason',
   !r.ok && r.refusals[0].reason === 'mixed-content',
   r.ok ? 'accepted!' : r.refusals[0].detail);
+
+const unparseable = writes.filter((src) => {
+  const sf = ts.createSourceFile('test.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return (sf.parseDiagnostics || []).length > 0;
+});
+check(`every write this suite made is still valid source (${writes.length} of them)`,
+  unparseable.length === 0,
+  unparseable.length ? JSON.stringify(unparseable[0].slice(0, 120)) : undefined);
 
 const failed = results.filter((x) => !x).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);

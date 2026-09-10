@@ -36,7 +36,7 @@ between suites and runs.
 | `02-spacing-sides` | Steppers, reveal rows, the "could a + do anything" rule. |
 | `03-text` | The three families behind the `text-` prefix, and the Size field. |
 | `04-safety` | The three bugs that made the first version untrustworthy: unsaved edits vanishing on refresh, the all-sides control ignoring `px-*`/`py-*`, and a stale id writing to the wrong element after an out-of-band edit. |
-| `05-jsx-adapter` | The writer: resolving a location, replacing or cutting a span. Unit. |
+| `05-jsx-adapter` | The writer: resolving a location, replacing or cutting a span, and collapsing two edits that land on one line. Every write it makes is parsed. Unit. |
 | `06-detect` | Framework detection, wiring and unwiring, `whyItDied`. Unit. |
 | `07-delete` | Removal in HTML mode. Nothing is destroyed until Save, so most checks are about what has not happened yet. |
 | `08-edit-mode` | The editor is off until asked for. Most checks are about the editor not acting. |

@@ -642,6 +642,25 @@ decision, so the log can be read by type at a glance and matches the studio's
 other repos. The commits before that date are plain sentences and are left
 as they are.
 
+**Two edits on one line collapse when they agree and are refused when they do
+not.** A component rendered several times is one line of source and many
+elements on screen, so editing two of them and saving once sends two edits that
+resolve to the same bytes. `editFile` spliced both back to front, which applied
+the second against offsets the first had already moved: it ate the closing
+quote off a `className` and left the file unparseable. Found in a real project,
+where Next pointed at `py-3.5` two lines below the damage, because a stray
+number is the first thing a JSX parser cannot use once a string runs on. Same
+value is the ordinary case and now applies once. Two different values have no
+answer to give, since there is one line to write, so the save is refused with
+`shared-location` rather than silently discarding one of them. A general
+overlap check sits behind the grouping for any span shape it does not name.
+
+**The writer's suite parses what it writes.** All 48 checks in
+`05-jsx-adapter` compared strings and none asked whether the result was still
+source, which is how a `className` missing its closing quote passed. Every
+successful write is now kept and parsed in one check at the end of the suite,
+so the whole class of damage fails there rather than in a user's project.
+
 ---
 
 ## Measured facts about these codebases
@@ -702,6 +721,8 @@ Space Grotesk 4, Euclid 5, Tiempos 6, Geist variable (all 9).
    Removal counts `[data-thisone-loc^="file:line:col:"]`, ghosts all of them and
    says "renders 19 elements … removes all 19" before you can save. **Class and
    text edits still say nothing**, and the same one-line count belongs there.
+   The writer no longer corrupts the file when two instances are edited before
+   one save, but a user still has no warning until the save is refused.
 3. **Template literals** are 211 sites in gw-web. Only the leading static quasi
    is safely editable, and the delta mechanism from `cn()` does the hard part.
 4. **Text from an expression is still not editable, and now says so.** A leaf

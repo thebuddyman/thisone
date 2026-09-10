@@ -8,6 +8,14 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+### Fixed
+- Editing two elements that come from the same line of source and saving once
+  no longer corrupts the file. It used to write both edits over the same bytes,
+  which cut the closing quote off the class list and left the project unable to
+  build. Both edits asking for the same value now write it once, and two edits
+  asking for different values are refused with a reason, because one line
+  cannot hold two answers.
+
 ## [0.1.1] - 2026-08-28
 
 ### Changed

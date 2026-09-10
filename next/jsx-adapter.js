@@ -94,6 +94,8 @@ const REFUSALS = {
   'no-text': 'element has no text body',
   'root-element': 'the element is what its component returns',
   'unsupported-parent': 'the element is not a child of other JSX',
+  'shared-location': 'several elements on screen are drawn from this one line',
+  'overlapping-edits': 'two edits cover the same bytes',
 };
 
 /**
@@ -423,7 +425,7 @@ function editFile(ts, filePath, source, edits) {
         refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
         continue;
       }
-      spans.push({ span, tag, insertion: (v) => v, value: '', remove: true });
+      spans.push({ id: edit.id, span, tag, insertion: (v) => v, value: '', remove: true });
       continue;
     }
 
@@ -452,7 +454,7 @@ function editFile(ts, filePath, source, edits) {
         for (const c of incoming) out.push(c);
         value = out.join(' ');
       }
-      spans.push({ span, tag, insertion: (v) => ` className="${v}"`, value });
+      spans.push({ id: edit.id, span, tag, insertion: (v) => ` className="${v}"`, value });
     }
 
     if (edit.text !== undefined) {
@@ -461,7 +463,7 @@ function editFile(ts, filePath, source, edits) {
         refusals.push({ id: edit.id, reason: span.reason, tag, detail: `${REFUSALS[span.reason]}: ${span.detail}` });
         continue;
       }
-      spans.push({ span, tag, insertion: (v) => v, value: escapeJsxText(String(edit.text).trim()) });
+      spans.push({ id: edit.id, span, tag, insertion: (v) => v, value: escapeJsxText(String(edit.text).trim()) });
     }
 
     // One entry per literal run the panel changed, each resolved by the text it
@@ -477,7 +479,7 @@ function editFile(ts, filePath, source, edits) {
           refused = true;
           break;
         }
-        spans.push({ span, tag, insertion: (v) => v, value: escapeJsxText(String(run.to).trim()) });
+        spans.push({ id: edit.id, span, tag, insertion: (v) => v, value: escapeJsxText(String(run.to).trim()) });
       }
       if (refused) continue;
     }
@@ -496,10 +498,54 @@ function editFile(ts, filePath, source, edits) {
   const live = spans.filter((s) => !cuts.some(
     (c) => c !== s && posOf(s) >= c.span.start && posOf(s) < c.span.end));
 
-  live.sort((a, b) => posOf(b) - posOf(a));
+  // One line of source can render many elements on screen, so two of them
+  // being edited before a save arrives here as two edits resolving to the same
+  // bytes. Splicing both would apply the second against offsets the first had
+  // already moved, which ate the closing quote off a className and left the
+  // file unparseable. Same value is the ordinary case and applies once; two
+  // different values have no answer to give, because there is only one line to
+  // write, so that is refused rather than guessed at.
+  const targetOf = (s) => (s.span.insertAt !== undefined
+    ? `i${s.span.insertAt}`
+    : `s${s.span.start}:${s.span.end}`);
+
+  const byTarget = new Map();
+  for (const item of live) {
+    const key = targetOf(item);
+    const first = byTarget.get(key);
+    if (!first) { byTarget.set(key, item); continue; }
+    if (first.value !== item.value || first.remove !== item.remove) {
+      const n = spans.filter((s) => targetOf(s) === key).length;
+      return { ok: false, refusals: [{
+        id: item.id,
+        reason: 'shared-location',
+        tag: item.tag,
+        detail: `${REFUSALS['shared-location']}: ${n} of them were edited and they were not all given the same value`,
+      }] };
+    }
+  }
+
+  const collapsed = [...byTarget.values()];
+  collapsed.sort((a, b) => posOf(b) - posOf(a));
+
+  // Belt and braces for a shape the grouping above does not name: back to
+  // front, each edit must end at or before the one already applied begins.
+  for (let i = 1; i < collapsed.length; i++) {
+    const prev = collapsed[i - 1];
+    const cur = collapsed[i];
+    const curEnd = cur.span.insertAt !== undefined ? cur.span.insertAt : cur.span.end;
+    if (curEnd > posOf(prev)) {
+      return { ok: false, refusals: [{
+        id: cur.id,
+        reason: 'overlapping-edits',
+        tag: cur.tag,
+        detail: `${REFUSALS['overlapping-edits']}: ${cur.tag} overlaps ${prev.tag}`,
+      }] };
+    }
+  }
 
   let out = source;
-  for (const item of live) {
+  for (const item of collapsed) {
     if (item.span.insertAt !== undefined) {
       out = out.slice(0, item.span.insertAt) + item.insertion(item.value) + out.slice(item.span.insertAt);
     } else {
@@ -507,7 +553,7 @@ function editFile(ts, filePath, source, edits) {
     }
   }
 
-  return { ok: true, contents: out, applied: [...new Set(live.map((s) => s.tag))] };
+  return { ok: true, contents: out, applied: [...new Set(collapsed.map((s) => s.tag))] };
 }
 
 module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, textRunSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };
