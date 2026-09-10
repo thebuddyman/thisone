@@ -1,7 +1,7 @@
 {
   "name": "@designbuddy/thisone",
-  "version": "0.1.1",
-  "description": "Design mode for your running app \u2014 point at any element, change it, and it's written back to source",
+  "version": "0.2.0",
+  "description": "Design mode for your running app — point at any element, change it, and it's written back to source",
   "keywords": [
     "tailwind",
     "visual-editor",
