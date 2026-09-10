@@ -82,10 +82,17 @@ and its writes go straight to disk. Without the flag the tab isn't even drawn.
 
 ## Things to know
 
-- **Editing a shared component changes every instance of it.** Delete warns you and
-  counts them; class and text edits currently don't.
+- **Editing a shared component changes every instance of it.** A class change now
+  shows that straight away: change one card's padding and every card drawn from
+  that line moves with it, as one pending change. Delete warns you and counts
+  them. Text edits still move only the one you clicked until you save.
 - Colors set with `style={{ }}` are read but can't be edited — an inline style beats
   any class, so writing one would do nothing.
 - Text that comes from a variable (`{name}`) can't be edited. The panel says so.
 - `cn()` is handled. `cva()` and template literals are refused, with a reason.
 - Server binds 127.0.0.1 only, fresh random token every run, origin-checked.
+
+## Changelog
+
+Every released change is in [CHANGELOG.md](CHANGELOG.md), and each release is
+listed at [Releases](https://github.com/thebuddyman/thisone/releases).
