@@ -26,7 +26,7 @@ node cli.js --root ../uiux_experiment dev       # app and editor together, ports
 cd ../uiux_experiment && npx next dev           # the app itself (port 3000)
 
 PORT=3001 node server.js                        # standalone HTML demo
-node next/verify.js --root ../uiux_experiment          # 96 live checks against the real app
+node next/verify.js --root ../uiux_experiment          # 103 live checks against the real app
 node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs --prompt, spends Claude quota
 ```
 

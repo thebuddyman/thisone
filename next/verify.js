@@ -899,6 +899,50 @@ function restore(g) {
   check('undo drops the pending change',
     (await panel.locator('[data-tw-save]').textContent()).trim() === 'Saved');
 
+  // Same line, same nineteen elements, this time for a class. Removal has
+  // always shown the whole group; a class change used to move one element and
+  // leave the other eighteen sitting still, which is the preview disagreeing
+  // with the save that is about to happen.
+  const SHARED = '[data-thisone-loc^="src/app/experiments/volt/design-system/page.tsx:555:9:"]';
+  const group = page.locator(SHARED);
+  const carrying = (cls) => group.evaluateAll(
+    (els, c) => els.filter((e) => e.classList.contains(c)).length, cls);
+  const classList = async () =>
+    ((await shared.getAttribute('class')) || '').split(/\s+/).filter(Boolean);
+
+  await shared.scrollIntoViewIfNeeded();
+  await shared.click({ force: true });
+  await page.waitForTimeout(300);
+  const before = await classList();
+  const padField = panel.locator('[data-tw-field="p-y"] input').first();
+  await padField.fill('28');
+  await padField.press('Enter');
+  await page.waitForTimeout(400);
+
+  // Derived, never hardcoded: 28px lands on a rung or on an arbitrary value
+  // depending on what this route has already generated, and the mirror is
+  // about the class travelling rather than about which class it is.
+  const added = (await classList()).filter((c) => before.indexOf(c) === -1);
+  check('the padding edit added exactly one class', added.length === 1, added.join(' '));
+  check('a class written on one instance shows on all 19',
+    (await carrying(added[0])) === 19,
+    `${added[0]} on ${await carrying(added[0])} of ${await group.count()}`);
+  check('every instance is marked so the preview stylesheet reaches it',
+    (await page.locator(SHARED + '[data-thisone-edited]').count()) === 19,
+    String(await page.locator(SHARED + '[data-thisone-edited]').count()));
+  check('the group is still one pending change, not nineteen',
+    (await panel.locator('[data-tw-save]').textContent()).trim() === 'Save 1 change',
+    (await panel.locator('[data-tw-save]').textContent()).trim());
+  check('mirroring wrote nothing to disk', snapshot(VOLT) === voltBefore);
+
+  await panel.locator('[data-tw-undo]').click();
+  await page.waitForTimeout(400);
+  check('undo takes the class off all 19', (await carrying(added[0])) === 0,
+    String(await carrying(added[0])));
+  check('undo clears the preview marker across the group',
+    (await page.locator(SHARED + '[data-thisone-edited]').count()) === 0,
+    String(await page.locator(SHARED + '[data-thisone-edited]').count()));
+
   // And now a real one, written and diffed.
   await page.goto(APP + '/experiments/cora/login', { waitUntil: 'networkidle' });
   await page.waitForTimeout(900);

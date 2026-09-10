@@ -8,6 +8,13 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+### Changed
+- Changing a class on an element that appears several times on the page now
+  updates every one of them straight away, instead of moving the one you
+  clicked and leaving the rest until after the save. They come from one line of
+  source, so they were always going to change together. It still counts as one
+  pending change, and undo takes it off all of them.
+
 ### Fixed
 - Editing two elements that come from the same line of source and saving once
   no longer corrupts the file. It used to write both edits over the same bytes,

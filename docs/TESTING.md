@@ -138,7 +138,7 @@ that share an id. Pure unit, so it runs first and costs nothing.
 
 ## The live suites
 
-### `next/verify.js`: 96 checks
+### `next/verify.js`: 103 checks
 
 Runs against the real app. Covers refusals, security (401, 403, 415), and a
 byte-exact restore of every file it touches. Some blocks are pinned to specific
@@ -150,7 +150,14 @@ routes on purpose:
   too and asserts 21.6px, where a corner built from the stock ladder would say
   16px.
 - **Removal** runs on `volt/design-system` because one line there renders 19
-  elements, which is what the warning exists for.
+  elements, which is what the warning exists for. The same 19 carry the
+  mirroring block: a class written on one instance has to appear on all of
+  them, every instance has to carry the preview marker or a class the route
+  never generated would render nothing, the group stays one pending change
+  rather than nineteen, and undo has to take it off all 19. The class is
+  derived from what the edit actually added rather than hardcoded, because
+  28px lands on a rung or on `py-[28px]` depending on what the route has
+  generated, and the point is that the class travels.
 - **Font families** are split across two routes, and the split matters.
   **Murmur** carries discovery: a `--font-*` in `@layer theme` with no
   generated utility is offered anyway (Inter, Space Grotesk), next/font's

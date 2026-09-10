@@ -448,6 +448,52 @@
     refresh();
   }
 
+  /**
+   * A class change is shown on every element the edited line renders.
+   *
+   * One line of source drawn nineteen times is nineteen elements on screen and
+   * one thing in the file, so changing one of them and watching the other
+   * eighteen sit still was the preview disagreeing with the save that was
+   * about to happen. Removal already worked this way — it ghosts the whole
+   * group and records the edit on one member — and this is the same move for
+   * classes.
+   *
+   * The delta is applied rather than the class string copied. Siblings are
+   * identical wherever the className is a plain literal, so the two are the
+   * same there; under `cn()` they are not, because a conditional argument can
+   * differ per instance, and copying would flatten a difference the save is
+   * going to keep. A delta is also exactly what the save sends for those.
+   */
+  function mirrorClasses(el) {
+    var group = (el === selected && selGroup) ? selGroup : sameSource(el);
+    var after = el.getAttribute('class') || '';
+    if (!group || group.length < 2) { clsNow.set(el, after); return; }
+
+    var was = clsNow.has(el) ? clsNow.get(el)
+      : (pristine.get(el) ? (pristine.get(el).cls || '') : '');
+    var before = String(was).split(/\s+/).filter(Boolean);
+    var now = after.split(/\s+/).filter(Boolean);
+    var added = now.filter(function (c) { return before.indexOf(c) === -1; });
+    var gone = before.filter(function (c) { return now.indexOf(c) === -1; });
+    clsNow.set(el, after);
+    if (!added.length && !gone.length) return;
+
+    for (var i = 0; i < group.length; i++) {
+      var node = group[i];
+      if (node === el) continue;
+      noteTouched(node); // before it changes, for the reason select() does it
+      for (var r = 0; r < gone.length; r++) node.classList.remove(gone[r]);
+      for (var a = 0; a < added.length; a++) {
+        if (!node.classList.contains(added[a])) node.classList.add(added[a]);
+      }
+      // The preview stylesheet is scoped to this attribute, so a mirrored class
+      // the route never generated would otherwise be in the list and render
+      // nothing.
+      if (PREVIEW_ATTR) node.setAttribute(PREVIEW_ATTR, '');
+      clsNow.set(node, node.getAttribute('class') || '');
+    }
+  }
+
   function markDirty(el, kind) {
     if (!el) return;
     var entry = dirty.get(el) || { text: false, classes: false, remove: false };
@@ -456,6 +502,9 @@
     if (kind === 'remove') entry.remove = true;
     dirty.set(el, entry);
     if (PREVIEW_ATTR) el.setAttribute(PREVIEW_ATTR, '');
+    // Before the snapshot, so the step records the whole group and not just
+    // the element that was clicked.
+    if (kind === 'classes') mirrorClasses(el);
     pushHistory(kind);
     updateFooter();
   }
@@ -475,6 +524,8 @@
   var historyAt = 0;       // the state currently on screen
   var touched = [];        // every element seen, in the order it was selected
   var pristine = new Map();// each one as it was before anything was done to it
+  var clsNow = new Map(); // el -> its class string as of the last mirror
+  var selGroup = null;    // the selection's instances, so a drag is not a full scan
   var restoring = false;   // guards pushHistory while a state is being applied
   var lastPush = null;     // for coalescing a run of keystrokes into one step
   // A drag is one step in the ledger too, however many frames the pointer took
@@ -543,6 +594,7 @@
     historyAt = 0;
     touched = [];
     pristine = new Map();
+    clsNow = new Map();
     lastPush = null;
     updateHistoryButtons();
   }
@@ -585,16 +637,22 @@
       if (s.dirty) dirty.set(el, { text: s.dirty.text, classes: s.dirty.classes, remove: s.dirty.remove });
       else dirty.delete(el);
 
-      if (PREVIEW_ATTR) {
-        if (dirty.has(el)) el.setAttribute(PREVIEW_ATTR, '');
-        else el.removeAttribute(PREVIEW_ATTR);
-      }
+      clsNow.set(el, el.getAttribute('class') || '');
     });
 
     // Outlines last: releaseOutline reads both the dirty entry and the ghost
     // attribute, and both had to settle first.
     touched.forEach(function (el) {
-      sameSource(el).forEach(function (node) {
+      // A class edit is recorded on one element and shown on every instance the
+      // line renders, so the marker answers to the group. Keyed on the group
+      // and not on `el`, or whichever member `touched` reached last would win.
+      var group = sameSource(el);
+      var groupDirty = group.some(function (n) { return dirty.has(n); });
+      group.forEach(function (node) {
+        if (PREVIEW_ATTR) {
+          if (groupDirty) node.setAttribute(PREVIEW_ATTR, '');
+          else node.removeAttribute(PREVIEW_ATTR);
+        }
         if (node === selected) setOutline(node, isRemoved(node) ? REMOVE_OUTLINE : SELECT_OUTLINE);
         else releaseOutline(node);
       });
@@ -7219,6 +7277,10 @@
     deselect();
     if (hovered === el) { releaseOutline(hovered); hovered = null; }
     selected = el;
+    // Read once per selection: every class mutation acts on the selection, and
+    // a colour drag writes per frame, so scanning the whole page each time
+    // would put a document-wide query inside the drag loop.
+    selGroup = sameSource(el);
     if (!baseline.has(el)) baseline.set(el, classesOf(el));
     noteTouched(el); // while it is still untouched — see noteTouched
     noteRuns(el);    // and the same moment is when each run still says what it said
@@ -7246,6 +7308,7 @@
     textEditable = false;
     releaseOutline(selected);
     selected = null;
+    selGroup = null;
     // The panel stays; only its top half goes. The bar below it holds the
     // Save button and the history, which have nothing to do with a selection.
     updatePanelChrome();

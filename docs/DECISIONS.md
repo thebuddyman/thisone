@@ -661,6 +661,37 @@ source, which is how a `className` missing its closing quote passed. Every
 successful write is now kept and parsed in one check at the end of the suite,
 so the whole class of damage fails there rather than in a user's project.
 
+**A class change is shown on every element the edited line renders.** One line
+drawn nineteen times is nineteen elements on screen and one thing in the file,
+so changing one and watching the other eighteen sit still was the preview
+disagreeing with the save about to happen. Removal already worked this way, and
+this is the same move for classes: the whole group changes, the edit is recorded
+on the one member that was clicked, and the count stays 1 because one line gets
+written. `sameSource` is read once per selection into `selGroup`, because a
+colour drag writes per frame and a document-wide query does not belong in that
+loop.
+
+**The mirror applies the delta, it does not copy the class string.** Siblings
+are identical wherever the className is a plain literal, so the two are the same
+there. Under `cn()` they are not, because a conditional argument can differ per
+instance, and copying would flatten a difference the save is going to keep. A
+delta is also exactly what the save sends for those, so the preview and the
+write agree by construction. Each mirrored element also takes
+`data-thisone-edited`, or a class the route never generated would sit in its
+list and render nothing.
+
+**The preview marker answers to the group, not to the element.** In
+`applyState` it is set in the second pass, where every dirty entry has already
+settled, and keyed on whether any member of the group is dirty. Keyed on the
+element instead, whichever member `touched` happened to reach last would decide
+the answer, since only one member of a group ever holds the dirty entry.
+
+**Only the Next backend can show this, so only the live suite can test it.**
+HTML mode stamps a positional `data-eid`, unique by construction, so
+`sameSource` there always returns one element and the nine browser suites
+cannot reach the behaviour at all. The checks live in `next/verify.js` on the
+volt route, beside the removal block that already tests the same 19 elements.
+
 ---
 
 ## Measured facts about these codebases
