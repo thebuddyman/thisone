@@ -8,6 +8,8 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
 ### Changed
 - Changing a class on an element that appears several times on the page now
   updates every one of them straight away, instead of moving the one you
@@ -23,11 +25,14 @@ The full rules are in `docs/RELEASE.md`.
   asking for different values are refused with a reason, because one line
   cannot hold two answers.
 
-## [0.1.1] - 2026-08-28
+## [0.1.1] - 2026-08-28 (never published to npm)
 
 ### Changed
 - Astro and Vite projects are refused with a reason naming the build, instead
   of being wired as though they were Next.js and leaving a loader shim behind.
+
+  This version was tagged in the source but never reached npm, so the change
+  above first ships to users in 0.2.0.
 
 ## [0.1.0] - 2026-08-28
 
@@ -49,6 +54,7 @@ First release, as `@designbuddy/thisone`. The command is `thisone`.
   `claude -p`.
 - A standalone HTML mode for a flat `index.html`.
 
-[Unreleased]: https://github.com/thebuddyman/bw-pl-browsereditor/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/thebuddyman/bw-pl-browsereditor/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/thebuddyman/bw-pl-browsereditor/releases/tag/v0.1.0
+[Unreleased]: https://github.com/thebuddyman/thisone/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/thebuddyman/thisone/compare/v0.1.0...v0.2.0
+[0.1.1]: https://github.com/thebuddyman/thisone/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/thebuddyman/thisone/releases/tag/v0.1.0

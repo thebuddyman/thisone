@@ -17,7 +17,7 @@ change.
 ## Setup
 
 ```bash
-git clone https://github.com/thebuddyman/bw-pl-browsereditor.git thisone
+git clone https://github.com/thebuddyman/thisone.git thisone
 cd thisone
 npm ci
 npx playwright install chromium
