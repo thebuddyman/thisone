@@ -167,7 +167,110 @@ stage 0 finds the projects worth editing are all on v4.
 
 ---
 
-## 7 · Stages
+## 7 · Detection, and the one thing it cannot answer
+
+Two questions look alike and are not.
+
+**Which framework is this?** A fact on disk. `detect()` already answers it,
+purely, from the filesystem, without executing any project code. Keep it that
+way, and do not add a flag that *supplies* the answer. The Astro bug is what a
+wrong belief about the framework costs: `supported` came back true, the project
+went down the Next wiring path, and the tool asked `astro.config.mjs` for
+`const nextConfig = {`, offered a turbopack block for a key Astro has no use
+for, and left a shim in the repo. A `--framework` flag hands the user a way to
+reproduce that on purpose.
+
+**Which surface am I editing?** Not a fact. An Expo project genuinely builds for
+web, iOS and Android out of the same `.tsx`. Every framework supported today maps
+to exactly one surface — Next is a browser, HTML is a browser — so the question
+has never come up. **RN is the first framework where detection is complete and
+the answer is still ambiguous.** Detection cannot close it, and guessing is the
+thing this tool does not do.
+
+So: **detect the framework, always. Ask for the surface, and only where there is
+more than one.**
+
+### Mirror Expo's vocabulary, do not invent one
+
+`expo start` already makes the user choose — `--web`, `--ios`, `--android`. And
+`thisone dev` already starts the app. So the surface arrives as the flag they
+would have typed anyway:
+
+```
+thisone dev --web        edit in a browser, through react-native-web
+thisone dev --ios        edit the simulator
+thisone dev --android
+```
+
+No `--surface`, no `--platform`, no third spelling of a choice Expo has named.
+
+### What happens when nothing says
+
+Per **refuse with a reason, never guess**:
+
+| situation | behaviour |
+|---|---|
+| one surface (Next, HTML) | never ask, exactly as today |
+| several, and a TTY | ask, defaulting to nothing |
+| several, and no TTY | **refuse**, naming the flag |
+
+That last row is the reason to write any of this down. Nothing in `cli.js`
+prompts today, which means nothing in it can hang. Adding the first prompt is the
+moment that property stops being free and has to be defended on purpose — an
+agent, a CI job or a spawned subprocess must never block on a question it cannot
+see.
+
+### Agents need a machine-readable plan
+
+`report()` (`cli.js:274`) prints ANSI-coloured prose. An agent deciding whether a
+project can be edited is currently parsing colour codes out of stdout.
+`--check --json` should emit the plan object `detect()` already builds — it is a
+plain object of the right shape already, and nothing has to be invented to
+serialise it.
+
+Exit codes then have to separate two answers that are not the same thing:
+
+| code | meaning |
+|---|---|
+| `0` | supported |
+| `1` | **cannot** be edited — `reason` says why |
+| `2` | **could** be, but a choice is missing — `reason` names the flag |
+
+Today the last two are both `1`, and nothing driving the CLI can tell "this is
+impossible" from "tell me which platform you meant".
+
+### Where the package is installed is not always where the project is
+
+`--root` defaults to `process.cwd()`, which is right for the common case: a
+devDependency in the app, run from the app. It is wrong for a monorepo, where
+`thisone` is hoisted to the root and the app sits in `apps/mobile` — and RN
+projects are disproportionately monorepos.
+
+Today that comes back as *"no next, astro, vite or index.html found — nothing to
+attach to"*, which is true about the directory and useless about the repo.
+Detection should read `workspaces` from the root `package.json`, run over each
+candidate, and **name the ones it could edit** rather than report an empty room:
+
+```
+no editable project at /repo
+  apps/mobile   expo 55   →  thisone --root apps/mobile
+  apps/web      next 16   →  thisone --root apps/web
+```
+
+Same rule as everywhere else: it does not choose, it says what it found.
+
+### An ordering decision falls out of this
+
+`detect()` checks `UNSUPPORTED` before `deps.next` (`detect.js:76-80`), so a
+project carrying both short-circuits to the refusal. Both current keys — `expo`
+and `react-native` — are in every Expo app, and a monorepo root can carry `next`
+as well. While RN is refused this is harmless. The moment RN is supported it
+becomes a real precedence question, and the answer is resolving a root (above),
+not ranking dependency names against each other.
+
+---
+
+## 8 · Stages
 
 Each stage ends with something that can be run and a decision to continue or
 stop. No stage begins before the one above it has numbers.
@@ -227,6 +330,11 @@ This stage is pure unit work and either passes or does not.
   no `</body>` to anchor to — `wireNext` uses it (`cli.js:228`) and the Expo path
   needs its own anchor. `MARKS` gains nothing; **a rename adds, never replaces**,
   and this is not a rename.
+- **§7 lands here**, because this is the stage that creates the ambiguity: the
+  `--web` / `--ios` / `--android` flags, the no-TTY refusal, `--check --json` and
+  exit code `2`. `--wire` itself needs no surface — the Babel plugin is the same
+  for both and wiring is dev-only and reversible, so wire both and let the run
+  command choose.
 - A `verify-expo.js` beside `next/verify.js`, driving the real app: back up every
   file a probe touches, name the backup after the **full path**, restore in
   `finally`, assert a byte-exact restore. Poll for Fast Refresh, never
@@ -262,7 +370,7 @@ branch.
 
 ---
 
-## 8 · Refusals this adds
+## 9 · Refusals this adds
 
 The rule is **refuse with a reason, never guess**, and the panel shows the
 reason. New entries for `REFUSALS` (`next/jsx-adapter.js:82`):
@@ -282,7 +390,7 @@ sharper reason than the current one-liner — and that is a result, written down
 
 ---
 
-## 9 · Risks, ranked
+## 10 · Risks, ranked
 
 1. **`StyleSheet.create` is the native idiom.** If NativeWind codebases still
    reach for it, the editor is blind to most of the screen. Stage 0, question 1.
@@ -301,7 +409,7 @@ sharper reason than the current one-liner — and that is a result, written down
 
 ---
 
-## 10 · What does not change
+## 11 · What does not change
 
 - Writes replace a byte span. **Never reprint an AST.**
 - The locator and the writer share one element walk.
