@@ -53,6 +53,8 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
   for it.** Do not undo an entry without measuring again.
 - `docs/TESTING.md`: which suite owns which behaviour, and the two live suites.
 - `docs/RELEASE.md`: how to commit, log changes, bump the version and publish.
+- `docs/REACT-NATIVE.md`: the staged plan for React Native, and the measurement
+  that gates it. Nothing in it is built or decided.
 - `README.md`: what a user sees. Keep it about using the tool, not building it.
 
 ## Rules that always hold

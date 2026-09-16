@@ -813,6 +813,11 @@ logic works (10/10 stamped offline). None of Astro's twelve integration hooks is
 transform-shaped. `next/astro-locator.mjs` is finished but unreachable.
 
 **React Native / Expo is out.** No DOM, Metro runs no loader, Tailwind v3, and
-components are capitalised so "host element" means something else.
+components are capitalised so "host element" means something else. Two of those
+four have since moved — Expo Web has a real DOM, and NativeWind v5 is built on
+Tailwind v4 — so `docs/REACT-NATIVE.md` plans the work and names what would have
+to be measured first. **The refusal stands until those numbers exist**, because
+nothing here has been measured on a real NativeWind project, and this entry is
+not undone by a re-reading of the landscape.
 
 ---
