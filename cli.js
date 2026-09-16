@@ -8,6 +8,10 @@
  *   thisone --root ../uiux_experiment --wire   add the loader + overlay first
  *   thisone --root ../uiux_experiment --unwire remove them again
  *   thisone --root ../uiux_experiment --check  report only, change nothing
+ *   thisone --root ../uiux_experiment --json   the same report as one JSON object
+ *
+ * Exit codes: 0 ready, 1 cannot be edited (or failed), 2 can be edited once the
+ * user takes the step that was named (run --wire, or paste a printed snippet).
  *
  * Wiring edits the target's own config, so every touched file is copied to
  * .backups/ first and `--unwire` restores it. Where an unambiguous anchor
@@ -289,13 +293,36 @@ const root = path.resolve(arg('root', process.cwd()));
 const port = Number(arg('port', DEFAULT_PORT));
 const plan = detect(root);
 const wiring = plan.supported && plan.framework !== 'html' ? detectWiring(plan) : null;
+const wired = plan.framework === 'html'
+  || !!(wiring && wiring.loader && wiring.overlay && wiring.loaderShim);
+
+// 2 is its own code because a script, or an agent setting the tool up, must
+// tell "this project cannot be edited" from "it can, after one step". Both
+// were 1, and the only way to tell them apart was the coloured prose.
+const EXIT_OK = 0;
+const EXIT_REFUSED = 1;
+const EXIT_STEP = 2;
+
+// --json never wires or starts anything: a flag that asks for machine-readable
+// output should not also be the one that changes the project.
+if (flag('json')) {
+  const status = !plan.supported ? 'refused' : wired ? 'ready' : 'needs-wiring';
+  const next = {
+    refused: null,
+    'needs-wiring': 'thisone --wire',
+    ready: plan.framework === 'html' ? 'thisone' : 'thisone dev',
+  }[status];
+  process.stdout.write(JSON.stringify({ status, next, ...plan, wiring }, null, 2) + '\n');
+  process.exit(status === 'refused' ? EXIT_REFUSED : status === 'ready' ? EXIT_OK : EXIT_STEP);
+}
+
 report(plan, wiring);
 
 if (!plan.supported) {
   console.log(`\n${red('Not supported.')} ${plan.reason}\n`);
-  process.exit(1);
+  process.exit(EXIT_REFUSED);
 }
-if (flag('check')) process.exit(0);
+if (flag('check')) process.exit(wired ? EXIT_OK : EXIT_STEP);
 
 if (flag('unwire')) {
   const { removed, stuck } = unwireNext(plan);
@@ -315,9 +342,6 @@ if (flag('unwire')) {
 }
 
 const app = arg('app', `http://localhost:${plan.appPort}`);
-
-const wired = plan.framework === 'html'
-  || (wiring.loader && wiring.overlay && wiring.loaderShim);
 
 /**
  * Wiring is setup, and setup is not a reason to start a server.
@@ -341,7 +365,7 @@ if (flag('wire')) {
     for (const [file, why, snippet] of manual) {
       console.log(`\n${red('Manual step for ' + file)}: ${why}\n${snippet}`);
     }
-    if (manual.length) process.exit(1);
+    if (manual.length) process.exit(EXIT_STEP);
   }
   if (clearDevCache(plan.root)) {
     console.log(dim('Cleared .next/dev — Turbopack caches which files the loader rule '
@@ -354,7 +378,7 @@ if (flag('wire')) {
 
 if (!wired) {
   console.log(`\n${red('Not wired yet.')} Run ${bold('thisone --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
-  process.exit(1);
+  process.exit(EXIT_STEP);
 }
 
 /**

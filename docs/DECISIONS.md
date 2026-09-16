@@ -521,6 +521,20 @@ project and failed after succeeding when the port was busy, as if the wiring had
 broken. It is its own branch now, ending in what to type next. That also took a
 server spawn out of `06-detect`, a fair suspect for the stale-port trap below.
 
+**Exit 2 means "it can be edited, after the step that was named".** Exit 1
+used to cover both an Astro site, which nothing will make editable, and an
+unwired Next app, which is one `--wire` away. The only way to tell them apart
+was the coloured prose from `report()`, and the thing that needs to tell them
+apart, an agent setting the tool up from a prompt, never reads prose. So 0 is
+ready, 1 is refused (or failed), 2 is a step: unwired under `--check` or a plain
+run, and `--wire` that printed a manual snippet. `--unwire` leaving a block in
+place stays 1: the project is not closer to being editable. `--json` prints
+the `detect()` plan with a `status` (`ready`, `needs-wiring`, `refused`) and a
+`next` command, and never wires or starts anything, because a flag asking for
+output should not be the one that changes the project. 17 checks in
+`06-detect` pin status, code and `next` against ready, unwired, Astro, Tailwind
+v3, a plain page and a manual wire.
+
 **A busy port gets a sentence, not a stack trace.** Two editors is the normal
 case, so `EADDRINUSE` is caught and answered with the flag that fixes it.
 `Unhandled 'error' event` reads as a broken tool rather than a missing argument.

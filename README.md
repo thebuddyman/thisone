@@ -46,6 +46,31 @@ npx thisone dev                # start your app + the editor together
 
 Open your app, press **Edit mode** bottom right, click something.
 
+## Set it up with a coding agent
+
+Paste one of these into Claude Code, Cursor or any agent working in your repo:
+
+> Set up thisone in this project and start it.
+
+> Check whether thisone supports this project, and tell me why if it doesn't.
+
+> Remove thisone from this project.
+
+**For the agent.** Don't edit config or layout files yourself. `--wire` writes
+marked blocks that `--unwire` finds again, and it clears a Turbopack cache that
+would otherwise break every page. Use the CLI:
+
+1. Run `npx thisone --root . --check --json`. It changes nothing.
+2. Read `status` and the exit code:
+   - `ready` (exit 0): run the command in `next`.
+   - `needs-wiring` (exit 2): run `npx thisone --root . --wire`. If it exits 2
+     again, it printed a snippet the user has to place. Show it to them, don't
+     place it yourself.
+   - `refused` (exit 1): tell the user `reason` word for word and stop. Don't
+     retry as a different framework and don't wire by hand.
+3. To remove it, run `npx thisone --root . --unwire`. If it names a file it left
+   in place, pass that on.
+
 Already running your own `next dev`? Run `npx thisone --root .` beside it instead of
 `thisone dev` — but then you have to match the ports yourself (see below).
 

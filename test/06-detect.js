@@ -310,6 +310,74 @@ check('an existing turbopack block is not clobbered',
   fs.readFileSync(path.join(busy, 'next.config.ts'), 'utf8') === busyBefore);
 check('...and the snippet is printed instead', /Manual step/.test(out) && /turbopack/.test(out));
 
+// ------------------------------------------------ --json and the exit codes
+//
+// What an agent setting the tool up reads. It never sees the prose, so the
+// status and the exit code are the whole answer and must agree with detect().
+
+const runCode = (args) => {
+  try {
+    return { out: execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' }), code: 0 };
+  } catch (e) {
+    return { out: e.stdout || '', code: e.status };
+  }
+};
+const json = (args) => {
+  const r = runCode(args);
+  try { return { ...r, body: JSON.parse(r.out) }; } catch { return { ...r, body: null }; }
+};
+
+const unwired = fixture('json-unwired', {
+  deps: { next: '16.2.4' }, tailwind: '4.2.4',
+  files: { 'next.config.ts': NEXT_CONFIG, 'src/app/layout.tsx': LAYOUT },
+});
+const unwiredConfig = fs.readFileSync(path.join(unwired, 'next.config.ts'), 'utf8');
+let r = json(['--root', unwired, '--check', '--json']);
+check('--json prints nothing but one JSON object', r.body !== null);
+check('an unwired Next project is needs-wiring, exit 2',
+  r.body?.status === 'needs-wiring' && r.code === 2, `${r.body?.status} / ${r.code}`);
+check('...and names the step', r.body?.next === 'thisone --wire');
+check('the JSON carries what detect() found',
+  r.body?.framework === 'next' && r.body?.configFile === detect(unwired).configFile
+    && r.body?.tailwind?.version === '4.2.4');
+check('--json alone does not wire', runCode(['--root', unwired, '--json']).code === 2
+  && fs.readFileSync(path.join(unwired, 'next.config.ts'), 'utf8') === unwiredConfig);
+check('--check without --json agrees on exit 2', runCode(['--root', unwired, '--check']).code === 2);
+check('running it unwired exits 2', runCode(['--root', unwired]).code === 2);
+
+run(['--root', unwired, '--wire']);
+r = json(['--root', unwired, '--check', '--json']);
+check('a wired project is ready, exit 0', r.body?.status === 'ready' && r.code === 0,
+  `${r.body?.status} / ${r.code}`);
+check('...and names thisone dev', r.body?.next === 'thisone dev');
+check('...with the wiring it found', !!(r.body?.wiring?.loader && r.body.wiring.overlay));
+check('--check without --json agrees on exit 0', runCode(['--root', unwired, '--check']).code === 0);
+run(['--root', unwired, '--unwire']);
+
+const astro = fixture('json-astro', {
+  deps: { astro: '5.0.0' }, tailwind: '4.2.4', files: { 'astro.config.mjs': 'export default {};\n' },
+});
+r = json(['--root', astro, '--check', '--json']);
+check('astro is refused, exit 1', r.body?.status === 'refused' && r.code === 1,
+  `${r.body?.status} / ${r.code}`);
+check('...with the reason detect() gives, verbatim', r.body?.reason === detect(astro).reason);
+check('...and no next step', r.body?.next === null);
+
+const oldTw = fixture('json-tw3', {
+  deps: { next: '16.2.4' }, tailwind: '3.4.0',
+  files: { 'next.config.ts': NEXT_CONFIG, 'src/app/layout.tsx': LAYOUT },
+});
+r = json(['--root', oldTw, '--check', '--json']);
+check('tailwind v3 is refused, exit 1', r.body?.status === 'refused' && r.code === 1,
+  `${r.body?.status} / ${r.code}`);
+
+const page = fixture('json-html', { files: { 'index.html': '<!doctype html><body></body>\n' } });
+r = json(['--root', page, '--check', '--json']);
+check('a plain page is ready, and names thisone rather than dev',
+  r.body?.status === 'ready' && r.code === 0 && r.body?.next === 'thisone', `${r.body?.status} / ${r.code}`);
+
+check('--wire with a manual step exits 2', runCode(['--root', busy, '--wire']).code === 2);
+
 fs.rmSync(work, { recursive: true, force: true });
 
 const failed = results.filter((x) => !x).length;

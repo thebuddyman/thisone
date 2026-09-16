@@ -8,6 +8,18 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+### Added
+- `thisone --check --json` prints what it found as one JSON object, with a
+  `status` of `ready`, `needs-wiring` or `refused` and the command to run next,
+  so a script or a coding agent can set the tool up without reading the prose.
+  `--json` only reports. It never wires or starts anything.
+
+### Changed
+- A project that can be edited once you take one more step now exits with 2
+  instead of 1. That covers `--check` or a plain run on an unwired project, and
+  `--wire` when it prints a snippet for you to paste. A project that cannot be
+  edited at all still exits with 1, so the two are no longer the same answer.
+
 ## [0.2.0] - 2026-09-10
 
 ### Changed
