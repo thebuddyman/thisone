@@ -312,7 +312,12 @@ if (flag('json')) {
     'needs-wiring': 'thisone --wire',
     ready: plan.framework === 'html' ? 'thisone' : 'thisone dev',
   }[status];
-  process.stdout.write(JSON.stringify({ status, next, ...plan, wiring }, null, 2) + '\n');
+  // `next` names the step. `command` is the step as something to paste: by the
+  // scoped name, because a folder of .html files has nothing installed and the
+  // unscoped `thisone` is not this package on npm, and with the root as it was
+  // given, so it runs from the directory the question was asked in.
+  const command = next && `npx ${PKG}${next.replace(/^thisone/, '')} --root ${arg('root', '.')}`;
+  process.stdout.write(JSON.stringify({ status, next, command, ...plan, wiring }, null, 2) + '\n');
   process.exit(status === 'refused' ? EXIT_REFUSED : status === 'ready' ? EXIT_OK : EXIT_STEP);
 }
 
@@ -493,10 +498,6 @@ async function holds(proc, port, waitMs) {
  * partner no longer has.
  */
 async function runDev() {
-  if (plan.framework === 'html') {
-    console.log(`\n${red('`dev` is for framework projects.')} This one is served directly; run ${bold('thisone')}.\n`);
-    process.exit(1);
-  }
   const [bin, ...rest] = (plan.devCommand || 'next dev').split(' ');
   let bwFrom = Number(arg('port', DEFAULT_PORT));
   let appFrom = Number(arg('app-port', plan.appPort));
@@ -564,7 +565,30 @@ async function runDev() {
   throw new Error(`no pair of ports would hold after 4 tries, starting from ${arg('app-port', plan.appPort)} and ${arg('port', DEFAULT_PORT)} — something is taking them as fast as they are found`);
 }
 
-if (process.argv[2] === 'dev' || flag('dev')) {
+// `dev` wherever it was typed, as long as it is not some flag's value:
+// `thisone --root . dev` started the editor alone and said nothing about why.
+const TAKES_VALUE = ['--root', '--port', '--app-port', '--app'];
+const askedForDev = flag('dev') || process.argv.some(
+  (a, i) => i >= 2 && a === 'dev' && !TAKES_VALUE.includes(process.argv[i - 1]));
+
+// A static site has no app to start beside the editor. The editor server is
+// what serves it, so `dev` and a plain run are the same thing here.
+if (plan.framework === 'html') {
+  freePort(Number(arg('port', plan.appPort)), null).then((sitePort) => {
+    const site = spawn(process.execPath, [path.join(HERE, 'server.js')], {
+      stdio: 'inherit',
+      env: { ...process.env, PORT: String(sitePort), TW_EDITOR_FILE: path.join(plan.root, 'index.html') },
+    });
+    process.on('SIGINT', () => { site.kill(); process.exit(0); });
+    site.on('exit', (code) => process.exit(code || 0));
+  }).catch((err) => {
+    console.error(`\n${red(err.message)}\n`);
+    process.exit(1);
+  });
+  return;
+}
+
+if (askedForDev) {
   runDev().catch((err) => {
     console.error(`\n${red(err.message)}\n`);
     process.exit(1);
@@ -572,13 +596,10 @@ if (process.argv[2] === 'dev' || flag('dev')) {
   return;
 }
 
-const server = plan.framework === 'html'
-  ? spawn(process.execPath, [path.join(HERE, 'server.js')],
-      { stdio: 'inherit', env: { ...process.env, TW_EDITOR_FILE: path.join(plan.root, 'index.html') } })
-  : spawn(process.execPath,
-      [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(port), '--app', app]
-        .concat(flag('prompt') ? ['--prompt'] : []),
-      { stdio: 'inherit' });
+const server = spawn(process.execPath,
+  [path.join(HERE, 'next/server.js'), '--root', plan.root, '--port', String(port), '--app', app]
+    .concat(flag('prompt') ? ['--prompt'] : []),
+  { stdio: 'inherit' });
 
 console.log(`\n${dim('start your app separately: ' + (plan.devCommand || 'n/a') + '  →  ' + app)}`);
 if (port !== DEFAULT_PORT) {

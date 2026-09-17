@@ -113,6 +113,26 @@ p = detect(fixture('plain-html', { files: { 'index.html': '<html></html>' } }));
 check('a bare index.html falls back to html mode',
   p.supported && p.framework === 'html' && p.locator === 'server');
 
+// A generator's output folder: editable today, wiped by the next build.
+const eleventy = fixture('eleventy-site', { files: { '_site/index.html': '<html></html>' } });
+p = detect(path.join(eleventy, '_site'));
+check('_site/ beside a package.json is refused as build output',
+  !p.supported && p.framework === 'html' && /build output/.test(p.reason) && /package\.json/.test(p.reason),
+  p.reason);
+
+const hugo = fixture('hugo-site', { files: { 'hugo.toml': '', 'public/index.html': '<html></html>' } });
+p = detect(path.join(hugo, 'public'));
+check("public/ beside Hugo's config is refused", !p.supported && /hugo\.toml/.test(p.reason), p.reason);
+
+const served = fixture('static-host', { files: { 'public/index.html': '<html></html>' } });
+p = detect(path.join(served, 'public'));
+check('public/ with no Hugo beside it is a site like any other', p.supported && p.framework === 'html');
+
+fs.mkdirSync(path.join(work, 'loose', 'dist'), { recursive: true });
+fs.writeFileSync(path.join(work, 'loose', 'dist', 'index.html'), '<html></html>');
+p = detect(path.join(work, 'loose', 'dist'));
+check('a dist/ with no generator beside it is not refused on its name alone', p.supported);
+
 p = detect(fixture('nothing', {}));
 check('an unrecognisable project is refused', !p.supported && p.framework === null);
 
@@ -375,6 +395,17 @@ const page = fixture('json-html', { files: { 'index.html': '<!doctype html><body
 r = json(['--root', page, '--check', '--json']);
 check('a plain page is ready, and names thisone rather than dev',
   r.body?.status === 'ready' && r.code === 0 && r.body?.next === 'thisone', `${r.body?.status} / ${r.code}`);
+
+// What an agent pastes. A folder of .html files has nothing installed, and the
+// unscoped name is not this package on npm, so the command has to carry the scope.
+check('...with a command that runs from a folder with nothing installed',
+  r.body?.command === `npx ${PKG} --root ${page}`, r.body?.command);
+r = json(['--root', unwired, '--check', '--json']);
+check('the command for an unwired Next project is the wire step, scoped',
+  r.body?.command === `npx ${PKG} --wire --root ${unwired}`, r.body?.command);
+check('a refusal has no command to offer', json(['--root', astro, '--check', '--json']).body?.command === null);
+check('nothing to wire on a plain page, and it says so with exit 0',
+  runCode(['--root', page, '--wire']).code === 0 && runCode(['--root', page, '--unwire']).code === 0);
 
 check('--wire with a manual step exits 2', runCode(['--root', busy, '--wire']).code === 2);
 

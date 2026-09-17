@@ -148,6 +148,16 @@ function detect(root) {
 
   // A plain page needs no bundler at all: the server tags it as it serves it.
   if (fs.existsSync(path.join(root, 'index.html'))) {
+    const built = generatedBy(root);
+    if (built) {
+      return {
+        ...base,
+        framework: 'html',
+        supported: false,
+        reason: `${path.basename(root)}/ looks like build output (${built} is beside it). `
+          + 'The next build would overwrite anything saved here. Point --root at the source instead',
+      };
+    }
     return {
       ...base,
       framework: 'html',
@@ -168,6 +178,26 @@ function detect(root) {
     supported: false,
     reason: 'no next, astro, vite or index.html found — nothing to attach to',
   };
+}
+
+/**
+ * Is this folder something a build writes? Returns the file that says so.
+ *
+ * Saving into _site/ or dist/ works, and then the next build wipes it with
+ * nothing to say why. The folder's name alone proves nothing (people do keep a
+ * hand-written site in dist/), so it takes the name and a generator's file in
+ * the parent. public/ is Hugo's output but most tools' input, so only Hugo's
+ * config counts against it.
+ */
+function generatedBy(root) {
+  const parent = path.dirname(root);
+  const name = path.basename(root);
+  const HUGO = ['hugo.toml', 'hugo.yaml', 'hugo.json', 'config.toml'];
+  const ANY = ['package.json', '_config.yml', '.eleventy.js', 'eleventy.config.js',
+    'eleventy.config.mjs', 'eleventy.config.cjs', 'Gemfile', ...HUGO];
+  if (['_site', 'dist', 'build', 'out', '.output'].includes(name)) return firstExisting(parent, ANY);
+  if (name === 'public') return firstExisting(parent, HUGO);
+  return null;
 }
 
 function tailwindReason(tw) {

@@ -796,6 +796,26 @@ several, which one built the file would be a guess, so the file is served as
 it is and the terminal says why. The file on disk is the user's build output
 and is never written.
 
+**An agent is told the scoped name, and `--json` hands it the whole command.**
+`npx thisone` only resolves where the package is installed. A folder of `.html`
+files has no `package.json`, the unscoped `thisone` is a 404 on npm today
+(checked 2026-09-17), and whoever registers it later would be run in our name.
+`next` stays the step's name, as 0.3.0 shipped it, and `command` is the step as
+`npx @designbuddy/thisone … --root <as given>`. Tried with two fresh
+Haiku agents given only the README's agent section: on a CDN-Tailwind page one
+ran `--check --json`, then `command`, read the address off the `thisone ->`
+line and changed no file. On an Eleventy `_site/` the other relayed the refusal
+word for word and changed no file, though it also re-ran `--check` from the
+parent folder on its own, which the section now tells it not to do. This was a
+one-off trial, not a suite.
+
+**A build's output folder is refused, by name plus evidence.** Saving into
+`_site/` or `dist/` works until the next build wipes it, with nothing to say
+why. The name alone is not proof, so detection needs the name and a
+generator's file beside it (`package.json`, `_config.yml`, an Eleventy config,
+`Gemfile`, Hugo's config). `public/` is Hugo's output and most other tools'
+input, so only Hugo's config counts against it.
+
 ---
 
 ## Measured facts about these codebases

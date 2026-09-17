@@ -17,9 +17,21 @@ The full rules are in `docs/RELEASE.md`.
   running your build first. Your built stylesheet on disk is left alone, so run
   the build before you deploy.
 
+- `--check --json` carries a `command`: the next step as something to paste,
+  by the package's scoped name and with the `--root` you gave, so a coding
+  agent can set up a folder of `.html` files that has nothing installed.
+
 ### Changed
+- HTML mode picks the next free port when 3000 is taken, instead of stopping
+  with an error, and prints the address as `thisone -> http://localhost:…`.
+  `--port` chooses where it starts looking.
 - HTML mode answers on this machine only (127.0.0.1). It used to listen on every
   network interface, where anyone on the same network could have sent it an edit.
+- `dev` works wherever it is typed. `thisone --root . dev` used to start the
+  editor alone, without the app.
+- A folder that a build writes into (`_site/`, `dist/`, `build/`, `out/`, or
+  Hugo's `public/`) is refused with a reason, because the next build would
+  overwrite anything saved there. Point `--root` at the source instead.
 
 ### Fixed
 - Saving in HTML mode changes only the class, text or element you edited. It
