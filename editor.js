@@ -14,9 +14,11 @@
   /**
    * Backend configuration, injected by whichever server serves this file.
    *
-   * HTML mode (the standalone POC): identity is a positional data-eid and the
-   * write endpoint is same-origin. JSX mode (Next): identity is a source
-   * location stamped by a bundler loader, the endpoint is the editor server on
+   * Identity is a source location, `file:line:col:hash`, in both modes. HTML
+   * mode: the server stamps it as it serves the page, the write endpoint is
+   * same-origin, and the server renames the ids after a save because nothing
+   * re-renders. JSX mode (Next): a bundler loader stamps it, the endpoint is
+   * the editor server on
    * its own port, and text editing is off — JsxText is whitespace-significant
    * and sits next to {expressions}, so rewriting it safely is not a v1 job.
    */
@@ -809,7 +811,7 @@
   function sameSource(el) {
     if (!el) return [];
     var id = el.getAttribute(ID_ATTR);
-    // HTML mode stamps a positional index, unique by construction.
+    // No location to share: an id this tool did not stamp.
     if (!id || id.indexOf(':') === -1) return [el];
     var bits = id.split(':');
     if (bits.length < 3) return [el];
@@ -7436,10 +7438,23 @@
             });
           });
           if (gone) deselect();
+          // A static page is not re-rendered, so every id on it now names bytes
+          // that have moved. The server says what each element is called in
+          // the file as written; with no answer, only a reload can. After the
+          // removals, which find their nodes by the location they had.
+          if (data.ids) {
+            var stamped = document.querySelectorAll('[' + ID_ATTR + ']');
+            for (var si = 0; si < stamped.length; si++) {
+              var renamed = data.ids[stamped[si].getAttribute(ID_ATTR)];
+              if (renamed) stamped[si].setAttribute(ID_ATTR, renamed);
+            }
+          }
           ui.status.textContent = data.files && data.files.length
             ? 'written to ' + data.files.map(function (f) { return f.split('/').pop(); }).join(', ')
             : 'written to index.html';
           ui.status.className = 'bw-status is-ok';
+          // Nothing is pending by now, so this leaves without a prompt.
+          if (data.reload && !HMR) window.location.reload();
         } else if (data.reason === 'stale-hash') {
           // The file moved under us — a hand edit, a formatter, a branch switch.
           // Keep the pending edits and say so rather than writing to the wrong

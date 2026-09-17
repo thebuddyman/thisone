@@ -43,7 +43,7 @@ const CORNERS = ['tl', 'tr', 'bl', 'br'];
   // --bw-faint, #858585: what a value the element does not own is dimmed to.
   const FAINT = 'rgb(133, 133, 133)';
 
-  const card = page.locator('[data-eid="8"]');   // bg-white rounded-xl shadow m-12 p-4
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');   // bg-white rounded-xl shadow m-12 p-4
   const radii = () => card.evaluate(el => {
     const s = getComputedStyle(el);
     return [s.borderTopLeftRadius, s.borderTopRightRadius,
@@ -176,10 +176,10 @@ const CORNERS = ['tl', 'tr', 'bl', 'br'];
     `${await name()} — ${await card.getAttribute('class')}`);
 
   // ---- an element authored per-corner opens on its own
-  await page.locator('[data-eid="9"]').evaluate(el => {
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate(el => {
     el.className = 'bg-rose-500 p-4 rounded-lg rounded-br-[2px]';
   });
-  await page.locator('[data-eid="9"]').click({ position: { x: 3, y: 3 } });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').click({ position: { x: 3, y: 3 } });
   check('an element wearing a per-corner class opens to the four corners',
     !(await grid.getAttribute('class')).includes('is-hidden'), await grid.getAttribute('class'));
   check('the authored corner reads its own value, the rest read the box',

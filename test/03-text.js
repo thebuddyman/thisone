@@ -76,7 +76,7 @@ const selectAllIn = page => page.evaluate(() => {
   };
 
   // ---- leaf element: the h1 ----
-  const h1 = page.locator('[data-eid="6"]');
+  const h1 = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await h1.click();
   check('leaf selection is contenteditable', await h1.evaluate(el => el.isContentEditable));
   check('the title is just the element, no status glyph',
@@ -123,7 +123,7 @@ const selectAllIn = page => page.evaluate(() => {
   check('no spellcheck leaked to disk', !file.includes('spellcheck'));
 
   // ---- escaping: typed markup must not become real markup ----
-  const footerP = page.locator('[data-eid="13"]');
+  const footerP = page.locator('[data-thisone-loc^="index.html:34:1:"]');
   await footerP.click();
   await selectAllIn(page);
   await page.keyboard.type('<script>alert(1)</script> AT&T "quoted" 5 < 6');
@@ -138,14 +138,14 @@ const selectAllIn = page => page.evaluate(() => {
 
   // ---- reload: text round-trips back through the parser ----
   await page.reload({ waitUntil: 'networkidle' });
-  const reloaded = await page.locator('[data-eid="13"]').textContent();
+  const reloaded = await page.locator('[data-thisone-loc^="index.html:34:1:"]').textContent();
   check('entities decode back to the typed text',
     reloaded === '<script>alert(1)</script> AT&T "quoted" 5 < 6', JSON.stringify(reloaded));
   check('h1 text persisted across reload',
-    (await page.locator('[data-eid="6"]').textContent()) === 'Rewritten in the browser!');
+    (await page.locator('[data-thisone-loc^="index.html:21:1:"]').textContent()) === 'Rewritten in the browser!');
 
   // ---- container element: refuses text editing ----
-  const card = page.locator('[data-eid="8"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   await card.click({ position: { x: 3, y: 3 } });
   check('container is not contenteditable', !(await card.evaluate(el => el.isContentEditable)));
   check('a container gets no Text row at all',
@@ -159,10 +159,11 @@ const selectAllIn = page => page.evaluate(() => {
     disk().includes('<h2 class="text-2xl font-bold">The card</h2>'));
 
   // server-side guard, independent of the client
-  const guard = await page.evaluate(() => fetch('/edit', {
+  const cardId = await page.locator('[data-thisone-loc^="index.html:25:1:"]').getAttribute('data-thisone-loc');
+  const guard = await page.evaluate((id) => fetch('/edit', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eid: 8, text: 'nuke the card' }),
-  }).then(r => r.json().then(j => ({ status: r.status, j }))));
+    body: JSON.stringify({ id, text: 'nuke the card' }),
+  }).then(r => r.json().then(j => ({ status: r.status, j }))), cardId);
   check('server rejects text on a container', guard.status === 409 && guard.j.ok === false, guard.j.error);
   check('card markup intact after rejected write', disk().includes('The card'));
 
@@ -172,7 +173,7 @@ const selectAllIn = page => page.evaluate(() => {
     (await page.locator('[contenteditable]').count()) === 0);
 
   // ---- alignment: the third family sharing the text- prefix ----
-  const h1b = page.locator('[data-eid="6"]');
+  const h1b = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await h1b.click();
   const align = (n) => panel.locator(`[data-tw-align="${n}"]`);
   check('the align control shows on an element with text', await align('center').isVisible());
@@ -330,7 +331,7 @@ const selectAllIn = page => page.evaluate(() => {
   //
   // Deliberately last. Filling it moves focus into the panel, which is exactly
   // what the page-typing checks above are asserting does not happen by itself.
-  const leaf = page.locator('[data-eid="6"]');
+  const leaf = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await leaf.click();
   const classesBefore = await leaf.getAttribute('class');
   await textBox.fill('Typed from the panel');
@@ -393,7 +394,7 @@ const selectAllIn = page => page.evaluate(() => {
   // stamps the shape it saw and the panel reads that. Set here rather than in
   // the fixture: adding an element would renumber every data-eid the other
   // suites address.
-  const expr = page.locator('[data-eid="6"]');
+  const expr = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await page.keyboard.press('Escape');
   await expr.evaluate((el) => el.setAttribute('data-thisone-text', 'expr'));
   await expr.click();
@@ -410,7 +411,7 @@ const selectAllIn = page => page.evaluate(() => {
     !(await expr.evaluate((el) => el.isContentEditable)));
   await expr.evaluate((el) => el.removeAttribute('data-thisone-text'));
 
-  await page.locator('[data-eid="6"]').click();
+  await page.locator('[data-thisone-loc^="index.html:21:1:"]').click();
   await page.screenshot({ path: `${__dirname}/text.png`, clip: { x: 0, y: 0, width: 1280, height: 620 } });
   await browser.close();
 

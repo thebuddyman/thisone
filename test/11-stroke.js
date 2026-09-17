@@ -38,7 +38,7 @@ function check(name, pass, detail) {
   const width = panel.locator('[data-tw-field="strokeWidth"] input');
   const minus = panel.locator('[data-tw-stroke-none]');
 
-  const card = page.locator('[data-eid="8"]'); // bg-white rounded-xl shadow m-12 p-4
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]'); // bg-white rounded-xl shadow m-12 p-4
   const cls = () => card.getAttribute('class');
   const drawn = () => card.evaluate(el => {
     const s = getComputedStyle(el);

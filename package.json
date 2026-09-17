@@ -29,6 +29,7 @@
   "files": [
     "cli.js",
     "server.js",
+    "html-adapter.js",
     "detect.js",
     "editor.js",
     "index.html",
@@ -54,11 +55,12 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "node-html-parser": "^6.1.13"
+    "parse5": "^7.3.0"
   },
   "devDependencies": {
     "@tailwindcss/browser": "^4.3.3",
     "playwright": "^1.58.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   },
   "engines": {

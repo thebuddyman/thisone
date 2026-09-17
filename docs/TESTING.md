@@ -7,11 +7,11 @@ new check lands where the next person will look for it.
 
 ## The offline suite
 
-`npm test` runs 14 suites through `test/run.mjs`:
+`npm test` runs 16 suites through `test/run.mjs`:
 
-- **4 unit suites**, no browser: `00-families`, `05-jsx-adapter`, `06-detect`,
-  `12-icons`.
-- **9 browser suites** (Playwright, Chromium) against a temp copy of
+- **5 unit suites**, no browser: `00-families`, `05-jsx-adapter`, `06-detect`,
+  `12-icons`, `14-html-adapter`.
+- **10 browser suites** (Playwright, Chromium) against a temp copy of
   `test/fixture.html`. The demo `index.html` is never touched. Tailwind is
   served locally from `@tailwindcss/browser`, not a CDN, so runs work offline.
 - **1 demo suite**, `13-demo`, in Chromium against a fresh build of `demo/`
@@ -46,6 +46,8 @@ between suites and runs.
 | `10-radius-corners` | The four-corner radius view. |
 | `11-stroke` | The four families behind the `border-` prefix. |
 | `12-icons` | `assets/` against the inlined `ICONS`. Unit. |
+| `14-html-adapter` | The HTML writer on a page a serializer would "fix": single quotes, unquoted values, `<br/>`, unclosed `<li>`, entities, CRLF. Every check names the exact output. Also the stamp, and the id rename after a write. Unit. |
+| `15-html-site` | HTML mode as a site: several pages, a stylesheet beside them, several saves in one session with no reload, the root as a wall, and a page built with the Tailwind compiler that needs the preview sheet. It writes its own pages next to the fixture. |
 | `13-demo` | The playground. It builds `demo/` and drives it from `file://`, no server. Every save is replayed through `jsx-adapter` in Node and must match byte for byte, and after the saves every stamp on screen must be the one the file renders. |
 
 ### `01-classes`: colour

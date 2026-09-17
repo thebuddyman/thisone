@@ -8,6 +8,24 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+### Added
+- HTML mode edits a whole static site. Every `.html` file under the folder can
+  be opened and edited, and stylesheets, images and fonts beside them are
+  served, where before only `index.html` was and everything else was a 404.
+- A site built with the Tailwind CLI previews a new class straight away, the
+  way a Next project does, and the class still renders after a reload without
+  running your build first. Your built stylesheet on disk is left alone, so run
+  the build before you deploy.
+
+### Changed
+- HTML mode answers on this machine only (127.0.0.1). It used to listen on every
+  network interface, where anyone on the same network could have sent it an edit.
+
+### Fixed
+- Saving in HTML mode changes only the class, text or element you edited. It
+  used to rewrite the whole file, which could also change quote styles, turn
+  `<br/>` into `<br>` and add closing tags you had left out.
+
 ## [0.3.0] - 2026-09-16
 
 ### Added

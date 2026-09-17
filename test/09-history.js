@@ -46,8 +46,8 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   const save = panel.locator('[data-tw-save]');
   const undo = panel.locator('[data-tw-undo]');
   const redo = panel.locator('[data-tw-redo]');
-  const card = page.locator('[data-eid="8"]');
-  const h1 = page.locator('[data-eid="6"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
+  const h1 = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   const classOf = (loc) => loc.evaluate(el => el.getAttribute('class'));
 
   // ---- the bar exists before any selection does ----

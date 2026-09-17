@@ -50,7 +50,7 @@ const hits = (page) => page.evaluate(() => window.__hits);
   const panel = page.locator('[data-tw-editor="panel"]');
   const toggle = page.locator('[data-tw-mode]');
   const ring = page.locator('[data-tw-editor="ring"]');
-  const card = page.locator('[data-eid="8"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   await countPageClicks(page);
 
   // ---- off: the page is just the page ----
@@ -84,7 +84,7 @@ const hits = (page) => page.evaluate(() => window.__hits);
 
   // A leaf, deliberately: hovering a container lands on whichever child owns
   // its centre, and the editor highlights the innermost stamped element.
-  const other = page.locator('[data-eid="6"]');
+  const other = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await other.hover();
   check('hovering highlights while on',
     (await other.evaluate(el => getComputedStyle(el).outlineStyle)) === 'dashed',

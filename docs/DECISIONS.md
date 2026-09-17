@@ -735,10 +735,66 @@ element instead, whichever member `touched` happened to reach last would decide
 the answer, since only one member of a group ever holds the dirty entry.
 
 **Only the Next backend can show this, so only the live suite can test it.**
-HTML mode stamps a positional `data-eid`, unique by construction, so
-`sameSource` there always returns one element and the nine browser suites
-cannot reach the behaviour at all. The checks live in `next/verify.js` on the
+HTML mode stamps one location per element, because a static file renders each
+start tag once, so `sameSource` there always returns one element and the
+browser suites cannot reach the behaviour at all. The checks live in `next/verify.js` on the
 volt route, beside the removal block that already tests the same 19 elements.
+
+**The HTML backend writes byte spans too, through parse5.** It used to parse
+with node-html-parser and write `root.toString()`, the one place this tool
+reprinted a document. Measured on the 20-line hand-written page in
+`test/14-html-adapter.js`: adding one class to one `<span>` changed **5 lines**,
+because the serializer also turned `<br/>` into `<br>`, dropped the `/` from
+`<img ... />` and closed two `<li>` the author had left open. A round trip with
+no edit at all changed 4. The same edit through `html-adapter.js` changes 1.
+parse5 is the WHATWG parser, so the tree matches the browser's, and
+`sourceCodeLocationInfo` gives start and end offsets per node and per
+attribute, which is all a span replacement needs. Elements the parser implies
+(`<tbody>`) carry no location and are never stamped, so they cannot be written
+to. The splice itself is `applySpans` in `jsx-adapter.js`, shared, so both
+writers refuse overlapping and shared-line edits the same way. It stays in that
+file because `demo/build.mjs` inlines `jsx-adapter.js` as text and a new
+`require` there would break the playground.
+
+**HTML ids are `file:line:col:hash`, and the server renames them after a
+save.** A positional `data-eid` could not name a second page and gave
+`editor.js` two identity models. With locations, a write moves every later
+element and changes the hash, and a static page has no HMR to restamp it, so
+the second save of a session was always refused as stale. `/edit` answers with
+`ids`, old id to new id. Elements keep their document order across a write, so
+the map is a zip of the two parses with removed subtrees left out, and when the
+counts disagree the server says `reload` instead of guessing. The client
+renames after it takes removed nodes off the page, not before: `sameSource`
+matches on `file:line:col:` without the hash, and a sibling renamed onto the
+removed element's old line was deleted from the DOM with it.
+
+**A page without the browser build gets the scoped palette, per page.**
+`@tailwindcss/browser` compiles a class the moment it appears, so preview is
+free. A site built with the Tailwind CLI has only the classes its source held
+at build time. The server looks for the browser build in each page's source
+and otherwise links `/thisone-palette.css` and serves the overlay with
+`previewAttr` set, the same 890-rule sheet and scope the Next backend uses. The
+sheet is compiled on first request, so a site on the browser build never pays
+for it. The check that proves the sheet is doing the work is text alignment,
+not colour: the editor writes its own rule for a colour, and blanking the sheet
+left a colour check green.
+
+**A stylesheet Tailwind built is served rebuilt, never written.** The first
+real session on `testing/my-site` ended with "only my text was saved": the
+classes were in `index.html`, and `assets/site.css`, built before they existed,
+had no rule for them, so a reload looked unedited. The preview sheet cannot
+cover this, because it only reaches elements wearing `data-thisone-edited`.
+Under Next the dev server rebuilds. Here the server does: a `.css` that opens
+with Tailwind's banner is answered by compiling the site's one Tailwind input
+with the site's own Tailwind against the markup on disk now. One sheet, in
+Tailwind's own order, so `px-6 md:px-12` still renders 48px, which a second
+unscoped sheet layered on top would have broken. Compared with the CLI's
+output for the same site, it differs only in what each scans: the CLI also
+reads `README.md` (and emitted `.static` and `.uppercase` from its prose), and
+it misses the unquoted `class=mt-1`, which this finds. With no input, or
+several, which one built the file would be a guess, so the file is served as
+it is and the terminal says why. The file on disk is the user's build output
+and is never written.
 
 ---
 

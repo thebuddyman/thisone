@@ -71,7 +71,7 @@ function check(name, pass, detail) {
   // page's own clicks are its own, until edit mode is on.
   await page.locator('[data-tw-mode]').click();
 
-  const card = page.locator('[data-eid="8"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
 
   // Tailwind actually applied? (proves Play CDN is live)
   const bgBefore = await card.evaluate(el => getComputedStyle(el).backgroundColor);
@@ -89,7 +89,7 @@ function check(name, pass, detail) {
   const panel = page.locator('[data-tw-editor="panel"]');
   check('panel visible after click', await panel.isVisible());
   const title = await panel.locator('strong').first().textContent();
-  check('panel targets the card', title.includes('<div>') && title.includes('#8'), title);
+  check('panel targets the card', title.includes('<div>') && title.includes('index.html:25'), title);
   check('selection outline is solid', /solid/.test(await card.evaluate(el => el.style.outline)));
 
   // The panel is collapsed by default, so the horizontal axis is what is on
@@ -117,7 +117,7 @@ function check(name, pass, detail) {
 
   // emerald swatch on the Background row
   await pickColor(panel, 'bg', 'emerald', '500');
-  const after = await rgb(page, '[data-eid="8"]');
+  const after = await rgb(page, '[data-thisone-loc^="index.html:25:1:"]');
   check('bg colour applied instantly', after.bg === after.emerald, `${after.bg} vs emerald ${after.emerald}`);
 
   // ---- the colour field, frame 4:551 ----
@@ -532,7 +532,7 @@ function check(name, pass, detail) {
   const diskCard = disk.split('\n').find(l => l.includes('rounded-xl'));
   check('index.html on disk has new classes',
     diskCard.includes('bg-emerald-500') && AXIS.test(diskCard), diskCard.trim());
-  check('no data-eid written to disk', !disk.includes('data-eid'));
+  check('no identity attribute written to disk', !disk.includes('data-eid') && !disk.includes('data-thisone-loc'));
   check('no editor script written to disk', !disk.includes('/editor.js'));
 
   // Escape deselects
@@ -551,9 +551,9 @@ function check(name, pass, detail) {
 
   // hard refresh preserves the look
   await page.reload({ waitUntil: 'networkidle' });
-  const card2 = page.locator('[data-eid="8"]');
+  const card2 = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   const padReload = await card2.evaluate(el => getComputedStyle(el).paddingLeft);
-  const reloaded = await rgb(page, '[data-eid="8"]');
+  const reloaded = await rgb(page, '[data-thisone-loc^="index.html:25:1:"]');
   check('after hard refresh: bg persists', reloaded.bg === reloaded.emerald,
     `${reloaded.bg} vs emerald ${reloaded.emerald}`);
   check('after hard refresh: padding persists', padReload === `${v2}px`, padReload);

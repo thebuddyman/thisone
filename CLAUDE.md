@@ -7,7 +7,8 @@ The command is `thisone`.
 
 Two modes share one client:
 
-- **HTML**: `server.js` tags elements as it serves a flat `index.html`.
+- **HTML**: `server.js` serves a folder of `.html` files and stamps each
+  element with its source location as it goes. `html-adapter.js` writes back.
 - **Next.js**: a Turbopack loader stamps each JSX element with its source
   location. `next/server.js` runs as a separate process and writes the `.tsx`.
 
@@ -18,7 +19,7 @@ Vite and React Native are recognised and refused. `docs/DECISIONS.md` says why.
 ## Commands
 
 ```bash
-npm test                                        # 14 suites, about 100s, offline
+npm test                                        # 16 suites, about 110s, offline
 node cli.js --root ../uiux_experiment --check   # inspect a project, change nothing
 node cli.js --root ../uiux_experiment           # editor server (port 3500)
 node cli.js --root ../uiux_experiment --prompt  # same, with the Prompt tab
@@ -35,7 +36,8 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 | file | what it is |
 |---|---|
 | `editor.js` | the whole client overlay: panel, selection, every control. About 2900 lines, no bundler, served as-is |
-| `server.js` | HTML mode: tags, serves, writes back |
+| `server.js` | HTML mode: serves a static site, stamps its pages, routes `/edit` |
+| `html-adapter.js` | the HTML writer. parse5 offsets, the same byte-span splice as the JSX one |
 | `next/loader.cjs` | Turbopack loader. Stamps `data-thisone-loc="file:line:col:hash"` |
 | `next/jsx-adapter.js` | the writer. Resolves a location, replaces or cuts a byte span |
 | `next/palette.js` | builds the dev preview stylesheet. Extracts colours, sizes, weights, radii |
@@ -44,7 +46,7 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 | `detect.js` / `cli.js` | framework detection and the `thisone` command |
 | `assets/` | the panel's icons, exported from Figma and inlined into `editor.js` |
 | `demo/` | the playground: `app/page.tsx` edited in the browser by the shipped loader and writer. `node demo/build.mjs` builds it, `.github/workflows/demo.yml` publishes it to playground.thomasbudiman.com/thisone. Not in the package |
-| `test/` | 14 suites. `run.mjs` runs them |
+| `test/` | 16 suites. `run.mjs` runs them |
 | `docs/` | the reasoning, the test map, the release contract |
 
 ## Where the reasoning lives
@@ -101,7 +103,7 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 
 ## Tests
 
-- `npm test` runs 4 unit suites and 10 Playwright suites against a temp copy of
+- `npm test` runs 5 unit suites and 11 Playwright suites against a temp copy of
   `test/fixture.html`. **One run at a time.** They share port 3131.
 - Before every run: `lsof -ti tcp:3131 | xargs -r kill -9`, then confirm the
   port is free.

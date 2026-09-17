@@ -54,7 +54,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   // on an element near the top of the page: the fixture cannot scroll far
   // enough to push a mid-page one off the screen.
   await page.setViewportSize({ width: 1280, height: 380 });
-  const near = page.locator('[data-eid="6"]');
+  const near = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await page.evaluate(() => window.scrollTo(0, 0));
   await near.click();
   await page.waitForTimeout(150);

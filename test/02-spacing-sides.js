@@ -48,7 +48,7 @@ function check(name, pass, detail) {
 
   // The ladder, read out of the panel's own dropdown rather than written down
   // here — it has moved once already and every number below follows from it.
-  await page.locator('[data-eid="8"]').click({ position: { x: 3, y: 3 } });
+  await page.locator('[data-thisone-loc^="index.html:25:1:"]').click({ position: { x: 3, y: 3 } });
   await field('p-x').locator('[data-tw-spacing-open]').click();
   // Read as the panel shows them — pixel lengths, not scale numbers.
   const RUNGS = await page.locator('[data-tw-spacing] .bw-sizename').allTextContents();
@@ -102,7 +102,7 @@ function check(name, pass, detail) {
     return after;
   };
 
-  const card = page.locator('[data-eid="8"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   const pad = async () => card.evaluate(el => {
     const s = getComputedStyle(el);
     return [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join(' ');
@@ -222,8 +222,8 @@ function check(name, pass, detail) {
     await card.evaluate(el => getComputedStyle(el).marginTop));
 
   // reads inherited values off px-*/py-* too
-  await page.locator('[data-eid="9"]').evaluate(el => { el.className = 'text-2xl font-bold py-8 px-2'; });
-  await page.locator('[data-eid="9"]').click({ position: { x: 3, y: 3 } });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate(el => { el.className = 'text-2xl font-bold py-8 px-2'; });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').click({ position: { x: 3, y: 3 } });
   check('py-8 seen as inherited top/bottom',
     (await read('p-t')) === '32' && (await read('p-b')) === '32',
     [await read('p-t'), await read('p-b')].join('/'));
@@ -253,7 +253,7 @@ function check(name, pass, detail) {
     side('mt').test(diskClasses) && !/pb-/.test(diskClasses), diskClasses);
 
   await page.reload({ waitUntil: 'networkidle' });
-  const card2 = page.locator('[data-eid="8"]');
+  const card2 = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   const padAfter = await card2.evaluate(el => {
     const s = getComputedStyle(el);
     return [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].join(' ');
@@ -287,7 +287,7 @@ function check(name, pass, detail) {
   //
   // A py-* lookup cannot see pt-*/pb-*, so an element written per-side used to
   // show nothing at all in the folded view.
-  const h2b = page.locator('[data-eid="9"]');
+  const h2b = page.locator('[data-thisone-loc^="index.html:26:1:"]');
   // Deselect before every re-click: a live selection parks the delete handle on
   // the element's corner, which is the spot these clicks aim at.
   const reselect = async (cls) => {
@@ -468,7 +468,7 @@ function check(name, pass, detail) {
   // ---- an unset side reads 0, not a dash ----
   //
   // On a fresh element: by this point the card has had every side set by hand.
-  await page.locator('[data-eid="6"]').click();
+  await page.locator('[data-thisone-loc^="index.html:21:1:"]').click();
 
   //
   // Padding and margin are not inherited and preflight zeroes the browser's
@@ -503,9 +503,9 @@ function check(name, pass, detail) {
   // the fields go, in Margin's own slot. Not a chip in a strip at the end of
   // the panel — that moved every unset property out of the order the panel
   // otherwise reads in, and revealing one made the layout jump.
-  await page.locator('[data-eid="9"]').evaluate((el) => { el.className = 'p-4'; });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate((el) => { el.className = 'p-4'; });
   // Not the corner: the delete handle for the live selection sits there.
-  await page.locator('[data-eid="9"]').click({ position: { x: 60, y: 20 } });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').click({ position: { x: 60, y: 20 } });
 
   const order = () => page.evaluate(() => Array.from(
     document.querySelectorAll('[data-tw-editor="panel"] .bw-body > *'))
@@ -532,10 +532,10 @@ function check(name, pass, detail) {
   check('and its + brings the field out, starting at white',
     (await panel.locator('[data-tw-color-open="bg"]').isVisible()) &&
     !(await panel.locator('[data-tw-reveal="bg"]').isVisible()) &&
-    (await page.locator('[data-eid="9"]').getAttribute('class')) === 'p-4 bg-white',
-    await page.locator('[data-eid="9"]').getAttribute('class'));
+    (await page.locator('[data-thisone-loc^="index.html:26:1:"]').getAttribute('class')) === 'p-4 bg-white',
+    await page.locator('[data-thisone-loc^="index.html:26:1:"]').getAttribute('class'));
   check('and white actually paints, with no rule in any source file',
-    (await page.locator('[data-eid="9"]').evaluate(
+    (await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate(
       (e) => getComputedStyle(e).backgroundColor)) === 'rgb(255, 255, 255)');
 
   const reveal = panel.locator('[data-tw-reveal="m"]');
@@ -630,16 +630,16 @@ function check(name, pass, detail) {
   // Escape first: clicking an element that is already selected is a no-op, so
   // the panel would still be describing the block version of it.
   await page.keyboard.press('Escape');
-  await page.locator('[data-eid="9"]').evaluate((el) => { el.className = 'p-4 flex'; });
-  await page.locator('[data-eid="9"]').click({ position: { x: 60, y: 20 } });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate((el) => { el.className = 'p-4 flex'; });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').click({ position: { x: 60, y: 20 } });
   // A heading holding one line of text is one flex item, and one item lays out
   // identically at every value gap can take. Same empty offer Typography makes
   // on an element with no text under it.
   check('nor on a flex one with a single item to space',
     !(await panel.locator('[data-tw-reveal="gap"]').isVisible()));
   await page.keyboard.press('Escape');
-  await page.locator('[data-eid="5"]').evaluate((el) => { el.className = 'p-12 flex'; });
-  await page.locator('[data-eid="5"]').click({ position: { x: 200, y: 6 } });
+  await page.locator('[data-thisone-loc^="index.html:20:1:"]').evaluate((el) => { el.className = 'p-12 flex'; });
+  await page.locator('[data-thisone-loc^="index.html:20:1:"]').click({ position: { x: 200, y: 6 } });
   check('…and is, on a flex one with two',
     await panel.locator('[data-tw-reveal="gap"]').isVisible());
   // In gap's own slot, after Radius — and with no Text row above it, which is
@@ -659,8 +659,8 @@ function check(name, pass, detail) {
     // Move the selection away first: re-clicking the selected element is a
     // no-op, so the panel would still describe the old classes.
     await card.click({ position: { x: 200, y: 6 } });
-    await page.locator('[data-eid="9"]').evaluate((e, c) => { e.className = c; }, cls);
-    const box = await page.locator('[data-eid="9"]').boundingBox();
+    await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate((e, c) => { e.className = c; }, cls);
+    const box = await page.locator('[data-thisone-loc^="index.html:26:1:"]').boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     return page.evaluate(() => Array.from(
       document.querySelectorAll('[data-tw-editor="panel"] [data-tw-field^="gap"]'))
@@ -686,8 +686,8 @@ function check(name, pass, detail) {
   // single field asks the element, and only it is expected to change here.
   const gapMark = async (cls) => {
     await card.click({ position: { x: 200, y: 6 } });
-    await page.locator('[data-eid="9"]').evaluate((e, c) => { e.className = c; }, cls);
-    const box = await page.locator('[data-eid="9"]').boundingBox();
+    await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate((e, c) => { e.className = c; }, cls);
+    const box = await page.locator('[data-thisone-loc^="index.html:26:1:"]').boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     return page.evaluate(() => {
       const f = document.querySelector(
@@ -719,9 +719,9 @@ function check(name, pass, detail) {
   // and not the heading, so Gap is on screen for the order check below: a
   // heading is one flex item, and gap is not offered where it can do nothing.
   await card.click({ position: { x: 200, y: 6 } });
-  await page.locator('[data-eid="9"]').evaluate((e) => { e.className = 'p-4'; });
-  await page.locator('[data-eid="5"]').evaluate((e) => { e.className = 'p-12 flex'; });
-  await page.locator('[data-eid="5"]').click({ position: { x: 200, y: 6 } });
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate((e) => { e.className = 'p-4'; });
+  await page.locator('[data-thisone-loc^="index.html:20:1:"]').evaluate((e) => { e.className = 'p-12 flex'; });
+  await page.locator('[data-thisone-loc^="index.html:20:1:"]').click({ position: { x: 200, y: 6 } });
 
   // Clicked at the label end, which is the half of the row that used to do
   // nothing at all.
@@ -731,8 +731,8 @@ function check(name, pass, detail) {
     !(await panel.locator('[data-tw-reveal="m"]').isVisible()) &&
     (await panel.locator('[data-tw-field="m-y"]').isVisible()));
   check('revealing wrote nothing',
-    (await page.locator('[data-eid="5"]').getAttribute('class')) === 'p-12 flex',
-    await page.locator('[data-eid="5"]').getAttribute('class'));
+    (await page.locator('[data-thisone-loc^="index.html:20:1:"]').getAttribute('class')) === 'p-12 flex',
+    await page.locator('[data-thisone-loc^="index.html:20:1:"]').getAttribute('class'));
   const after = await order();
   check('and the panel still reads in the same order',
     after.join(' > ') ===

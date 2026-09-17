@@ -62,8 +62,8 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   const padPlus = { click: () => step(panel, 'p-x', 'up') };
 
   // ---------- 2. the horizontal input owns px-* outright ----------
-  await page.locator('[data-eid="9"]').evaluate(el => { el.className = 'text-2xl font-bold px-6'; });
-  const h2 = page.locator('[data-eid="9"]');
+  await page.locator('[data-thisone-loc^="index.html:26:1:"]').evaluate(el => { el.className = 'text-2xl font-bold px-6'; });
+  const h2 = page.locator('[data-thisone-loc^="index.html:26:1:"]');
   check('setup: px-6 gives 24px horizontal padding',
     (await h2.evaluate(el => getComputedStyle(el).paddingLeft)) === '24px');
 
@@ -91,14 +91,14 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
   check('save button starts clean', (await saveBtn.textContent()).trim() === 'Saved');
   check('save button starts disabled', await saveBtn.isDisabled());
 
-  const card = page.locator('[data-eid="8"]');
+  const card = page.locator('[data-thisone-loc^="index.html:25:1:"]');
   await card.click({ position: { x: 3, y: 3 } });
   await pickColor(panel, 'bg', 'emerald', '500');
   check('one edit → "Save 1 change"', (await saveBtn.textContent()).trim() === 'Save 1 change',
     await saveBtn.textContent());
 
   // move to a second element without saving — the first must stay marked
-  const h1 = page.locator('[data-eid="6"]');
+  const h1 = page.locator('[data-thisone-loc^="index.html:21:1:"]');
   await h1.click();
   // Assert the marker's *role* (a dashed outline distinct from the solid
   // selection ring), not its literal colour, so a restyle cannot break this.
@@ -127,7 +127,7 @@ const disk = () => fs.readFileSync(INDEX, 'utf8');
 
   // ---------- 3. stale hash ----------
   await page.reload({ waitUntil: 'networkidle' });
-  await page.locator('[data-eid="8"]').click({ position: { x: 3, y: 3 } });
+  await page.locator('[data-thisone-loc^="index.html:25:1:"]').click({ position: { x: 3, y: 3 } });
   await pickColor(panel, 'bg', 'rose', '500');
   check('edit pending before the out-of-band change',
     (await saveBtn.textContent()).trim() === 'Save 1 change');
