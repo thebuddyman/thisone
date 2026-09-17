@@ -486,8 +486,16 @@ function editFile(ts, filePath, source, edits) {
   }
 
   if (refusals.length) return { ok: false, refusals };
+  return applySpans(source, spans);
+}
 
-  // Back to front, so every offset resolved above stays valid.
+/**
+ * Splice resolved spans into the source. Knows nothing about JSX: a span is
+ * { start, end } or { insertAt } in the source's own offsets, so every writer
+ * (the HTML one shares this) gets the same overlap and shared-line refusals.
+ */
+function applySpans(source, spans) {
+  // Back to front, so every offset resolved by the caller stays valid.
   const posOf = (s) => (s.span.insertAt !== undefined ? s.span.insertAt : s.span.start);
 
   // A span sitting inside one that is being cut has nothing left to apply to,
@@ -556,4 +564,4 @@ function editFile(ts, filePath, source, edits) {
   return { ok: true, contents: out, applied: [...new Set(collapsed.map((s) => s.tag))] };
 }
 
-module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, textRunSpan, removeSpan, escapeJsxText, editSource, editFile, REFUSALS };
+module.exports = { hashOf, loadTypeScript, parseLoc, hostElements, textKids, textShape, classNameSpan, textSpan, textRunSpan, removeSpan, escapeJsxText, editSource, editFile, applySpans, REFUSALS };
