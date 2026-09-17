@@ -44,6 +44,7 @@
   ],
   "scripts": {
     "start": "node server.js",
+    "demo": "node demo/build.mjs",
     "test": "node test/run.mjs",
     "edit": "node cli.js",
     "prepublishOnly": "npm test"

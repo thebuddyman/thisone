@@ -5,3 +5,4 @@ test/*.png
 .bw-tmp-*
 .DS_Store
 .backups/
+demo/dist/

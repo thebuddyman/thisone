@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thisone playground</title>
+<meta name="description" content="Click an element, change it, save. thisone writes the change into the line of JSX it came from.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23fe5000'/><path d='M9 16.5l4.5 4.5L23 11' stroke='white' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="tailwind.js"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  }
+</style>
+<style>
+  /* Plain CSS under a demo- prefix, so nothing here reads as a Tailwind utility
+     or becomes something to click. */
+  html, body { margin: 0; background: #fff; }
+  #app { max-width: 1100px; margin: 0 auto; }
+  .demo-narrow { display: none; margin: 0; padding: 16px 16px 0; font: 500 13px/1.4 "Figtree", ui-sans-serif, system-ui, sans-serif; color: #525252; }
+
+  /* The overlay's panel sits bottom right at 352px. Keep the page clear of it. */
+  @media (min-width: 1440px) { .demo-stage { margin-right: 368px; } }
+
+  @media (max-width: 900px) {
+    .demo-narrow { display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="demo-stage">
+  <p class="demo-narrow">The editor panel needs a wider screen. Try it on a laptop.</p>
+  <div id="app"><!--APP--></div>
+</div>
+
+<script type="application/json" id="demo-source"><!--SOURCE--></script>
+<script src="core.js"></script>
+<script src="sources.js"></script>
+<script>window.__TW_EDITOR__ = /*CONFIG*/;</script>
+<script src="editor.js"></script>
+<script src="runtime.js"></script>
+</body>
+</html>

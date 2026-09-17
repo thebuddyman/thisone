@@ -7,13 +7,15 @@ new check lands where the next person will look for it.
 
 ## The offline suite
 
-`npm test` runs 13 suites through `test/run.mjs`:
+`npm test` runs 14 suites through `test/run.mjs`:
 
 - **4 unit suites**, no browser: `00-families`, `05-jsx-adapter`, `06-detect`,
   `12-icons`.
 - **9 browser suites** (Playwright, Chromium) against a temp copy of
   `test/fixture.html`. The demo `index.html` is never touched. Tailwind is
   served locally from `@tailwindcss/browser`, not a CDN, so runs work offline.
+- **1 demo suite**, `13-demo`, in Chromium against a fresh build of `demo/`
+  opened from `file://`. It needs no server and does not use port 3131.
 
 All browser suites share one `server.js` on port 3131, so run one `npm test` at
 a time and free the port first:
@@ -44,6 +46,7 @@ between suites and runs.
 | `10-radius-corners` | The four-corner radius view. |
 | `11-stroke` | The four families behind the `border-` prefix. |
 | `12-icons` | `assets/` against the inlined `ICONS`. Unit. |
+| `13-demo` | The playground. It builds `demo/` and drives it from `file://`, no server. Every save is replayed through `jsx-adapter` in Node and must match byte for byte, and after the saves every stamp on screen must be the one the file renders. |
 
 ### `01-classes`: colour
 

@@ -535,6 +535,40 @@ output should not be the one that changes the project. 17 checks in
 `06-detect` pin status, code and `next` against ready, unwired, Astro, Tailwind
 v3, a plain page and a manual wire.
 
+**The playground runs the shipped loader and writer, not copies of them.**
+`demo/` is a Next page edited with no server: `next/loader.cjs` and
+`next/jsx-adapter.js` go into the build as text, byte for byte, and run behind
+a `require` that supplies `typescript`, a synchronous sha256 (the browser's is
+async, and both call sites are sync), and the two `path` functions they call.
+A copy written for the browser would be a demo of something the package does
+not do. Measured: the shimmed loader stamps the page byte for byte as the real
+one does (62 elements), and `13-demo` replays every save through `editFile` in
+Node and requires the same bytes. The cost is TypeScript in the page, 9.1 MB or
+1.6 MB gzipped, so the page is prerendered at build and the parser loads after
+it; a save made before it arrives waits for it.
+
+**The playground's reload patches what changed between two renders, not the
+live DOM against the new one.** The live nodes carry the overlay's outlines
+and state, and React leaves those alone because it diffs its own renders. So
+the demo keeps the last render aside and changes only the attributes and text
+that differ between it and the next. Where the children stop lining up, which
+is a delete, the children are replaced whole, as React would drop the node.
+`13-demo` checks that after a class change, a text change and a delete every
+stamp on screen is the one the file renders, and that a save still lands in the
+replaced card.
+
+**Below 900px the playground does not turn edit mode on.** The panel is 352px
+wide and opens over the page it edits, so a phone saw nothing but the panel.
+The page still shows, with a line saying the editor wants a wider screen, and
+the mode button is still there.
+
+**The playground shows the page and nothing around it.** It had a second
+column with the source file and a line diff after each save, as the proof that
+the change lands in code. It was taken out on review: the page on its own reads
+as the product, and the panel's "written to page.tsx" says where it went.
+`13-demo` still checks the file byte for byte against the server, so dropping
+the pane changed what is shown, not what is verified.
+
 **A busy port gets a sentence, not a stack trace.** Two editors is the normal
 case, so `EADDRINUSE` is caught and answered with the flag that fixes it.
 `Unhandled 'error' event` reads as a broken tool rather than a missing argument.

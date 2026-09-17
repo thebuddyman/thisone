@@ -18,7 +18,7 @@ Vite and React Native are recognised and refused. `docs/DECISIONS.md` says why.
 ## Commands
 
 ```bash
-npm test                                        # 13 suites, about 85s, offline
+npm test                                        # 14 suites, about 100s, offline
 node cli.js --root ../uiux_experiment --check   # inspect a project, change nothing
 node cli.js --root ../uiux_experiment           # editor server (port 3500)
 node cli.js --root ../uiux_experiment --prompt  # same, with the Prompt tab
@@ -43,7 +43,8 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 | `next/claude.js` | the Prompt tab's backend. One headless `claude -p` per turn |
 | `detect.js` / `cli.js` | framework detection and the `thisone` command |
 | `assets/` | the panel's icons, exported from Figma and inlined into `editor.js` |
-| `test/` | 13 suites. `run.mjs` runs them |
+| `demo/` | the playground: `app/page.tsx` edited in the browser by the shipped loader and writer. `node demo/build.mjs` builds it. Not in the package |
+| `test/` | 14 suites. `run.mjs` runs them |
 | `docs/` | the reasoning, the test map, the release contract |
 
 ## Where the reasoning lives
@@ -100,7 +101,7 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 
 ## Tests
 
-- `npm test` runs 4 unit suites and 9 Playwright suites against a temp copy of
+- `npm test` runs 4 unit suites and 10 Playwright suites against a temp copy of
   `test/fixture.html`. **One run at a time.** They share port 3131.
 - Before every run: `lsof -ti tcp:3131 | xargs -r kill -9`, then confirm the
   port is free.
