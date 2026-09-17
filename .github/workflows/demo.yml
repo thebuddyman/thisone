@@ -1,0 +1,65 @@
+name: demo
+
+# Publishes the playground to https://playground.thomasbudiman.com/thisone/.
+# The custom domain and HTTPS are set in the repo's Pages settings, not here.
+on:
+  push:
+    branches: [main]
+    # The demo runs these files as they ship, so a change to any of them
+    # changes what the playground does.
+    paths:
+      - 'demo/**'
+      - 'editor.js'
+      - 'next/loader.cjs'
+      - 'next/jsx-adapter.js'
+      - 'next/palette.js'
+      - 'next/*.json'
+      - 'package-lock.json'
+      - '.github/workflows/demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Two deploys racing would publish whichever finished last, not the newest.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node demo/build.mjs --out site/thisone
+      # The domain's root has nothing of its own yet, so it forwards.
+      - name: Forward the root to the demo
+        run: |
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>playground</title>
+          <meta http-equiv="refresh" content="0; url=./thisone/">
+          <link rel="canonical" href="./thisone/">
+          <a href="./thisone/">thisone</a>
+          HTML
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: https://playground.thomasbudiman.com/thisone/
+    steps:
+      - uses: actions/deploy-pages@v4

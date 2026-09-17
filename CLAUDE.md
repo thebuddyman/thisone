@@ -43,7 +43,7 @@ node next/verify-prompt.js --root ../uiux_experiment   # 14 live checks, needs -
 | `next/claude.js` | the Prompt tab's backend. One headless `claude -p` per turn |
 | `detect.js` / `cli.js` | framework detection and the `thisone` command |
 | `assets/` | the panel's icons, exported from Figma and inlined into `editor.js` |
-| `demo/` | the playground: `app/page.tsx` edited in the browser by the shipped loader and writer. `node demo/build.mjs` builds it. Not in the package |
+| `demo/` | the playground: `app/page.tsx` edited in the browser by the shipped loader and writer. `node demo/build.mjs` builds it, `.github/workflows/demo.yml` publishes it to playground.thomasbudiman.com/thisone. Not in the package |
 | `test/` | 14 suites. `run.mjs` runs them |
 | `docs/` | the reasoning, the test map, the release contract |
 
