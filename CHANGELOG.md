@@ -8,6 +8,8 @@ The full rules are in `docs/RELEASE.md`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### Added
 - HTML mode edits a whole static site. Every `.html` file under the folder can
   be opened and edited, and stylesheets, images and fonts beside them are
@@ -102,7 +104,8 @@ First release, as `@designbuddy/thisone`. The command is `thisone`.
   `claude -p`.
 - A standalone HTML mode for a flat `index.html`.
 
-[Unreleased]: https://github.com/thebuddyman/thisone/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/thebuddyman/thisone/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/thebuddyman/thisone/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thebuddyman/thisone/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thebuddyman/thisone/compare/v0.1.0...v0.2.0
 [0.1.1]: https://github.com/thebuddyman/thisone/compare/v0.1.0...v0.1.1
