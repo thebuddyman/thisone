@@ -206,6 +206,40 @@ function tailwindReason(tw) {
     'sheet (`@source inline` and the compile API are both v4-only)';
 }
 
+/**
+ * The path a shim requires, when nothing is there any more. Null otherwise.
+ *
+ * The fallback shim names a checkout by absolute path, and a checkout moves.
+ * The file stays behind, so "does the shim exist" went on answering yes for a
+ * loader that could not be required: `--check` said ready, `--wire` said there
+ * was nothing to do, and running it started the editor anyway.
+ *
+ * Resolved, never required: detection runs no project code. And only the line
+ * `--wire` writes is judged. A shim someone rewrote by hand is theirs.
+ */
+function deadShimTarget(shimAbs) {
+  let src;
+  try {
+    src = fs.readFileSync(shimAbs, 'utf8');
+  } catch {
+    return null;
+  }
+  const m = src.match(/module\.exports\s*=\s*require\(\s*("(?:[^"\\]|\\.)*")\s*\)/);
+  if (!m) return null;
+  let target;
+  try {
+    target = JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+  try {
+    createRequire(shimAbs).resolve(target);
+    return null;
+  } catch {
+    return target;
+  }
+}
+
 /** Has this project already had the editor wired into it? */
 function detectWiring(plan) {
   const has = (file, needle) => {
@@ -224,10 +258,16 @@ function detectWiring(plan) {
   // became undetectable, and unwirable, after the last one.
   const LOADER_MARKS = ['thisone-loader', 'bw-loader', 'tw-editor'];
   const SHIMS = ['tools/thisone-loader.cjs', 'tools/bw-loader.cjs'];
+  const shims = SHIMS.filter((f) => fs.existsSync(path.join(plan.root, f)))
+    .map((file) => ({ file, target: deadShimTarget(path.join(plan.root, file)) }));
+  const live = shims.some((s) => s.target === null);
   return {
     loader: LOADER_MARKS.some((m) => has(plan.configFile, m)),
     overlay: has(plan.entryFile, 'overlay.js'),
-    loaderShim: SHIMS.some((f) => fs.existsSync(path.join(plan.root, f))),
+    loaderShim: live,
+    // Only when no shim loads. One that works beside a dead leftover from an
+    // older name is a wired project, and not something to report.
+    staleShim: (!live && shims[0]) || null,
   };
 }
 

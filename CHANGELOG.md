@@ -37,6 +37,10 @@ The full rules are in `docs/RELEASE.md`.
 - Saving in HTML mode changes only the class, text or element you edited. It
   used to rewrite the whole file, which could also change quote styles, turn
   `<br/>` into `<br>` and add closing tags you had left out.
+- `--check` no longer calls a Next project ready when its loader file points at
+  a copy of thisone that has been moved or deleted. It says the file is stale
+  and names the missing path, and `--wire` rewrites it. Before, `--wire`
+  answered "already wired" and the app started with a loader it could not load.
 
 ## [0.3.0] - 2026-09-16
 

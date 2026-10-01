@@ -192,12 +192,21 @@ const OVERLAY_BLOCK = new RegExp(
   '\\n[ \\t]*\\{/\\* ' + ANY_MARK + ':start[\\s\\S]*?' + ANY_MARK + ':end \\*/\\}'
 );
 
-function wireNext(plan) {
+function wireNext(plan, wiring) {
   const done = [];
   const manual = [];
 
+  const stale = wiring && wiring.staleShim;
   const shim = path.join(plan.root, 'tools/thisone-loader.cjs');
-  if (!fs.existsSync(shim)) {
+  if (stale) {
+    // Rewritten where it is, because that is the path the config block names.
+    // Skipping it for existing is what made "re-run --wire", the advice the
+    // shim itself gives, do nothing once the checkout it named had moved.
+    const abs = path.join(plan.root, stale.file);
+    backup(plan.root, abs);
+    fs.writeFileSync(abs, loaderShim(plan.root));
+    done.push(`${stale.file} (it required ${stale.target}, which is gone)`);
+  } else if (!fs.existsSync(shim)) {
     fs.mkdirSync(path.dirname(shim), { recursive: true });
     fs.writeFileSync(shim, loaderShim(plan.root));
     done.push('tools/thisone-loader.cjs (new)');
@@ -285,7 +294,9 @@ function report(plan, wiring) {
   if (plan.configFile) console.log(`  config     ${plan.configFile}`);
   if (wiring) {
     const mark = (b) => (b ? green('yes') : dim('no'));
-    console.log(`  wired      loader ${mark(wiring.loader)}  overlay ${mark(wiring.overlay)}  shim ${mark(wiring.loaderShim)}`);
+    const stale = wiring.staleShim;
+    console.log(`  wired      loader ${mark(wiring.loader)}  overlay ${mark(wiring.overlay)}  shim ${stale ? red('stale') : mark(wiring.loaderShim)}`);
+    if (stale) console.log(dim(`             ${stale.file} requires ${stale.target}, which is gone`));
   }
 }
 
@@ -365,7 +376,7 @@ if (flag('wire')) {
   if (wired) {
     console.log(`\n${dim('Already wired — nothing to do.')}`);
   } else {
-    const { done, manual } = wireNext(plan);
+    const { done, manual } = wireNext(plan, wiring);
     if (done.length) console.log(`\n${green('Wired')} — ${done.join(', ')}   ${dim('(originals in .thisone/backups/)')}`);
     for (const [file, why, snippet] of manual) {
       console.log(`\n${red('Manual step for ' + file)}: ${why}\n${snippet}`);
@@ -382,7 +393,12 @@ if (flag('wire')) {
 }
 
 if (!wired) {
-  console.log(`\n${red('Not wired yet.')} Run ${bold('thisone --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
+  if (wiring && wiring.staleShim) {
+    console.log(`\n${red('The loader shim points at a path that is gone.')} ` +
+      `${wiring.staleShim.file} requires ${wiring.staleShim.target}. Run ${bold('thisone --wire')} to rewrite it.\n`);
+  } else {
+    console.log(`\n${red('Not wired yet.')} Run ${bold('thisone --wire')} to add it, or ${bold('--check')} to inspect only.\n`);
+  }
   process.exit(EXIT_STEP);
 }
 

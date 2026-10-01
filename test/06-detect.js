@@ -409,6 +409,76 @@ check('nothing to wire on a plain page, and it says so with exit 0',
 
 check('--wire with a manual step exits 2', runCode(['--root', busy, '--wire']).code === 2);
 
+// ------------------------------------------ a shim whose target has gone
+//
+// The fallback shim names this checkout by absolute path. Move the checkout
+// and the file is still there, so a detector that only asks whether it exists
+// says ready, --wire says there is nothing to do, and every page fails on a
+// loader that cannot be required. It happened to uiux_experiment when this
+// checkout moved, and the shim's own advice ("re-run --wire") was a dead end.
+const moved = fixture('moved-checkout', {
+  deps: { next: '16.2.4' }, tailwind: '4.2.4',
+  files: { 'next.config.ts': NEXT_CONFIG, 'src/app/layout.tsx': LAYOUT },
+});
+run(['--root', moved, '--wire']);
+const movedShim = path.join(moved, 'tools/thisone-loader.cjs');
+const movedConfig = fs.readFileSync(path.join(moved, 'next.config.ts'), 'utf8');
+const movedLayout = fs.readFileSync(path.join(moved, 'src/app/layout.tsx'), 'utf8');
+const gone = path.join(work, 'old-checkout', 'next', 'loader.cjs');
+fs.writeFileSync(movedShim, fs.readFileSync(movedShim, 'utf8')
+  .replace(/require\(.*\)/, `require(${JSON.stringify(gone)})`));
+check('the fixture shim now names a path that is gone',
+  fs.readFileSync(movedShim, 'utf8').includes(JSON.stringify(gone)) && !fs.existsSync(gone));
+
+let w = detectWiring(detect(moved));
+check('a shim that requires a path that is gone does not count as wired',
+  w.loaderShim === false && w.staleShim?.target === gone, JSON.stringify(w.staleShim));
+r = json(['--root', moved, '--check', '--json']);
+check('...so the project is needs-wiring with exit 2, not ready',
+  r.body?.status === 'needs-wiring' && r.code === 2, `${r.body?.status} / ${r.code}`);
+check('...and the JSON says which file and which path',
+  r.body?.wiring?.staleShim?.file === 'tools/thisone-loader.cjs'
+    && r.body?.wiring?.staleShim?.target === gone, JSON.stringify(r.body?.wiring?.staleShim));
+out = run(['--root', moved, '--check']);
+check('...and the report names the path that is gone', out.includes(gone),
+  out.trim().split('\n').pop());
+// With a deadline, because the failure this guards against is the CLI taking
+// the project for wired and starting a server that never exits. SIGINT is the
+// signal cli.js passes on to that server; the default would orphan it on 3500.
+out = (() => {
+  try {
+    return execFileSync(process.execPath, [CLI, '--root', moved],
+      { encoding: 'utf8', stdio: 'pipe', timeout: 10000, killSignal: 'SIGINT' });
+  } catch (e) {
+    return (e.stdout || '') + (e.stderr || '') + (e.code === 'ETIMEDOUT' ? '\n(started a server instead)' : '');
+  }
+})();
+check('running it says the shim is the step, not "not wired yet"',
+  out.includes(gone) && !/Not wired yet/.test(out), out.trim().split('\n').pop());
+
+out = run(['--root', moved, '--wire']);
+check('--wire rewrites the shim instead of saying there is nothing to do',
+  !/Already wired/.test(out) && !fs.readFileSync(movedShim, 'utf8').includes(gone),
+  out.trim().split('\n')[0]);
+check('...and the rewritten shim really loads the loader',
+  typeof require(movedShim) === 'function');
+check('...and nothing else moved: config and layout are byte for byte as they were',
+  fs.readFileSync(path.join(moved, 'next.config.ts'), 'utf8') === movedConfig
+    && fs.readFileSync(path.join(moved, 'src/app/layout.tsx'), 'utf8') === movedLayout);
+check('...with the old shim kept in the project backups',
+  fs.readdirSync(path.join(moved, '.thisone/backups')).some((f) => f.startsWith('tools__thisone-loader.cjs')),
+  fs.readdirSync(path.join(moved, '.thisone/backups')).join(', '));
+check('...and then it is ready', runCode(['--root', moved, '--check']).code === 0);
+
+// Not the line --wire writes, so not this tool's to judge or to overwrite.
+const byHand = 'module.exports = require(process.env.MY_LOADER);\n';
+fs.writeFileSync(movedShim, byHand);
+w = detectWiring(detect(moved));
+check('a shim someone rewrote by hand still counts as wired',
+  w.loaderShim === true && w.staleShim === null, JSON.stringify(w));
+run(['--root', moved, '--wire']);
+check('...and --wire leaves it as it was typed', fs.readFileSync(movedShim, 'utf8') === byHand);
+
 fs.rmSync(work, { recursive: true, force: true });
 
 const failed = results.filter((x) => !x).length;
